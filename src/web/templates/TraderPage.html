@@ -16,7 +16,21 @@
 	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
 	<input type="hidden" name="well_id" value="{{ current_well.id }}">
 
-	<label>Week: <select name="period_id" required>{% for period in auction_case.auction.periods %}<option value="{{ period.id }}">{{ period.label }}</option>{% endfor %}</select></label>
+	<label>Period:
+		{% if auction_case.auction.auction_date and auction_case.auction.days_in_period %}
+			<select name="period_id" required>
+			{%- for row in period_rows %}
+				<option value="{{ row.period_key }}">{{ row.period_label }} ({{ row.period_key }})</option>
+			{%- endfor %}
+			</select>
+		{% else %}
+			<select name="period_id" required>
+			{%- for period in auction_case.auction.periods %}
+				<option value="{{ period.id }}">{{ period.label }}</option>
+			{%- endfor %}
+			</select>
+		{% endif %}
+	</label>
 	<label>Quantity requested (ML): <input type="number" name="quantity" min="0.1" step="0.1" required></label>
 	<label>Bid price ($/ML): <input type="number" name="price" min="0.01" step="0.01" required></label>
 	<button type="submit">Submit bid</button>

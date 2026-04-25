@@ -14,6 +14,10 @@ class Auction(BaseModel):
 	bid_close_label: str
 	status: str
 	periods: list[AuctionPeriod]
+	auction_date: str | None = None
+	days_in_period: int | None = None
+	number_of_periods: int | None = None
+	auction_type: str | None = None
 
 class Participant(BaseModel):
 	id: str

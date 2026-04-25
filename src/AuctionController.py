@@ -2,14 +2,26 @@
 # Purpose: Coordinate setup, execution, and view state for auctions.
 
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from RunAuctionModule import runAuction
 from services.repository import AuctionRepository
 
-def SetUpAuction( repository: AuctionRepository, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, ):
+def _compute_effect_date(auction_date: str | None, days_in_period: int | None, offset: int) -> str:
+	"""Convert auction_date + offset * days_in_period to ISO date string.
+	If auction_date or days_in_period missing, return offset as string (integer fallback)."""
+	if not auction_date or not days_in_period:
+		return str(offset)
+	try:
+		base = datetime.fromisoformat(auction_date).date()
+		effect_date = base + timedelta(days=offset * days_in_period)
+		return effect_date.isoformat()
+	except Exception:
+		return str(offset)
+
+def SetUpAuction( repository: AuctionRepository, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None, ):
 	clean_labels = [label.strip() for label in period_labels if label.strip()]
 	if len(clean_labels) == 0: raise ValueError("At least one period label is required.")
-	return repository.setup_auction(auction_id=auction_id, label=label, bid_close_label=bid_close_label, period_labels=clean_labels, clear_existing_bids=clear_existing_bids,)
+	return repository.setup_auction(auction_id=auction_id, label=label, bid_close_label=bid_close_label, period_labels=clean_labels, clear_existing_bids=clear_existing_bids, auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
 
 def ResetAuctionData(repository: AuctionRepository): return repository.reset_runtime_to_seed()
 
@@ -26,7 +38,16 @@ def getTraderPageState(repository: AuctionRepository, auction_id: str | None = N
 	current_wells = repository.wells_for_participant(auction_case, current_participant)
 	current_well = current_wells[0] if current_wells else None
 	bid_history = repository.bid_history(auction_case.auction.id, current_participant.id)
-	period_rows = [{"period_id": period.id, "period_label": period.label, "allocation": round(current_participant.allocation_by_period.get(period.id, 0.0), 3),} for period in auction_case.auction.periods]
+	# Compute effect dates for periods if auction_date and days_in_period are set
+	period_rows = []
+	for idx, period in enumerate(auction_case.auction.periods):
+		effect_date = _compute_effect_date(auction_case.auction.auction_date, auction_case.auction.days_in_period, idx)
+		period_rows.append({
+			"period_id": period.id,
+			"period_key": effect_date,  # Use effect_date as key for date-based periods
+			"period_label": period.label,
+			"allocation": round(current_participant.allocation_by_period.get(period.id, 0.0), 3),
+		})
 	return {"auction_case": auction_case, "current_participant": current_participant, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_case.auction.id,}
 
 def getManagerPageState(repository: AuctionRepository) -> dict: return {"auctions": repository.list_auctions()}

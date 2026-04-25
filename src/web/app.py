@@ -13,6 +13,7 @@ import BiddingController
 from services.repository import AuctionRepository
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import setup as db_setup
+import phase5_imports
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data" / "Tianqiao"
@@ -107,8 +108,8 @@ def manager_page(request: Request):
 	return templates.TemplateResponse(request, "ManagerPage.html", context)
 
 @app.post("/manager/setup-auction")
-def manager_setup_auction( auction_id: str = Form(...), label: str = Form(...), bid_close_label: str = Form(...), period_labels: str = Form(...), clear_existing_bids: bool = Form(default=True), ):
-	AuctionController.SetUpAuction(repository, auction_id=auction_id.strip(), label=label.strip(), bid_close_label=bid_close_label.strip(), period_labels=[item.strip() for item in period_labels.split(",")], clear_existing_bids=clear_existing_bids,)
+def manager_setup_auction( auction_id: str = Form(...), label: str = Form(...), bid_close_label: str = Form(...), period_labels: str = Form(...), clear_existing_bids: bool = Form(default=True), auction_date: str | None = Form(default=None), days_in_period: int | None = Form(default=None), number_of_periods: int | None = Form(default=None), auction_type: str | None = Form(default=None), ):
+	AuctionController.SetUpAuction(repository, auction_id=auction_id.strip(), label=label.strip(), bid_close_label=bid_close_label.strip(), period_labels=[item.strip() for item in period_labels.split(",")], clear_existing_bids=clear_existing_bids, auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
 	return RedirectResponse(url="/manager?notice=Auction+created", status_code=303)
 
 @app.post("/manager/run-auction")
@@ -245,6 +246,45 @@ async def setup_import_well_lat_lon(file: UploadFile = File(...)):
 		f"Well+lat-lon+import:+{result['wells_updated']}+updated,"
 		f"+{result['rows_skipped']}+skipped"
 	)
+	if result["errors"]: notice += f"+({len(result['errors'])}+errors)"
+	return RedirectResponse(url=f"/docs/programmer?notice={notice}", status_code=303)
+
+
+# Phase 5 JSON import routes (eliminating seed.json dependency)
+@app.post("/setup/import-periods-json")
+async def setup_import_periods_json(file: UploadFile = File(...)):
+	text = (await file.read()).decode("utf-8", errors="replace")
+	result = phase5_imports.import_periods_json(DATA_DIR / "foreverfair.db", text)
+	notice = f"Periods+import:+{result['periods_inserted']}+inserted"
+	if result["errors"]: notice += f"+({len(result['errors'])}+errors)"
+	return RedirectResponse(url=f"/docs/programmer?notice={notice}", status_code=303)
+
+
+@app.post("/setup/import-traders-and-allocations-json")
+async def setup_import_traders_and_allocations_json(file: UploadFile = File(...)):
+	text = (await file.read()).decode("utf-8", errors="replace")
+	result = phase5_imports.import_traders_and_allocations_json(DATA_DIR / "foreverfair.db", text)
+	notice = (f"Traders+&+allocations+import:+{result['traders_inserted']}+traders,"
+	          f"+{result['allocations_inserted']}+allocations")
+	if result["errors"]: notice += f"+({len(result['errors'])}+errors)"
+	return RedirectResponse(url=f"/docs/programmer?notice={notice}", status_code=303)
+
+
+@app.post("/setup/import-control-points-and-bounds-json")
+async def setup_import_control_points_and_bounds_json(file: UploadFile = File(...)):
+	text = (await file.read()).decode("utf-8", errors="replace")
+	result = phase5_imports.import_control_points_and_bounds_json(DATA_DIR / "foreverfair.db", text)
+	notice = (f"Control+points+&+bounds+import:+{result['control_points_inserted']}+CPs,"
+	          f"+{result['bounds_inserted']}+bounds")
+	if result["errors"]: notice += f"+({len(result['errors'])}+errors)"
+	return RedirectResponse(url=f"/docs/programmer?notice={notice}", status_code=303)
+
+
+@app.post("/setup/import-auction-metadata-json")
+async def setup_import_auction_metadata_json(file: UploadFile = File(...)):
+	text = (await file.read()).decode("utf-8", errors="replace")
+	result = phase5_imports.import_auction_metadata_json(DATA_DIR / "foreverfair.db", text)
+	notice = f"Metadata+import:+{result['metadata_inserted']}+entries"
 	if result["errors"]: notice += f"+({len(result['errors'])}+errors)"
 	return RedirectResponse(url=f"/docs/programmer?notice={notice}", status_code=303)
 

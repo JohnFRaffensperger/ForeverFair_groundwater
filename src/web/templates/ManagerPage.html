@@ -13,6 +13,10 @@
 	<label>Auction label: <input type="text" name="label" placeholder="May 2026 groundwater auction" required></label><br/>
 	<label>Bid close label: <input type="text" name="bid_close_label" placeholder="Bids close Thursday 5pm" required></label><br/>
 	<label>Period labels, comma-separated: <input type="text" name="period_labels" placeholder="Week 1, Week 2, Week 3, Week 4" required></label><br/>
+	<label>Auction date (legacy field, optional): <input type="date" name="auction_date"></label><br/>
+	<label>Days in period (legacy field, optional): <input type="number" name="days_in_period" min="1"></label><br/>
+	<label>Number of periods (legacy field, optional): <input type="number" name="number_of_periods" min="1"></label><br/>
+	<label>Auction type (legacy field, optional): <input type="text" name="auction_type" placeholder="e.g., standard or proportional"></label><br/>
 	<label>Clear existing bids for the new auction? <select name="clear_existing_bids"><option value="true" selected>Yes</option><option value="false">No</option></select></label><br/>
 	<button type="submit">Create auction</button>
 </form>

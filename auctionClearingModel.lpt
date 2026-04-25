@@ -1,0 +1,13 @@
+\* groundwater_smart_market *\
+Maximize
+OBJ: 14.2 accept_bid_1_s1 + 11.4 accept_bid_2_s1 + 12.6 accept_bid_3_s1
+ + 10.1 accept_bid_4_s1 + 13.1 accept_bid_5_s1 + 9.4 accept_bid_6_s1
+Subject To
+Bounds
+ accept_bid_1_s1 <= 26
+ accept_bid_2_s1 <= 18
+ accept_bid_3_s1 <= 24
+ accept_bid_4_s1 <= 20
+ accept_bid_5_s1 <= 16
+ accept_bid_6_s1 <= 21
+End

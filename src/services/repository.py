@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from models import (Auction, AuctionPeriod, BidSegment, ControlPoint, AuctionCase, Participant, MarketResult, ResponseFactor, RightsConversion, Well,)
+from setup import SCHEMA_DDL
 
 class AuctionRepository:
 	LEGACY_TRADER_COLUMNS = [
@@ -33,17 +34,35 @@ class AuctionRepository:
 
 	def _ensure_db(self) -> None:
 		if not self.db_path.exists():
-			return
+			self.db_path.parent.mkdir(parents=True, exist_ok=True)
 		with self._connect() as conn:
-			conn.executescript(""" CREATE TABLE IF NOT EXISTS metadata (meta_key TEXT PRIMARY KEY, meta_value TEXT NOT NULL ); CREATE TABLE IF NOT EXISTS traders (trader_id TEXT PRIMARY KEY, name TEXT NOT NULL ); CREATE TABLE IF NOT EXISTS wells (well_id TEXT PRIMARY KEY, name TEXT NOT NULL, trader_id TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id) ); CREATE TABLE IF NOT EXISTS periods (period_id INTEGER PRIMARY KEY, period_date TEXT, display_label TEXT NOT NULL ); CREATE TABLE IF NOT EXISTS control_points (control_point_id TEXT PRIMARY KEY, name TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL ); CREATE TABLE IF NOT EXISTS auctions (auction_id TEXT PRIMARY KEY, label TEXT NOT NULL, bid_close_label TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, ran_at TEXT ); CREATE TABLE IF NOT EXISTS auction_periods (auction_id TEXT NOT NULL, period_id INTEGER NOT NULL, period_order INTEGER NOT NULL, PRIMARY KEY (auction_id, period_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS trader_allocations (auction_id TEXT NOT NULL, trader_id TEXT NOT NULL, period_id INTEGER NOT NULL, allocation REAL NOT NULL, PRIMARY KEY (auction_id, trader_id, period_id), FOREIGN KEY (trader_id) REFERENCES traders(trader_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS default_control_point_bounds (control_point_id TEXT NOT NULL, period_id INTEGER NOT NULL, bound REAL NOT NULL, PRIMARY KEY (control_point_id, period_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) ); CREATE TABLE IF NOT EXISTS control_point_bounds (auction_id TEXT NOT NULL, control_point_id TEXT NOT NULL, period_id INTEGER NOT NULL, bound REAL NOT NULL, PRIMARY KEY (auction_id, control_point_id, period_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS response_factors (well_id TEXT NOT NULL, control_point_id TEXT NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id), FOREIGN KEY (pumping_period) REFERENCES periods(period_id), FOREIGN KEY (effect_period) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id TEXT NOT NULL, trader_id TEXT NOT NULL, well_id TEXT NOT NULL, period_id INTEGER NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, submitted_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (trader_id) REFERENCES traders(trader_id), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS auction_runs (run_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id TEXT NOT NULL, clearing_start_time TEXT, run_at TEXT NOT NULL, solve_status TEXT NOT NULL, objective_value REAL NOT NULL ); CREATE TABLE IF NOT EXISTS accepted_bids (run_id INTEGER NOT NULL, bid_id INTEGER NOT NULL, accepted_quantity REAL NOT NULL, PRIMARY KEY (run_id, bid_id), FOREIGN KEY (run_id) REFERENCES auction_runs(run_id), FOREIGN KEY (bid_id) REFERENCES bids(bid_id) ); CREATE TABLE IF NOT EXISTS period_prices (run_id INTEGER NOT NULL, period_id INTEGER NOT NULL, price REAL NOT NULL, PRIMARY KEY (run_id, period_id), FOREIGN KEY (run_id) REFERENCES auction_runs(run_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS constraint_results (run_id INTEGER NOT NULL, control_point_id TEXT NOT NULL, period_id INTEGER NOT NULL, used_capacity REAL NOT NULL, bound_capacity REAL NOT NULL, dual_value REAL NOT NULL, PRIMARY KEY (run_id, control_point_id, period_id), FOREIGN KEY (run_id) REFERENCES auction_runs(run_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); CREATE TABLE IF NOT EXISTS well_quota_ledger (well_id TEXT NOT NULL, auction_id TEXT NOT NULL, period_id INTEGER NOT NULL, quota_auction_start REAL NOT NULL, quota_adjusted REAL, quota_auction_end REAL, clearing_price REAL, adjustment_method TEXT, PRIMARY KEY (well_id, auction_id, period_id), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (period_id) REFERENCES periods(period_id) ); """)
+			conn.executescript(SCHEMA_DDL)
 			self._ensure_legacy_trader_columns(conn)
 			self._ensure_spatial_columns(conn)
 			try:
 				conn.execute("ALTER TABLE auction_runs ADD COLUMN clearing_start_time TEXT")
 			except Exception:
 				pass  # column already exists
-			count = conn.execute("SELECT COUNT(*) AS n FROM auctions").fetchone()["n"]
-			if count == 0: self._seed_from_json(conn)
+			try:
+				conn.execute("ALTER TABLE traderbids ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+			except Exception:
+				pass
+			try:
+				conn.execute("ALTER TABLE auctions ADD COLUMN auction_date TEXT")
+			except Exception:
+				pass  # column already exists
+			try:
+				conn.execute("ALTER TABLE auctions ADD COLUMN daysInPeriod INTEGER")
+			except Exception:
+				pass  # column already exists
+			try:
+				conn.execute("ALTER TABLE auctions ADD COLUMN numberOfPeriods INTEGER")
+			except Exception:
+				pass  # column already exists
+			try:
+				conn.execute("ALTER TABLE auctions ADD COLUMN auction_type TEXT")
+			except Exception:
+				pass  # column already exists
 
 	def _ensure_legacy_trader_columns(self, conn: sqlite3.Connection) -> None:
 		rows = conn.execute("PRAGMA table_info(traders)").fetchall()
@@ -134,15 +153,43 @@ class AuctionRepository:
 
 		for bid in seed_payload["bids"]:
 			bid_period_idx = int(bid["period_id"].replace("W", ""))
-			conn.execute("INSERT INTO bids(auction_id, trader_id, well_id, period_id, quantity, price, submitted_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 0)", (auction_id, bid["trader_id"], bid["well_id"], bid_period_idx, bid["quantity"], bid["price"], now),)
+			# Insert seed bids into traderbids (legacy format) with qty1/price1
+			conn.execute(
+				"INSERT INTO traderbids(auctionID, traderID, well_id, bidDate, effectDate, qty1, price1, deleted) "
+				"VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+				(auction_id, bid["trader_id"], bid["well_id"], now, bid_period_idx, bid["quantity"], bid["price"]),
+			)
 
 	def _clear_all_data(self, conn: sqlite3.Connection) -> None:
-		for table_name in ["constraint_results", "period_prices", "accepted_bids", "auction_runs", "bids", "response_factors", "control_point_bounds", "trader_allocations", "auction_periods", "auctions", "control_points", "wells", "traders", "metadata", ]:
+		for table_name in ["constraint_results", "period_prices", "accepted_bids", "auction_runs", "bids", "traderbids", "control_point_event", "traderquota", "traderconsents", "response_matrix", "response_matrix_info", "messages", "configs", "response_factors", "control_point_bounds", "default_control_point_bounds", "trader_allocations", "auction_periods", "auctions", "periods", "control_points", "wells", "traders", "metadata", ]:
 			conn.execute(f"DELETE FROM {table_name}")
 
 	def _meta(self, conn: sqlite3.Connection, key: str) -> str:
 		row = conn.execute("SELECT meta_value FROM metadata WHERE meta_key=?", (key,)).fetchone()
 		return "" if row is None else row["meta_value"]
+
+	def _table_has_rows(self, conn: sqlite3.Connection, table_name: str) -> bool:
+		try:
+			row = conn.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone()
+			return row is not None
+		except Exception:
+			return False
+
+	def _legacy_period_ids(self, conn: sqlite3.Connection, auction_id: str) -> list[str]:
+		values: set[str] = set()
+		for query, params in [
+			("SELECT effectDate AS period_key FROM traderbids WHERE auctionID=? AND effectDate IS NOT NULL", (auction_id,)),
+			("SELECT CPE_effect_date AS period_key FROM control_point_event WHERE auction_id=? AND CPE_effect_date IS NOT NULL", (auction_id,)),
+			("SELECT takeDate AS period_key FROM traderquota WHERE auctionid=? AND takeDate IS NOT NULL", (auction_id,)),
+		]:
+			try:
+				for row in conn.execute(query, params).fetchall():
+					key = str(row["period_key"]).strip()
+					if key:
+						values.add(key)
+			except Exception:
+				pass
+		return sorted(values)
 
 	def _default_auction_id(self, conn: sqlite3.Connection) -> str:
 		row = conn.execute("SELECT auction_id FROM auctions ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" ).fetchone()
@@ -161,11 +208,19 @@ class AuctionRepository:
 
 			period_rows = conn.execute("SELECT p.period_id, p.display_label FROM periods p JOIN auction_periods ap ON p.period_id=ap.period_id WHERE ap.auction_id=? ORDER BY ap.period_order", (auction_id,), ).fetchall()
 			periods = [AuctionPeriod(id=str(row["period_id"]), label=row["display_label"]) for row in period_rows]
+			if not periods:
+				periods = [AuctionPeriod(id=period_key, label=period_key) for period_key in self._legacy_period_ids(conn, auction_id)]
 
 			traders = []
 			for trader_row in conn.execute("SELECT trader_id, name FROM traders ORDER BY trader_id").fetchall():
-				alloc_rows = conn.execute("SELECT period_id, allocation FROM trader_allocations WHERE auction_id=? AND trader_id=?", (auction_id, trader_row["trader_id"]), ).fetchall()
-				alloc_map = {str(row["period_id"]): float(row["allocation"]) for row in alloc_rows}
+				# Use legacy traderconsents as primary source for allocations
+				alloc_map = {}
+				legacy_allocs = conn.execute("SELECT startDate, consentQuantity FROM traderconsents WHERE traderID=?", (trader_row["trader_id"],)).fetchall()
+				for row in legacy_allocs:
+					period_key = str(row["startDate"] or "").strip()
+					if not period_key:
+						continue
+					alloc_map[period_key] = alloc_map.get(period_key, 0.0) + float(row["consentQuantity"] or 0.0)
 				traders.append(Participant(id=trader_row["trader_id"], name=trader_row["name"], allocation_by_period=alloc_map,))
 
 			wells = [
@@ -186,10 +241,14 @@ class AuctionRepository:
 
 			control_points = []
 			for cp_row in conn.execute("SELECT control_point_id, name, gw_model_row, gw_model_column, latitude, longitude FROM control_points ORDER BY control_point_id").fetchall():
-				bound_rows = conn.execute("SELECT period_id, bound FROM control_point_bounds WHERE auction_id=? AND control_point_id=?", (auction_id, cp_row["control_point_id"]), ).fetchall()
-				if not bound_rows:
-					bound_rows = conn.execute("SELECT period_id, bound FROM default_control_point_bounds WHERE control_point_id=?", (cp_row["control_point_id"],)).fetchall()
-				bound_map = {str(row["period_id"]): float(row["bound"]) for row in bound_rows}
+				# Use legacy control_point_event as primary source for bounds
+				bound_map = {}
+				legacy_bounds = conn.execute("SELECT CPE_effect_date, CPE_head_constraint_upper_bound FROM control_point_event WHERE auction_id=? AND CP_id=?", (auction_id, cp_row["control_point_id"])).fetchall()
+				for row in legacy_bounds:
+					period_key = str(row["CPE_effect_date"] or "").strip()
+					if not period_key:
+						continue
+					bound_map[period_key] = float(row["CPE_head_constraint_upper_bound"] or 0.0)
 				control_points.append(
 					ControlPoint(
 						id=cp_row["control_point_id"],
@@ -202,9 +261,47 @@ class AuctionRepository:
 					)
 				)
 
-			response_factors = [ResponseFactor(well_id=row["well_id"], control_point_id=row["control_point_id"], pumping_period=str(row["pumping_period"]), effect_period=str(row["effect_period"]), value=float(row["factor_value"]),) for row in conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_factors" ).fetchall()]
+			# Use legacy response_matrix as primary source for factors
+			response_factors = []
+			for row in conn.execute("SELECT wellid, control_point_id, RM_take_of_water_date, RM_effect_on_control_point_date, RM_impact_coefficient FROM response_matrix").fetchall():
+				response_factors.append(
+					ResponseFactor(
+						well_id=str(row["wellid"]),
+						control_point_id=str(row["control_point_id"]),
+						pumping_period=str(row["RM_take_of_water_date"]),
+						effect_period=str(row["RM_effect_on_control_point_date"]),
+						value=float(row["RM_impact_coefficient"] or 0.0),
+					)
+				)
 
-			bids = [BidSegment(id=f"bid-{row['bid_id']}", participant_id=row["trader_id"], well_id=row["well_id"], period_id=str(row["period_id"]), quantity=float(row["quantity"]), price=float(row["price"]), submitted_at=row["submitted_at"],) for row in conn.execute("SELECT bid_id, trader_id, well_id, period_id, quantity, price, submitted_at FROM bids WHERE auction_id=? AND deleted=0 ORDER BY bid_id", (auction_id,), ).fetchall()]
+			# Use legacy traderbids as primary source for bids (support qty1-qty5 steps per row)
+			bids: list[BidSegment] = []
+			for row in conn.execute(
+				"SELECT bidid, traderID, well_id, effectDate, bidDate, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5 "
+				"FROM traderbids WHERE auctionID=? AND deleted=0 ORDER BY bidid",
+				(auction_id,),
+			).fetchall():
+				period_id = str(row["effectDate"] or "")
+				submitted_at = row["bidDate"]
+				# Create one BidSegment per active step (qty/price non-null)
+				for step_num in range(1, 6):
+					qty_col = f"qty{step_num}"
+					price_col = f"price{step_num}"
+					qty = row[qty_col]
+					price = row[price_col]
+					if qty is None or price is None:
+						continue
+					bids.append(
+						BidSegment(
+							id=f"bid-{row['bidid']}-s{step_num}",
+							participant_id=row["traderID"],
+							well_id=row["well_id"],
+							period_id=period_id,
+							quantity=float(qty),
+							price=float(price),
+							submitted_at=submitted_at,
+						)
+					)
 
 			return AuctionCase(catchment_name=self._meta(conn, "catchment_name"), source_note=self._meta(conn, "source_note"), current_participant_id=self._meta(conn, "current_trader_id"), auction=Auction(id=auction_row["auction_id"], label=auction_row["label"], bid_close_label=auction_row["bid_close_label"], status=auction_row["status"], periods=periods), participants=traders, wells=wells, control_points=control_points, response_factors=response_factors, bids=bids, rights_conversion=RightsConversion(policy_name=self._meta(conn, "rights_policy_name"), summary=self._meta(conn, "rights_policy_summary"),),)
 
@@ -216,21 +313,44 @@ class AuctionRepository:
 		with self._connect() as conn:
 			return [{"id": row["trader_id"], "name": row["name"]} for row in conn.execute("SELECT trader_id, name FROM traders ORDER BY name").fetchall()]
 
-	def _parse_bid_id(self, bid_id: str) -> int: return int(bid_id.split("-")[-1])
+	def _parse_bid_id(self, bid_id: str) -> int:
+		tail = bid_id.split("-")[-1]
+		if "-s" in bid_id:
+			tail = bid_id.split("-")[-2]
+		return int(tail)
 
 	def add_bid(self, auction_id: str, participant_id: str, well_id: str, period_id: str, quantity: float, price: float) -> BidSegment:
 		now = datetime.now(timezone.utc).isoformat()
 		with self._connect() as conn:
-			cursor = conn.execute("INSERT INTO bids(auction_id, trader_id, well_id, period_id, quantity, price, submitted_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 0)", (auction_id, participant_id, well_id, period_id, quantity, price, now),)
+			cursor = conn.execute(
+				"INSERT INTO traderbids(auctionID, traderID, well_id, bidDate, effectDate, qty1, price1, deleted) "
+				"VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+				(auction_id, participant_id, well_id, now, str(period_id), quantity, price),
+			)
 			bid_pk = int(cursor.lastrowid)
-			return BidSegment(id=f"bid-{bid_pk}", participant_id=participant_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, submitted_at=now,)
+			return BidSegment(
+				id=f"bid-{bid_pk}-s1",
+				participant_id=participant_id,
+				well_id=well_id,
+				period_id=period_id,
+				quantity=quantity,
+				price=price,
+				submitted_at=now,
+			)
 
 	def delete_bid(self, bid_id: str, current_participant_id: str) -> bool:
 		bid_pk = self._parse_bid_id(bid_id)
 		with self._connect() as conn:
-			row = conn.execute("SELECT trader_id, deleted FROM bids WHERE bid_id=?", (bid_pk,)).fetchone()
-			if row is None or row["deleted"] == 1 or row["trader_id"] != current_participant_id: return False
-			conn.execute("UPDATE bids SET deleted=1 WHERE bid_id=?", (bid_pk,))
+			row = conn.execute("SELECT traderID, deleted FROM traderbids WHERE bidid=?", (bid_pk,)).fetchone()
+			if row is None:
+				legacy = conn.execute("SELECT trader_id, deleted FROM bids WHERE bid_id=?", (bid_pk,)).fetchone()
+				if legacy is None or legacy["deleted"] == 1 or legacy["trader_id"] != current_participant_id:
+					return False
+				conn.execute("UPDATE bids SET deleted=1 WHERE bid_id=?", (bid_pk,))
+				return True
+			if row["deleted"] == 1 or row["traderID"] != current_participant_id:
+				return False
+			conn.execute("UPDATE traderbids SET deleted=1 WHERE bidid=?", (bid_pk,))
 			return True
 
 	def reset_runtime_to_seed(self) -> AuctionCase:
@@ -239,11 +359,11 @@ class AuctionRepository:
 			self._seed_from_json(conn)
 		return self.load()
 
-	def setup_auction(self, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True) -> Auction:
+	def setup_auction(self, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None) -> Auction:
 		now = datetime.now(timezone.utc).isoformat()
 		with self._connect() as conn:
 			source_auction_id = self._default_auction_id(conn)
-			conn.execute("INSERT INTO auctions(auction_id, label, bid_close_label, status, created_at, ran_at) VALUES (?, ?, ?, 'OPEN', ?, NULL)", (auction_id, label, bid_close_label, now),)
+			conn.execute("INSERT INTO auctions(auction_id, label, bid_close_label, status, created_at, ran_at, auction_date, daysInPeriod, numberOfPeriods, auction_type) VALUES (?, ?, ?, 'OPEN', ?, NULL, ?, ?, ?, ?)", (auction_id, label, bid_close_label, now, auction_date, days_in_period, number_of_periods, auction_type),)
 			for idx, period_label in enumerate(period_labels):
 				period_id = idx + 1
 				conn.execute("INSERT OR IGNORE INTO periods(period_id, period_date, display_label) VALUES (?, NULL, ?)", (period_id, period_label))
@@ -267,16 +387,16 @@ class AuctionRepository:
 
 			for idx, _ in enumerate(period_labels):
 				period_id = idx + 1
-				rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_factors WHERE auction_id=? AND pumping_period=? AND effect_period=?", (source_auction_id, period_id, period_id), ).fetchall()
+				rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_factors WHERE pumping_period=? AND effect_period=?", (period_id, period_id), ).fetchall()
 				for row in rows:
-					conn.execute("INSERT INTO response_factors(auction_id, well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?, ?, ?, ?, ?, ?)", (auction_id, row["well_id"], row["control_point_id"], row["pumping_period"], row["effect_period"], float(row["factor_value"]),),)
+					conn.execute("INSERT OR REPLACE INTO response_factors(well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?, ?, ?, ?, ?)", (row["well_id"], row["control_point_id"], row["pumping_period"], row["effect_period"], float(row["factor_value"]),),)
 
 			if not clear_existing_bids:
 				rows = conn.execute("SELECT trader_id, well_id, period_id, quantity, price FROM bids WHERE auction_id=? AND deleted=0", (source_auction_id,), ).fetchall()
 				for row in rows:
 					if int(row["period_id"]) <= len(period_labels): conn.execute("INSERT INTO bids(auction_id, trader_id, well_id, period_id, quantity, price, submitted_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 0)", (auction_id, row["trader_id"], row["well_id"], row["period_id"], float(row["quantity"]), float(row["price"]), now,),)
 
-		return Auction(id=auction_id, label=label, bid_close_label=bid_close_label, periods=[AuctionPeriod(id=str(idx + 1), label=lbl) for idx, lbl in enumerate(period_labels)],)
+		return Auction(id=auction_id, label=label, bid_close_label=bid_close_label, status="OPEN", periods=[AuctionPeriod(id=str(idx + 1), label=lbl) for idx, lbl in enumerate(period_labels)], auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
 
 	def list_auctions(self) -> list[dict]:
 		with self._connect() as conn:
@@ -290,17 +410,46 @@ class AuctionRepository:
 			run_id = int(cursor.lastrowid)
 			conn.execute("UPDATE auctions SET status='CLOSED', ran_at=? WHERE auction_id=?", (run_at, auction_id))
 
-			for item in market_result.accepted_bids:
-				bid_pk = self._parse_bid_id(item.bid_id)
-				conn.execute("INSERT INTO accepted_bids(run_id, bid_id, accepted_quantity) VALUES (?, ?, ?)", (run_id, bid_pk, float(item.accepted_quantity)),)
+			# NOTE: accepted_bids references old bids table which no longer exists in legacy schema.
+			# With multi-step bid support, we store accepted quantities in traderquota instead.
+			# Skipping accepted_bids insertion for legacy format compatibility.
+			# for item in market_result.accepted_bids:
+			# 	bid_pk = self._parse_bid_id(item.bid_id)
+			# 	conn.execute("INSERT INTO accepted_bids(run_id, bid_id, accepted_quantity) VALUES (?, ?, ?)", (run_id, bid_pk, float(item.accepted_quantity)),)
 
 			for period_id, price in market_result.period_prices.items():
-				period_id_int = int(period_id)
+				try:
+					period_id_int = int(period_id)
+				except Exception:
+					continue
 				conn.execute("INSERT INTO period_prices(run_id, period_id, price) VALUES (?, ?, ?)", (run_id, period_id_int, float(price)),)
 
+			# Map trader-period results to traderquota rows (one per trader per period)
+			for tpr in market_result.trader_period_results:
+				participant_id = str(tpr.participant_id)
+				period_id_str = str(tpr.period_id)
+				initial_alloc = float(tpr.initial_allocation)
+				accepted_qty = float(tpr.accepted_quantity)
+				period_price = float(market_result.period_prices.get(period_id_str, 0.0))
+				# Find first well for this trader (simplified: don't try to match per-bid wells)
+				first_well = conn.execute("SELECT well_id FROM wells WHERE trader_id=? LIMIT 1", (participant_id,)).fetchone()
+				well_id = str(first_well['well_id']) if first_well else "0"
+				conn.execute(
+					"INSERT INTO traderquota(traderid, auctionid, wellID, quotaAuctionStart, quotaAdjusted, quotaAuctionEnd, price, takeDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+					(participant_id, auction_id, well_id, initial_alloc, accepted_qty, accepted_qty, period_price, period_id_str),
+				)
+
 			for item in market_result.constraint_results:
-				period_id_int = int(item.period_id)
-				conn.execute("INSERT INTO constraint_results(run_id, control_point_id, period_id, used_capacity, bound_capacity, dual_value) VALUES (?, ?, ?, ?, ?, ?)", (run_id, item.control_point_id, period_id_int, float(item.used_capacity), float(item.bound_capacity), float(item.dual_value),),)
+				try:
+					period_id_int = int(item.period_id)
+				except Exception:
+					period_id_int = None
+				if period_id_int is not None:
+					conn.execute("INSERT INTO constraint_results(run_id, control_point_id, period_id, used_capacity, bound_capacity, dual_value) VALUES (?, ?, ?, ?, ?, ?)", (run_id, item.control_point_id, period_id_int, float(item.used_capacity), float(item.bound_capacity), float(item.dual_value),),)
+				conn.execute(
+					"INSERT INTO control_point_event(auction_id, CP_id, CPE_effect_date, CPE_head_constraint_upper_bound, CPE_slack, CPE_dual_price) VALUES (?, ?, ?, ?, ?, ?)",
+					(auction_id, item.control_point_id, str(item.period_id), float(item.bound_capacity), float(item.bound_capacity) - float(item.used_capacity), float(item.dual_value)),
+				)
 			return run_id
 
 	def latest_run_summary(self, auction_id: str) -> dict | None:
@@ -310,34 +459,60 @@ class AuctionRepository:
 			return dict(row)
 
 	def bid_history(self, auction_id: str, participant_id: str) -> list[dict]:
+		"""Fetch bid history from traderbids (legacy primary source), supporting all 5 bid steps."""
 		with self._connect() as conn:
-			run_row = conn.execute("SELECT run_id FROM auction_runs WHERE auction_id=? ORDER BY run_id DESC LIMIT 1", (auction_id,), ).fetchone()
-			run_id = None if run_row is None else int(run_row["run_id"])
-			rows = conn.execute("SELECT bid_id, period_id, quantity, price, submitted_at FROM bids WHERE auction_id=? AND trader_id=? AND deleted=0 ORDER BY bid_id DESC", (auction_id, participant_id), ).fetchall()
+			rows = conn.execute(
+				"SELECT bidid, effectDate, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, bidDate FROM traderbids "
+				"WHERE auctionID=? AND traderID=? AND deleted=0 ORDER BY bidid DESC",
+				(auction_id, participant_id),
+			).fetchall()
 			result = []
 			for row in rows:
-				accepted = 0.0
-				if run_id is not None:
-					acc = conn.execute("SELECT accepted_quantity FROM accepted_bids WHERE run_id=? AND bid_id=?", (run_id, int(row["bid_id"])), ).fetchone()
-					if acc is not None: accepted = float(acc["accepted_quantity"])
-				result.append({"bid_id": f"bid-{row['bid_id']}", "period_id": str(row["period_id"]), "quantity": float(row["quantity"]), "price": float(row["price"]), "submitted_at": row["submitted_at"], "accepted_quantity": accepted,})
+				# Create one history entry per active step
+				for step_num in range(1, 6):
+					qty_col = f"qty{step_num}"
+					price_col = f"price{step_num}"
+					qty = row[qty_col]
+					price = row[price_col]
+					if qty is None or price is None:
+						continue
+					accepted = 0.0
+					# Check if this specific bid step was accepted (via accepted_bids for backward compat)
+					try:
+						acc = conn.execute("SELECT accepted_quantity FROM accepted_bids WHERE bid_id=?", (int(row["bidid"]),)).fetchone()
+						if acc is not None:
+							accepted = float(acc["accepted_quantity"])
+					except Exception:
+						pass
+					result.append({
+						"bid_id": f"bid-{row['bidid']}-s{step_num}",
+						"period_id": str(row["effectDate"] or ""),
+						"quantity": float(qty),
+						"price": float(price),
+						"submitted_at": row["bidDate"],
+						"accepted_quantity": accepted,
+					})
 			return result
 
 	def catchment_price_rows(self, auction_id: str) -> tuple[list[dict], list[dict]]:
+		"""Fetch price and constraint results from legacy tables (traderquota and control_point_event)."""
 		with self._connect() as conn:
-			run_row = conn.execute("SELECT run_id FROM auction_runs WHERE auction_id=? ORDER BY run_id DESC LIMIT 1", (auction_id,), ).fetchone()
-			if run_row is None: return [], []
-			run_id = int(run_row["run_id"])
-
-			period_prices = {str(row["period_id"]): float(row["price"]) for row in conn.execute("SELECT period_id, price FROM period_prices WHERE run_id=?", (run_id,)).fetchall()}
+			# Read period prices from traderquota (legacy primary source)
+			period_prices: dict[str, float] = {}
+			for row in conn.execute("SELECT takeDate, AVG(price) AS avg_price FROM traderquota WHERE auctionid=? GROUP BY takeDate", (auction_id,)).fetchall():
+				if row["takeDate"] is None:
+					continue
+				period_prices[str(row["takeDate"])] = float(row["avg_price"] or 0.0)
 
 			well_rows = []
 			for well in conn.execute("SELECT well_id, name FROM wells ORDER BY well_id").fetchall():
 				for period_id, price in period_prices.items():
 					well_rows.append({"well_id": well["well_id"], "well_name": well["name"], "period_id": period_id, "price": price})
 
+			# Read control point results from control_point_event (legacy primary source)
 			cp_rows = []
-			for row in conn.execute(""" SELECT c.control_point_id, c.name, r.period_id, r.dual_value, r.used_capacity, r.bound_capacity FROM constraint_results r JOIN control_points c ON c.control_point_id = r.control_point_id WHERE r.run_id=? ORDER BY c.control_point_id, r.period_id """, (run_id,), ).fetchall():
-				cp_rows.append({"control_point_id": row["control_point_id"], "control_point_name": row["name"], "period_id": str(row["period_id"]), "dual_value": float(row["dual_value"]), "used_capacity": float(row["used_capacity"]), "bound_capacity": float(row["bound_capacity"]),})
+			for row in conn.execute(""" SELECT c.control_point_id, c.name, e.CPE_effect_date, e.CPE_dual_price, e.CPE_head_constraint_upper_bound, e.CPE_slack FROM control_point_event e JOIN control_points c ON c.control_point_id = e.CP_id WHERE e.auction_id=? ORDER BY c.control_point_id, e.CPE_effect_date """, (auction_id,)).fetchall():
+					slack = float(row["CPE_slack"] or 0.0)
+					cp_rows.append({"control_point_id": row["control_point_id"], "control_point_name": row["name"], "period_id": str(row["CPE_effect_date"] or ""), "dual_value": float(row["CPE_dual_price"] or 0.0), "used_capacity": bound - slack, "bound_capacity": bound,})
 			return well_rows, cp_rows
 
