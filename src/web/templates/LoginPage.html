@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair 3.0 — Select Participant</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
+</head>
+<body>
+<p><a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Select participant</h1>
+<p>This is demonstration software. Select your name to continue — no password required.</p>
+<form method="post" action="/login">
+	<label>Participant: <select name="participant_id" required>
+		{% for p in participants %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+	</select></label>
+	<button type="submit">Continue</button>
+</form>
+</body>
+</html>

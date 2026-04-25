@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "groundwater-smart-market"
+version = "0.1.0"
+description = "Forever Fair 3.0 jurisdiction-neutral groundwater smart-market web application."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+	"fastapi>=0.115,<1",
+	"jinja2>=3.1,<4",
+	"pulp>=2.8,<3",
+	"pydantic>=2.8,<3",
+	"python-multipart>=0.0.9,<1",
+	"uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+	"pytest>=8.0,<9",
+	"httpx>=0.27,<1",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

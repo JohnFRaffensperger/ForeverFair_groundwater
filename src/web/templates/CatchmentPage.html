@@ -1,0 +1,29 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Catchment Prices | Forever Fair 3.0</title>
+	<link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
+</head>
+<body>
+<p><a href="/trader">Trader's page</a> | <a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. {{ catchment_name }} catchment view</h1>
+
+<h2>Results for auction {{ auction.id }}: {{ auction.label }}  {% if notice %}{{ notice }}{% endif %}</h2>
+
+<h3>Prices at each well</h3>
+<table><thead><tr><th>Well</th><th>Period</th><th>Price</th></tr></thead>
+	<tbody>{% for row in well_price_rows %}<tr>
+		<td>{{ row.well_name }}</td><td>{{ row.period_id }}</td><td>${{ '%.2f'|format(row.price) }}</td></tr>
+	{% endfor %}</tbody></table>
+
+<h3>Prices and status at each control point</h3>
+<table><thead><tr><th>Control point</th><th>Period</th><th>Dual price</th><th>Used impact</th><th>Bound</th><th>Status</th></tr></thead>
+	<tbody>{% for row in control_point_rows %}<tr>
+			<td>{{ row.control_point_name }}</td><td>{{ row.period_id }}</td><td>${{ '%.2f'|format(row.dual_value) }}</td><td>{{ '%.2f'|format(row.used_capacity) }}</td><td>{{ '%.2f'|format(row.bound_capacity) }}</td><td>{% if row.dual_value != 0 %}Binding{% else %}Slack{% endif %}</td></tr>
+		{% endfor %}
+	</tbody></table>
+
+</body></html>
+

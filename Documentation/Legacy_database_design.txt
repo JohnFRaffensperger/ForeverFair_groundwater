@@ -1,0 +1,446 @@
+Legacy DESIGN: foreverfair SQLite database (revised GW_Python)
+Design date: approximately 2012-01-25 (file modification date of foreverfair.db)
+Source file: foreverfair\foreverfair_db\foreverfair.db
+================================================================================
+
+Table: auctions
+  solve_time            DATETIME
+  solve_status          TEXT
+  auction_id            INTEGER  PK
+  auction_type          varchar
+  auction_date          DATETIME
+  firstTradedDate       DATETIME
+  daysInPeriod          INTEGER
+  numberOfPeriods       INTEGER
+  proportionalAllowance varchar
+  proportionalAllowanceFinal varchar
+  netRevenue            varchar
+  auction_endingOn      DATETIME
+  auction_is_final      BOOLEAN
+  auction_description   VARCHAR
+
+Table: configs
+  id                    INTEGER  PK
+  currDate              DATETIME
+  currAucSolve          varchar
+
+Table: control_point_event
+  CPE_id                INTEGER  PK
+  RMI_id                INTEGER  (FK -> response_matrix_info)
+  CP_id                 INTEGER  (FK -> control_points)
+  auction_id            INTEGER  (FK -> auctions)
+  CPE_effect_date       DATETIME
+  CPE_equality_constraint_right_hand_side INTEGER
+  CPE_head              INTEGER
+  CPE_constraint_lower_bound INTEGER
+  CPE_head_constraint_upper_bound INTEGER
+  CPE_LProw_name        TEXT
+  CPE_range_lower       INTEGER
+  CPE_range_upper       INTEGER
+  CPE_slack             INTEGER
+  CPE_dual_price        INTEGER
+
+Table: control_points
+  CP_id                 INTEGER  PK
+  CP_layer1             INTEGER
+  CP_row1               INTEGER
+  CP_col1               INTEGER
+  CP_layer2             INTEGER
+  CP_row2               INTEGER
+  CP_col2               INTEGER
+  CP_latitude1          INTEGER
+  CP_longitude1         INTEGER
+  CP_latitude2          INTEGER
+  CP_longitude2         INTEGER
+  CP_type               INTEGER
+  CP_name               TEXT
+  CP_description        TEXT
+  NOTE: Two grid locations (layer/row/col 1 and 2) and two lat/lon pairs stored,
+        presumably to support a two-point averaging or difference constraint.
+
+Table: messages
+  id                    INTEGER  PK
+  message_type          TEXT
+  message               TEXT
+
+Table: metadata
+  meta_key              TEXT  PK
+  meta_value            TEXT  NN
+  NOTE: Added post-2012 (not in original Design 2). Key-value store for
+        catchment_name, rights policy, current trader, etc.
+
+Table: response_matrix
+  coefficient_id        INTEGER  PK
+  RMI_id                INTEGER  (FK -> response_matrix_info)
+  wellid                INTEGER  (FK -> wells)
+  control_point_id      INTEGER  (FK -> control_points)
+  RM_take_of_water_date DATETIME
+  RM_effect_on_control_point_date INTEGER
+  RM_impact_coefficient INTEGER
+
+Table: response_matrix_info
+  RMI_hours_period_length NUMERIC
+  RMI_id                INTEGER  PK
+  RMI_creation_date     DATETIME
+  RMI_cubic_meters_per_impulse_unit INTEGER
+  RMI_notes             TEXT
+
+Table: traderbids
+  well_id               NUMERIC
+  bidid                 INTEGER  PK
+  traderID              INTEGER  (FK -> traders)
+  auctionID             INTEGER  (FK -> auctions)
+  bidDate               DATETIME
+  effectDate            DATETIME
+  expiryDate            DATETIME
+  isBidAutomatic        boolean
+  qty1                  REAL
+  price1                REAL
+  qty2                  REAL
+  price2                REAL
+  qty3                  REAL
+  price3                REAL
+  qty4                  REAL
+  price4                REAL
+  qty5                  REAL
+  price5                REAL
+  NOTE: Up to 5 price-quantity bid steps stored as columns on a single row.
+
+Table: traderconsents
+  consentid             TEXT  PK
+  traderID              TEXT  (FK -> traders)
+  wellID                INTEGER  (FK -> wells)
+  consentQuantity       REAL
+  startDate             DATETIME
+  expiryDate            DATETIME
+
+Table: traderquota
+  quotaid               INTEGER  PK
+  traderid              INTEGER  (FK -> traders)
+  auctionid             INTEGER  (FK -> auctions)
+  wellID                INTEGER  (FK -> wells)
+  quotaAuctionStart     REAL
+  quotaAdjusted         REAL
+  quotaAuctionEnd       REAL
+  price                 REAL
+  lprowName             TEXT
+  takeDate              DATETIME
+  NOTE: One row per well per auction per take-date. The three quota columns
+        represent the three stages of quota lifecycle:
+          quotaAuctionStart  - entitlement entering the auction (from consent)
+          quotaAdjusted      - after proportional/alpha scaling when constraints bind
+          quotaAuctionEnd    - final usable quota after clearing
+
+Table: traders
+  traderid              INTEGER  PK
+  trader_loginid        TEXT
+  trader_password       TEXT
+  trader_fname          TEXT
+  trader_lname          TEXT
+  trader_address        TEXT
+  trader_city           TEXT
+  trader_phone          TEXT
+  trader_email          TEXT
+
+Table: wells
+  well_id               INTEGER  PK
+  well_layer            INTEGER
+  well_row              INTEGER
+  well_column           INTEGER
+  latitude              REAL
+  longitude             REAL
+  NOTE: latitude and longitude added post-2012 (not in original Design 2).
+
+================================================================================
+NOTES ON QUOTA TERMINOLOGY
+================================================================================
+Table traderquota explicitly names three quota stages:
+  quotaAuctionStart  - entitlement at the start of the auction (from consent)
+  quotaAdjusted      - entitlement after proportional/alpha scaling when
+                       hydrologic constraints bind
+  quotaAuctionEnd    - final usable quota after auction clearing
+
+
+================================================================================
+IMPLEMENTATION STEPS: Move to legacy table structure and legacy logic
+================================================================================
+Target state:
+  - Keep current UI architecture (FastAPI routes + Jinja templates + page flow).
+  - Replace current persistence/model/solver wiring with legacy schema semantics.
+  - Retain metadata and wells.latitude/wells.longitude as approved additions.
+
+------------------------------------------------------------------------------
+STEP 0 - Freeze and baseline
+------------------------------------------------------------------------------
+0.1 Create a feature branch for this migration.
+0.2 Snapshot current database and seed/import files.
+0.3 Capture baseline behavior by running tests and one end-to-end manual flow:
+  login -> place bid -> run auction -> view catchment/trader pages.
+0.4 Record baseline row counts from /setup/db-status for later comparison.
+
+------------------------------------------------------------------------------
+STEP 1 - Lock the canonical schema definition
+------------------------------------------------------------------------------
+1.1 In src/setup.py SCHEMA_DDL, replace current auction-era tables with legacy
+  tables and column names.
+1.2 Keep/add these legacy tables:
+  auctions, configs, control_points, control_point_event, messages,
+  response_matrix_info, response_matrix, traderbids, traderconsents,
+  traderquota, traders, wells.
+1.3 Keep metadata table (post-2012 addition).
+1.4 Keep wells.latitude and wells.longitude (post-2012 additions).
+1.5 Add deleted flag to traderbids for current UI soft-delete behavior.
+1.6 Ensure SCHEMA_DDL and repository executescript remain synchronized.
+
+------------------------------------------------------------------------------
+STEP 2 - Define period semantics (critical design choice)
+------------------------------------------------------------------------------
+2.1 Replace integer period IDs with date-based keys (legacy take/effect dates).
+2.2 Define one canonical date format for DB and API (ISO date string).
+2.3 Establish conversion logic:
+  effect_date = auction_date + offset * daysInPeriod
+  where offsets come from legacy-style model mappings/imports.
+2.4 Document this mapping in code comments and Programmer docs.
+
+------------------------------------------------------------------------------
+STEP 3 - Migrate domain models (src/models.py)
+------------------------------------------------------------------------------
+3.1 Update Auction model to legacy fields (solve_time/solve_status,
+  auction_type, auction_date, daysInPeriod, numberOfPeriods, etc.).
+3.2 Update Participant model construction to use trader_fname/trader_lname.
+3.3 Update Well model to legacy grid coordinates and retained lat/lon.
+3.4 Update ControlPoint model to dual-point legacy structure
+  (layer/row/col 1 and 2, lat/lon 1 and 2).
+3.5 Update ResponseFactor model to use take/effect dates (not integer periods).
+3.6 Update bid model handling to support legacy multi-step representation.
+3.7 Update market result models to align with auction + control_point_event +
+  traderquota outputs.
+
+------------------------------------------------------------------------------
+STEP 4 - Rewrite repository layer (src/services/repository.py)
+------------------------------------------------------------------------------
+4.1 Remove logic specific to current schema tables that will be deleted:
+  periods, auction_periods, bids(normalized), auction_runs, accepted_bids,
+  period_prices, constraint_results, trader_allocations,
+  control_point_bounds/default_control_point_bounds, response_factors,
+  well_quota_ledger.
+4.2 Remove JSON seeding paths and seed-driven runtime assumptions.
+4.3 Implement load(auction_id) against legacy tables:
+  auctions + traders + wells + traderconsents + control_points +
+  control_point_event + response_matrix + metadata + traderbids.
+4.4 Implement add_bid() as traderbids insert (qty1/price1 path first;
+  multi-step optional extension).
+4.5 Keep delete bid UX by setting traderbids.deleted=1.
+4.6 Implement setup_auction() in legacy terms:
+  create auction row with date/window fields, copy needed baseline rows.
+4.7 Implement run-results persistence:
+  auctions.solve_time/solve_status updates,
+  control_point_event result rows,
+  traderquota quotaAuctionStart/quotaAdjusted/quotaAuctionEnd/price rows.
+4.8 Rework list_auctions(), latest_run_summary(), bid_history(),
+  catchment_price_rows() to read legacy result sources.
+
+------------------------------------------------------------------------------
+STEP 5 - Refactor solver interface (src/RunAuctionModule.py)
+------------------------------------------------------------------------------
+5.1 Convert period iteration to date-driven iteration.
+5.2 Convert response coefficient lookup to
+  (well, control point, take date, effect date).
+5.3 Read control limits from legacy control_point_event semantics.
+5.4 Convert traderbids rows to LP decision variables:
+  one variable per active bid step (qtyN/priceN).
+5.5 Keep objective and constraints mathematically equivalent to current model.
+5.6 Return outputs in a form repository can persist into legacy tables.
+
+------------------------------------------------------------------------------
+STEP 6 - Controllers update
+------------------------------------------------------------------------------
+6.1 src/BiddingController.py:
+  validate effect/take dates, trader ownership, auction openness;
+  remove integer period assumptions.
+6.2 src/AuctionController.py:
+  setup auction with legacy date/window fields;
+  hydrate trader and catchment pages from traderconsents/traderquota and
+  control_point_event outputs.
+
+------------------------------------------------------------------------------
+STEP 7 - FastAPI route-level compatibility (src/web/app.py)
+------------------------------------------------------------------------------
+7.1 Keep route structure stable where possible to preserve interface behavior.
+7.2 Update setup-auction POST payload to include legacy-required fields
+  (auction_date, daysInPeriod, numberOfPeriods).
+7.3 Update import endpoints to map to legacy destination tables:
+  - trader names -> traders legacy columns
+  - trader wells/rights -> traderconsents
+  - MPS factors/bounds -> response_matrix and control_point_event
+7.4 Keep db-status endpoint and no-cache behavior.
+
+------------------------------------------------------------------------------
+STEP 8 - Template updates while preserving page structure
+------------------------------------------------------------------------------
+8.1 Manager page:
+  add legacy auction timing/window inputs.
+8.2 Trader page:
+  display and submit effect/take date values (instead of period_id).
+8.3 Programmer page:
+  replace allocation-period import messaging with consent/date-based wording.
+8.4 Catchment page:
+  source diagnostics from control_point_event legacy fields.
+8.5 Keep navigation, roles, and overall page flow unchanged.
+
+------------------------------------------------------------------------------
+STEP 9 - Import pipeline alignment (src/setup.py)
+------------------------------------------------------------------------------
+9.1 decvar import -> wells legacy grid fields (+ optional well name mapping).
+9.2 hedcon import -> control_points legacy CP fields.
+9.3 mps import -> response_matrix_info + response_matrix +
+  control_point_event constraints, with date mapping.
+9.4 trader names import -> legacy trader columns.
+9.5 trader wells/rights import -> traderconsents rows.
+9.6 lat/lon imports -> wells.latitude/longitude and control point lat/lon fields.
+9.7 Rebuild missing-data checks for legacy-required columns.
+
+------------------------------------------------------------------------------
+STEP 10 - Data migration strategy for existing foreverfair.db
+------------------------------------------------------------------------------
+10.1 Decide migration mode:
+   A) destructive reset + re-import, or
+   B) scripted transform from current schema to legacy schema.
+10.2 If scripted transform, build explicit mapping tables:
+   - trader_id TEXT -> traderid INTEGER
+   - well_id TEXT -> well_id INTEGER
+   - period_id/order -> take/effect date
+10.3 Map current bids -> traderbids qty1/price1 rows.
+10.4 Map current allocations/quota concepts -> traderconsents + traderquota.
+10.5 Map current control point bounds/results -> control_point_event.
+10.6 Validate row counts and key samples after migration.
+
+------------------------------------------------------------------------------
+STEP 11 - Testing and verification gates
+------------------------------------------------------------------------------
+11.1 Unit tests: update tests/test_market.py for date-based periods.
+11.2 Integration checks:
+   - Create DB
+   - Import all required files
+   - Create auction
+   - Submit and delete bids
+   - Run auction
+   - Verify trader and catchment outputs
+11.3 SQL assertions:
+   verify non-null and FK integrity in legacy tables.
+11.4 Regression checks:
+   ensure interface routes/pages still operate in same user sequence.
+
+------------------------------------------------------------------------------
+STEP 12 - Cutover and cleanup
+------------------------------------------------------------------------------
+12.1 Remove dead code tied only to current schema.
+12.2 Remove obsolete docs and setup text that reference removed tables.
+12.3 Keep one migration note listing old->new table mappings for maintenance.
+12.4 Tag release and preserve pre-migration DB backup.
+
+------------------------------------------------------------------------------
+STEP 13 - Risk controls (recommended)
+------------------------------------------------------------------------------
+13.1 Highest risk: date mapping errors across imports and solver joins.
+   Mitigation: one canonical date conversion utility + tests.
+13.2 Highest risk: silent mismatch between setup.py SCHEMA_DDL and
+   repository.py executescript.
+   Mitigation: startup schema hash/check assertion.
+13.3 Highest risk: result persistence mismatch (legacy overwrite behavior
+   vs historical-run expectations).
+   Mitigation: explicit product decision documented in code and UI text.
+
+END STATE CHECKLIST
+  [ ] UI structure unchanged (page set and route flow preserved)
+  [ ] Legacy tables active and populated
+  [ ] Legacy logic active for bids/solver/results
+  [ ] metadata and wells latitude/longitude retained
+  [ ] End-to-end auction cycle passes with migrated schema
+
+
+================================================================================
+EXECUTION CHECKLIST (ordered implementation sequence)
+================================================================================
+
+PRE-MIGRATION SNAPSHOT
+  [ ] Confirm this file is finalized for migration scope.
+  [ ] Ensure current app runs end-to-end once (baseline sanity check).
+  [ ] Create git tag/commit checkpoint before schema migration starts.
+  [ ] Backup current data/Tianqiao/foreverfair.db.
+
+TRACK A - SCHEMA AND SETUP
+  [ ] Edit src/setup.py: replace SCHEMA_DDL with legacy schema set.
+  [ ] Keep metadata table in SCHEMA_DDL.
+  [ ] Keep wells.latitude and wells.longitude in SCHEMA_DDL.
+  [ ] Add traderbids.deleted flag for soft delete compatibility.
+  [ ] Update db_status() table list and counts to legacy tables.
+  [ ] Update create_empty_db() defaults for configs row.
+  [ ] Validate create/delete DB endpoints still function.
+
+TRACK B - REPOSITORY CORE
+  [ ] Edit src/services/repository.py: sync executescript with new SCHEMA_DDL.
+  [ ] Remove references to removed tables (periods/auction_runs/etc.).
+  [ ] Remove JSON seed dependency path and _seed_from_json usage.
+  [ ] Rebuild load(auction_id) using legacy table reads.
+  [ ] Rebuild add_bid() -> traderbids insert (qty1/price1 path).
+  [ ] Rebuild delete_bid() -> traderbids.deleted soft delete.
+  [ ] Rebuild setup_auction() in legacy auction semantics.
+  [ ] Rebuild save_run_results() to write auctions + control_point_event + traderquota.
+  [ ] Rebuild list_auctions(), latest_run_summary(), bid_history(), catchment_price_rows().
+
+TRACK C - MODELS AND CONTROLLERS
+  [ ] Edit src/models.py to legacy-compatible field structures.
+  [ ] Convert period semantics to date-based keys in models.
+  [ ] Edit src/BiddingController.py validation for date-based periods.
+  [ ] Edit src/AuctionController.py state assembly for legacy outputs.
+  [ ] Confirm getTraderPageState and getCatchmentPageState use legacy sources.
+
+TRACK D - SOLVER CONTRACT
+  [ ] Edit src/RunAuctionModule.py input contract to date-based periods.
+  [ ] Translate legacy traderbids steps to solver decision variables.
+  [ ] Map solver outputs to legacy persistence fields.
+  [ ] Verify objective/constraints remain behaviorally equivalent.
+
+TRACK E - IMPORT PIPELINE
+  [ ] Update import_decvar in src/setup.py for legacy wells fields.
+  [ ] Update import_hedcon in src/setup.py for legacy control_points fields.
+  [ ] Update import_mps in src/setup.py for response_matrix and control_point_event.
+  [ ] Add/confirm period offset -> date mapping utility.
+  [ ] Update trader import(s) to populate traders + traderconsents.
+  [ ] Keep lat/lon import flows for wells and control points.
+  [ ] Update missing_import_data_report() for legacy required columns.
+
+TRACK F - WEB ROUTES + TEMPLATES (preserve structure)
+  [ ] Edit src/web/app.py setup-auction route payload (date/window inputs).
+  [ ] Keep route set stable unless table dependency forces change.
+  [ ] Edit src/web/templates/ManagerPage.html for legacy auction fields.
+  [ ] Edit src/web/templates/TraderPage.html to use date-based period inputs.
+  [ ] Edit src/web/templates/CatchmentPage.html to render legacy diagnostics.
+  [ ] Edit src/web/templates/Programmer.html import labels/workflow for legacy tables.
+  [ ] Keep navigation and role pages unchanged in structure.
+
+TRACK G - DATA MIGRATION (if preserving current DB)
+  [ ] Decide: reset/re-import OR scripted transform.
+  [ ] If scripted: build ID mapping tables (trader/well/period).
+  [ ] Transform bids -> traderbids qty1/price1 rows.
+  [ ] Transform allocation/quota data -> traderconsents + traderquota.
+  [ ] Transform control point bounds/results -> control_point_event.
+  [ ] Validate transformed row counts against source counts.
+
+TRACK H - VALIDATION GATES
+  [ ] Run pytest: tests/test_market.py (update tests as needed).
+  [ ] Re-run full import sequence from Programmer page.
+  [ ] Place/delete bids from Trader page.
+  [ ] Run auction from Manager page.
+  [ ] Verify Catchment outputs and dual/constraint fields.
+  [ ] Verify trader allocations/quotas display correctly.
+  [ ] Check API /setup/db-status and /api/system-state still respond correctly.
+
+CUTOVER CHECKLIST
+  [ ] Final pre-cutover DB backup created.
+  [ ] Migration commit created and tagged.
+  [ ] Legacy schema migration deployed.
+  [ ] Post-cutover smoke test passed.
+  [ ] Rollback instructions documented (tag + backup path).
+

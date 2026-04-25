@@ -1,0 +1,182 @@
+Forever Fair 2026: missing features
+Created 2026-04-23, updated 2026-04-23 after review of:
+- C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\foreverfair\foreverfair_python
+- C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\foreverfair\foreverfair_db\foreverfair.db
+- C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\foreverfair\Code_documentation\Forever Fair code design.doc
+- C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\foreverfair (full legacy PHP/JS/SVG tree)
+- C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\Django (Django prototype: auctions, traders, hydrology apps)
+
+Current scope in ForeverFair2026
+- FastAPI/Jinja demo web app
+- lightweight participant login
+- bid entry and deletion
+- manager setup/run/reset pages
+- PuLP market-clearing model using preloaded response factors
+- SQLite repository with seeded case data
+
+Major missing features
+0. other
+- Make SVG file of Tianqiao.
+- Suggest that the hydrologist export a map to SVG.
+- CyclOSM/OpenStreetMap attribution for any exported map image:
+	Map data © OpenStreetMap contributors (ODbL 1.0), https://www.openstreetmap.org/copyright
+	Map style/tiles © CyclOSM (OpenStreetMap France), https://www.cyclosm.org
+	Tile service use should respect fair-use policy: https://operations.osmfoundation.org/policies/tiles/
+
+1. Auction calendar and period model
+- Add a real auction calendar module.
+- Store real auction open time, close time, and delivery periods as dates/timestamps, not just display labels.
+- Support the legacy period model explicitly: daysInPeriod, numberOfPeriods, and period indices for repeated weekly or seasonal auctions.
+- Convert dates to tradable periods consistently.
+- Support repeated auctions through a hydrological season.
+- Support manager-controlled system time for demonstration and replay, instead of relying only on wall-clock time.
+- Allow tentative auction runs.
+
+2. Consent / rights registry
+- Add the equivalent of legacy traderconsents.
+- Store each well's underlying consented take, location, validity information, and owning trader.
+- Rights, consents, quotas, and initial allocations are associated with wells, not traders. A trader may own multiple wells, each with its own consent, quota, and allocation ledger.
+- Allow registration of a trader with no associated well, so they can submit purchase bids on behalf of an control point; model this explicitly rather than requiring a dummy well row.
+
+3. Quota / allocation ledger
+- Add the equivalent of legacy quota.
+- Persist allocations as a proper ledger, not only as latest-run summaries.
+- Support carry-forward or revision of well allocations across auction periods. Each well has a quota row per auction period.
+- Distinguish quotaAuctionStart, quotaAdjusted, and quotaAuctionEnd, i.e. initial allocation, post-adjustment allocation, and final usable quota.
+- Persist the clearing price attached to each well-period allocation row.
+- Allocations are scoped to the well, which is owned by a trader; a trader's total quota is the sum of quotas across their wells.
+
+4. Quota-adjustment workflow
+- Recreate the AdjustQuota.py capability.
+- Support post-solve quota scaling or adjustment on a well-by-well basis when hydrologic constraints bind.
+- Decide whether quota adjustment is revenue-neutral, proportional, or constraint-specific.
+- Persist the adjustment method and outputs at the well level.
+- Make the policy visible in manager tools and API output.
+
+5. Richer bid structure
+- Legacy database implies multi-step bid curves, with multiple price-quantity steps per trader and period. Allow the auction manager to specify the number of steps.
+- Replace the single BidSegment-per-submission design with support for stepped bids.
+- Allow one participant/well/period to submit a bid schedule rather than a single point bid.
+- Add support for automatic bids via an isBidAutomatic-style flag.
+- Update UI, models, repository, and solver accordingly.
+- Create environmental trader page to buy water at each assessment point. Extra names: Shi Lian'ou, Gan Qincai, Zang Húluobo, Jing Ludou, Kuaile Lajiao, Xingyun Huayecai, Hong Dama
+
+6. Bid workflow improvements
+- Add bid carry-forward so a new auction can start from each well's previous bids unless the trader edits them.
+- On bid resubmission, replace the well's previous bid schedule cleanly rather than accumulating stale rows.
+- Add manager bulk-bid entry so the manager can set default or proportional bids for many wells at once.
+- Add a quick way to initialize bids as fractions of well quota with corresponding prices, as in the legacy manager UI.
+
+7. Legacy auction status fields and diagnostics
+- Add explicit solve status, solve start time, solve completion time, and solver message fields to auctions or auction_runs.
+- Preserve run history with enough detail for diagnostics and auditing.
+- Capture solver stdout/stderr or equivalent diagnostic output, not just a final status string.
+- Expose these fields in manager and API views.
+- Add timeout/error reporting for long or failed solves.
+
+8. Auction revenue and participation tracking
+- Persist auction net revenue and display it in manager tools.
+- Track how many participants have submitted bids for a given auction.
+- Show pending vs solved auctions clearly in manager views.
+
+10. Physical constraint event model and lagged response matrix
+- Legacy DB has control_point_event as a separate table.
+- The Django prototype formalises this as a four-dimensional response matrix: F[well, control_point, pumping_lag, response_lag], capturing delayed hydrologic impacts across periods.
+- Add an explicit event layer between control points and response coefficients.
+- Store pumping period and effect period indices, not just a single response factor per well/control-point pair.
+- This is required for realistic multi-period lagged groundwater effects.
+
+11. Richer hydrologic constraint types
+- The Django prototype defines three explicit constraint types: MaxDrawdown, MinDrawdown, and MinDifference (head difference between two control points).
+- Current code handles only a single linear capacity-style bound per control point per period.
+- Extend the model to support named constraint types and clearer semantics in both data and UI.
+- MinDifference constraints reference two control points; the data model and solver must handle this.
+- Make constraint type visible in imported data, manager screens, and result reporting.
+
+12. Alpha / constraint-scaling parameter
+- The Django prototype auto-computes an alpha scaling factor per constraint from the response matrix and bound, pre-solve.
+- This normalises constraints so the LP solver works with well-conditioned coefficients.
+- Add equivalent pre-solve scaling to RunAuctionModule and make the scaling parameters visible in solver diagnostics.
+- Store computed alpha values alongside constraint results for audit.
+
+12a. Configuration table / run control
+- Legacy code uses configs to define the current auction and other run controls.
+- Add explicit system configuration storage rather than relying on implicit defaults.
+- Make current auction, active case, current simulated date, policy settings, and solver options configurable from the database/UI.
+
+13. Bootstrapping utilities for new cases
+- Recreate the practical role of dbtest.py and ForeverFairUtilities.py.
+- Add scripts or admin actions to bootstrap a new catchment case: participants, wells, control points, rights, and initial allocations.
+- Avoid requiring hand-crafted SQL or manual JSON editing.
+- Include routines to create a first auction and seed carry-forward data.
+
+14. Messages / notifications
+- Legacy database includes a messages table.
+- Add a simple notification/audit mechanism for manager messages, solver warnings, and participant-facing notices.
+- Useful first step: save notices in the database instead of only showing transient query-string messages.
+
+15. Better provenance and source tracking
+- Store where response coefficients, bounds, and allocations came from.
+- Record import date, source model version, rainfall scenario, and policy settings.
+- This was central to the legacy workflow and is still missing.
+
+16. Multiple catchment / case management
+- Legacy design assumed one catchment per directory/database.
+- The Django prototype introduced a Catchment model as the top-level scope for all hydrology and auction data.
+- Current code is effectively one seeded case per app instance.
+- Decide whether release 2 should support multiple catchments in one app or preserve one-case-per-database deliberately.
+- If multiple cases are needed, add Catchment as a foreign key to all relevant tables and add case selection to the UI.
+
+17. Solver diagnostics and reproducibility
+- Keep LP files, solver settings, and run summaries together.
+- Store objective breakdown or at least enough data to reproduce a run.
+- Surface infeasible/unbounded diagnostics more clearly in manager tools.
+
+18. Demand-curve and market visualization
+- Add trader-side visualization of the entered bid curve before submission. Create an SVG demand-curve display tied to the stepped bid points.
+- Add SVG map of the catchment showing prices at each well and control point. Check lat/long of Tianqiao wells and control points.
+- Put a map on every page "Your wells here".
+
+19. Richer session and role handling
+- Legacy system had separate manager and trader login flows.
+- Current lightweight login is fine for demonstration software, but still needs explicit role handling and safer manager access.
+- Add simple session-based role separation without overbuilding authentication.
+
+20. Large-table usability improvements
+- Legacy UI included date picker and sortable tables.
+- Add basic operator usability features such as sortable tables, filterable auction lists, and easier scheduling forms.
+
+21. Cash transaction ledger
+- The Django prototype has a CashTransaction model and cash_balance() aggregation per trader.
+- Currently ForeverFair2026 has no financial accounting; payments and receipts are not tracked.
+- Add a cash transaction table recording the amount each trader pays (bid accepted) or receives (cleared price × quantity) per auction and period. This balance may depend on multiple wells owned by the trader.
+- Aggregate well-level transactions to trader-level balances for trader views; expose both well-level and trader-level balances in manager views.
+
+22. Input/output model separation for bids
+- The Django prototype cleanly separates Bid (what the trader submitted) from BidSetResult (what the solver accepted and priced).
+- Currently ForeverFair2026 conflates these; the bid table is updated with accepted quantities after the solve.
+- Enforce strict separation: bids are immutable once submitted; results are written to a distinct results table.
+- This simplifies re-running the solver without touching submitted data.
+
+23. Data validation framework
+- The Django prototype uses approximately 15 pre-save signal validators covering: auction date ordering, bid quantity against consent, closed-auction protection, and period range checks.
+- Currently BiddingController does some validation but it is sparse.
+- Add a systematic validation layer in BiddingController and AuctionController that raises clear errors for each violation category.
+- Include: bid exceeds consent quantity, bid submitted to closed auction, period outside auction range, invalid price or quantity, duplicate bid for same well/period.
+
+24. Tentative / draft auction status
+- The Django prototype has an Auction.tentative flag distinguishing a draft auction from a confirmed open one.
+- Currently auctions are either OPEN or CLOSED with no draft stage.
+- Add a DRAFT or TENTATIVE status so managers can set up an auction structure before opening it to bidders.
+- Enforce that bids are only accepted when the auction transitions from OPEN, not from DRAFT.
+
+Recommended implementation order
+- First: auction calendar and period model, consent/rights registry, quota ledger, explicit auction status fields.
+- Second: richer bid structure, bid workflow improvements, quota-adjustment workflow, configuration storage.
+- Third: response-matrix import pipeline, lagged response matrix, constraint types, alpha scaling.
+- Fourth: notifications, case bootstrapping utilities, revenue tracking, cash ledger, demand-curve visualization, expanded diagnostics.
+- Fifth: multi-case/catchment support, role handling, input/output separation, validation framework, larger UI usability improvements.
+
+Notes
+- ForeverFair2026 is currently a good demonstration scaffold, but it does not yet reproduce the legacy system's operational groundwater-market workflow.
+- The biggest missing layer is the hydrology-data pipeline and quota/rights accounting, not the web interface.

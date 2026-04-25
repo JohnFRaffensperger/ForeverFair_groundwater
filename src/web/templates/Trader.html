@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trader guide</title>
+  <link rel="stylesheet" href="../static/site.css">
+</head>
+<body>
+  <h1>Trader guide</h1>
+  <p><a href="/researcher">Researcher overview</a></p>
+
+  <h2>What this system does</h2>
+  <p>Forever Fair runs a groundwater allocation auction. Traders submit bids by period and well. The system clears bids against environmental constraints and returns accepted quantities and implied prices.</p>
+
+  <h2>Before you participate</h2>
+  <ul>
+    <li>Your account must be configured by the auction manager.</li>
+    <li>Your wells must be recorded in the system.</li>
+    <li>You should understand market rules and payment obligations.</li>
+    <li>Your metering and reporting obligations must be in place.</li>
+  </ul>
+
+  <h2>How to submit a bid</h2>
+  <ol>
+    <li>Log in at the participant login page and select your participant identity.</li>
+    <li>Open the trader page.</li>
+    <li>Select a well and auction period.</li>
+    <li>Enter quantity and price for each tradable period. (Consider prohibiting raising bids for later periods. Warn that future quota won now can be scaled down.)</li>
+    <li>Submit your bid. It will then appear in your bid history.</li>
+  </ol>
+
+  <h2>Bidding Principle</h2>
+  <p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less. A future release will support fuller multi-step bid curves directly in the UI.</p>
+
+  <h2>Trading cadence and flexibility</h2>
+  <ul>
+    <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
+    <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
+    <li>If you do not rebid in a cycle, prior bids can be reused automatically when enabled by the manager.</li>
+  </ul>
+
+  <h2>Current validation rules</h2>
+  <ul>
+    <li>Auction must be open.</li>
+    <li>The selected well must belong to your participant account.</li>
+    <li>Period must be part of the active auction.</li>
+    <li>Quantity and price must be positive.</li>
+  </ul>
+
+  <h2>Interpreting results</h2>
+  <ul>
+    <li>Accepted quantity may be less than submitted quantity.</li>
+    <li>Prices are driven by binding control-point constraints.</li>
+    <li>Future periods may be revised in later operational updates.</li>
+  </ul>
+
+  <h2>Planned extension</h2>
+  <p>A future release is planned to allow trader registration without an owned well, so a trader can buy water on behalf of an control point<\p>
+
+  <h2>References</h2>
+  <ul>
+    <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
+    <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
+  </ul>
+</body>
+</html>

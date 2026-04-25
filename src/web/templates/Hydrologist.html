@@ -1,0 +1,189 @@
+<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hydrologist's page</title><link rel="stylesheet" href="../static/site.css"></head>
+<body>
+  <p><a href="/researcher">Researcher page</a></p>
+
+  <h1>Hydrologist's page</h1>
+  <p>This page explains the groundwater model outputs needed to run Forever Fair. The auction uses a linearized hydrology representation: each accepted bid affects one or more control-point constraints through response factors.</p>
+
+  <h2>Minimum requirements before operation</h2>
+  <ul>
+    <li>Defined environmental limits and operational constraints.</li>
+    <li>A calibrated groundwater model suitable for response-matrix extraction.</li>
+    <li>Control points with defensible head limits.</li>
+  </ul>
+
+  <h2>Your groundwater model</h2>
+  <p>You need a groundwater model that can produce a response matrix or equivalent linear influence coefficients between pumping decisions and head outcomes. A GWM2K or MODFLOW-based workflow is suitable when it can produce MPS-compatible information for constraints and decision variables.</p>
+  <p>Reference: <a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a>.</p>
+
+  <h2>Hydrology data needed by this software</h2>
+  <table>
+    <thead>
+      <tr><th>Data</th><th>Meaning</th><th>Current Use in Code</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Wells</td><td>Physical extraction points and ownership mapping</td><td>Bid validity and link to response factors</td></tr>
+      <tr><td>Control points</td><td>control points where limits apply</td><td>Constraint rows in the optimization</td></tr>
+      <tr><td>Response factors</td><td>Influence of pumping at a well in one time period on a control point in a later period. Periods are <em>relative</em> offsets from the pumping event, not calendar dates.</td><td>Left-hand side coefficients in LP constraints; shared across all auctions</td></tr>
+      <tr><td>Control point bounds</td><td>Maximum allowable effect per period</td><td>Right-hand side bounds in LP constraints</td></tr>
+      <tr><td>Auction periods</td><td>Tradable time blocks</td><td>Indexing of bids, factors, prices, and results</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Quality checks recommended</h2>
+  <ul>
+    <li>Confirm sign convention for response factors and bounds.</li>
+    <li>Check that period indexing is consistent across all files.</li>
+    <li>Verify each active well has coefficients for each required control point and period.</li>
+    <li>Validate that bound values and units match bid quantities.</li>
+    <li>Run a small known case and compare prices and accepted quantities with independent calculations.</li>
+  </ul>
+
+  <h2>Environmental Standards to Encode Explicitly</h2>
+  <p>The historical Forever Fair design emphasized entering quantitative standards first, then clearing the auction only within those limits. Typical standards include:</p>
+  <ul>
+    <li>Head-difference constraints to preserve flow direction.</li>
+    <li>Drawdown limits to protect aquifer condition.</li>
+    <li>Minimum flow requirements for connected surface waters.</li>
+    <li>Location-specific restrictions near sensitive zones.</li>
+  </ul>
+
+  <h2>Time-Lag Requirement</h2>
+  <p>Hydrologic effects propagate over time. The model should support lagged responses so present pumping can constrain future periods. This is why the data model should preserve pumping-period and effect-period indexing, not just same-period coefficients.</p>
+  <p>Importantly, both the pumping period and the effect period are <strong>relative offsets</strong>, not calendar dates. Period 1 means the first period of a given auction, regardless of when that auction runs. The same response factor table is therefore valid for any auction &mdash; the physics of the aquifer do not change with the auction schedule. This is why response factors are stored once and shared across all auctions, rather than being duplicated per auction.</p>
+
+  <h2>Practical Modeling Note</h2>
+  <p>An approximate model can still improve allocation compared with fixed quotas, if assumptions are documented and updated. Price signals then identify where better hydrologic resolution is most valuable.</p>
+
+  <p>When the Programmer imports a <code>.hedcon</code> or <code>.mps</code> file, head-constraint bounds are stored in <code>default_control_point_bounds</code>. 
+	You can use this section to import new head limits into <code>control_point_bounds</code> for a specific open auction. 
+	If you do not import auction-specific head limits, the auction will use the default head limits.</p>
+
+  {% if open_auctions %}
+  <form method="post" action="/hydrologist/apply-default-bounds">
+    <table>
+      <tr>
+        <td><label for="auction_id">Auction</label></td>
+        <td>
+          <select id="auction_id" name="auction_id" required>
+            {% for a in open_auctions %}
+            <option value="{{ a.id }}">{{ a.label }} ({{ a.id }})</option>
+            {% endfor %}
+          </select>
+        </td>
+      </tr>
+    </table>
+    <button type="submit">Apply default bounds to auction</button>
+  </form>
+  {% else %}
+  <p><em>No open auctions. Create an auction from <a href="/manager">Auction Manager</a> first.</em></p>
+  {% endif %}
+
+  
+  <h2>The Linear Program for the Water Market</h2>
+  <p>The following is the mathematical formulation of the Forever Fair market-clearing model, from Raffensperger (2008). This is what the software solves at each auction run. It is included here so hydrologists can confirm that their model outputs correspond to the correct parameters.</p>
+
+  <h3>Indices</h3>
+  <table>
+    <tbody>
+      <tr><td>b</td><td>bid, b = 1, &hellip;, 5</td></tr>
+      <tr><td>i, j, k</td><td>well or location, i = 1, &hellip;, n</td></tr>
+      <tr><td>u, t</td><td>time periods, t = 1, &hellip;, T. Period 1 is the present period.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Parameters</h3>
+  <table>
+    <tbody>
+      <tr><td>n</td><td>number of locations</td></tr>
+      <tr><td>F<sub>ijt</sub></td><td>drawdown response at location j, time t, for a unit drawdown at location i, time 0</td></tr>
+      <tr><td>P<sub>itb</sub></td><td>reservation price for bid quantity b at location i, time t. Positive for buyers, negative for sellers!</td></tr>
+      <tr><td>Q<sub>itb</sub></td><td>bound on marginal bid b for water at location i, time t. If Q<sub>itb</sub> &lt; 0, the bid is to sell. If Q<sub>itb</sub> &gt; 0, the bid is to buy.</td></tr>
+      <tr><td>R<sub>it</sub></td><td>resource consent at location i, time t</td></tr>
+      <tr><td>HN<sub>i</sub></td><td>unmanaged natural head at location i, if no wells are used</td></tr>
+      <tr><td>H0<sub>i</sub></td><td>initial head at location i</td></tr>
+      <tr><td>LH<sub>it</sub></td><td>lower bound on head at location i, time t</td></tr>
+      <tr><td>UH<sub>it</sub></td><td>upper bound on head at location i, time t</td></tr>
+      <tr><td>LHD<sub>ijt</sub></td><td>lower bound on head difference between locations i and j, time t</td></tr>
+      <tr><td>UHD<sub>ijt</sub></td><td>upper bound on head difference between locations i and j, time t</td></tr>
+      <tr><td>T</td><td>number of time periods, probably 2 or 3</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Variables</h3>
+  <table>
+    <tbody>
+      <tr><td>bid<sub>itb</sub></td><td>quantity of bid b accepted for location i, time t</td></tr>
+      <tr><td>p<sub>it</sub></td><td>market price for a unit of water at location i, time t. Dual price on constraint 3.</td></tr>
+      <tr><td>q<sub>it</sub></td><td>well abstraction rate at location i, time t, &ge; 0</td></tr>
+      <tr><td>s<sub>it</sub></td><td>total drawdown response at location i, time t, as a result of all drawdowns:
+        s<sub>it</sub> = &sum;<sub>j=1..n</sub> &sum;<sub>u=1..t</sub> F<sub>iju</sub> q<sub>ju</sub></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Model WaterMarket</h3>
+  <p>1. Objective. Maximise consumer surplus plus producer surplus:</p>
+      max  &sum;<sub>i=1..n</sub> &sum;<sub>t=1..T</sub> &sum;<sub>b=1..5</sub>  P<sub>itb</sub> &middot; bid<sub>itb</sub>
+
+  <p>2. Bid bounds. Bids are bounded by the marginal quantities in the tranches. Sell bids are negative quantities. Buy bids are positive quantities. For all b, i, t:</p>
+      If Q<sub>itb</sub> &lt; 0 :  Q<sub>itb</sub> &le; bid<sub>itb</sub> &le; 0
+    If Q<sub>itb</sub> &gt; 0 :  0   &le; bid<sub>itb</sub> &le; Q<sub>itb</sub>
+    (Dual variables &alpha;<sub>itb</sub>)
+
+  <p>3. Resource-consent balance. Well abstraction plus bid amounts equals the resource consent. The dual variable p<sub>it</sub> is the ($ gain) per unit increase of the resource consent. For all i, t:</p>
+      q<sub>it</sub> + &sum;<sub>b=1..5</sub> bid<sub>itb</sub> = R<sub>it</sub>
+    (Dual variables p<sub>it</sub>)
+
+  <p>4. Drawdown balance. For all i, t:</p>
+      &sum;<sub>j=1..n</sub> &sum;<sub>u=1..t</sub> F<sub>iju</sub> q<sub>ju</sub>  &minus;  s<sub>it</sub>  =  0
+    (Dual variables s<sub>it</sub>)
+
+  <p>5a. Head bounds relative to unmanaged head. For all i, t:</p>
+      HN<sub>i</sub> &minus; UH<sub>it</sub>  &le;  s<sub>it</sub>  &le;  HN<sub>i</sub> &minus; LH<sub>it</sub>
+
+  <p>5b. Head bounds relative to initial head. For all i, t:</p>
+      H0<sub>i</sub> &minus; UH<sub>it</sub>  &le;  s<sub>it</sub>  &le;  H0<sub>i</sub> &minus; LH<sub>it</sub>
+    (Dual variables &lambda;<sup>L</sup><sub>it</sub> and &lambda;<sup>U</sup><sub>it</sub>)
+
+  <p>6. Head-difference constraints. To create gradient constraints, parameters can be scaled by distance. To create velocity constraints, scale by hydraulic conductivity, porosity, and retardation. For all i, j, t:</p>
+      LHD<sub>ijt</sub> &minus; HN<sub>i</sub> + HN<sub>j</sub>
+      &le;  &minus;&sum;<sub>k=1..n</sub> &sum;<sub>u=1..t</sub> (F<sub>iku</sub> &minus; F<sub>jku</sub>) q<sub>ku</sub>
+      &le;  UHD<sub>ijt</sub> &minus; HN<sub>i</sub> + HN<sub>j</sub>
+    (Dual variables d<sup>L</sup><sub>ijt</sub> and d<sup>U</sup><sub>ijt</sub>)
+
+  <p>7. Non-negativity. q<sub>it</sub> &ge; 0, s<sub>it</sub> &ge; 0. bid<sub>itb</sub> bounded by constraint 2.</p>
+
+  <h3>Explanation</h3>
+  <ol>
+    <li>Maximise consumer surplus plus producer surplus.</li>
+    <li>Bids bounded by marginal quantities in each tranche. Sell bids are negative; buy bids are positive.</li>
+    <li>Well abstraction plus bid amounts equals resource consent. Dual variable p<sub>it</sub> is the marginal value of the consent at location i, period t.</li>
+    <li>Balance of flow at location i, time t.</li>
+    <li>Lower and upper bounds on well heads. 5a is relative to unmanaged head; 5b is relative to initial head.</li>
+    <li>Head-difference constraints. Vertical gradient constraints cannot be defined directly with the software, but head constraints can be used in place of them.</li>
+  </ol>
+
+  <h3>Dual linear program to WaterMarket</h3>
+  <p>7. Dual objective. Minimise:</p>
+      &sum;<sub>i,t</sub> { &sum;<sub>b=1..b1</sub> &alpha;<sub>itb</sub> Q<sub>itb</sub>  &minus;  &sum;<sub>b=b1+1..5</sub> &alpha;<sub>itb</sub> Q<sub>itb</sub>
+           + &lambda;<sup>L</sup><sub>it</sub>(H<sub>i</sub> &minus; LH<sub>it</sub>) + &lambda;<sup>U</sup><sub>it</sub>(&minus;H<sub>i</sub> + UH<sub>it</sub>)
+           + &sum;<sub>j</sub> [ d<sup>L</sup><sub>ijt</sub>(&minus;LHD<sub>ijt</sub> + H<sub>i</sub> &minus; H<sub>j</sub>)
+                    + d<sup>U</sup><sub>ijt</sub>(UHD<sub>ijt</sub> &minus; H<sub>i</sub> + H<sub>j</sub>) ] }
+
+  <p>8&ndash;9. Dual bid constraints. For buy bids (b = 1, &hellip;, b1) and sell bids (b = b1+1, &hellip;, 5), all i, t:</p>
+      &alpha;<sub>itb</sub> + p<sub>it</sub> = P<sub>itb</sub>
+    (Dual variable bid<sub>itb</sub> = 0)
+
+  <p>10. Dual abstraction constraint. For all i, t:</p>
+      p<sub>it</sub> + &sum;<sub>u=t..T</sub> { ( &sum;<sub>j</sub> F<sub>ji</sub> s<sub>it</sub> / F<sub>ii1</sub> )
+                 + &sum;<sub>k,j</sub> (F<sub>ki</sub> &minus; F<sub>ji</sub>)(d<sup>L</sup><sub>kju</sub> &minus; d<sup>U</sup><sub>kju</sub>) }  = 0
+    (Dual variable q<sub>it</sub> = 0)
+
+  <p>11. Dual drawdown constraint. For all i, t:</p>
+      p<sub>it</sub> / F<sub>ii1</sub>  +  &lambda;<sup>L</sup><sub>it</sub>  &minus;  &lambda;<sup>U</sup><sub>it</sub>  =  0
+    (Dual variable s<sub>it</sub> = 0)  <h2>Maintenance</h2>
+  {% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %}
+
+</body>
+</html>

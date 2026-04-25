@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html><html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair 3.0, Trader Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
+</head>
+<body>
+	<p><a href="/login">Switch participant</a> | <a href="/trader">Trader's page</a> | <a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+	<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Trader page for {{ current_participant.name }}, {{ current_well.name }}</h1>
+
+	{% if notice %}<div>{{ notice }}</div>{% endif %}
+
+<h2>Auction {{ auction_case.auction.id }}: {{ auction_case.auction.label }}.</h2>
+
+<h2>Enter new bid</h2>
+<p>Bidding closes at {{ auction_case.auction.bid_close_label }}. You may bid for {{ auction_case.auction.periods|length }} periods.</p>
+<form method="post" action="/bids/new">
+	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
+	<input type="hidden" name="well_id" value="{{ current_well.id }}">
+
+	<label>Week: <select name="period_id" required>{% for period in auction_case.auction.periods %}<option value="{{ period.id }}">{{ period.label }}</option>{% endfor %}</select></label>
+	<label>Quantity requested (ML): <input type="number" name="quantity" min="0.1" step="0.1" required></label>
+	<label>Bid price ($/ML): <input type="number" name="price" min="0.01" step="0.01" required></label>
+	<button type="submit">Submit bid</button>
+</form>
+
+<h2>Allocations from auction {{ auction_case.auction.id }}</h2>
+<table><thead><tr><th>Period</th><th>Allocated quantity</th></tr></thead>
+	<tbody>{% for row in period_rows %}<tr><td>{{ row.period_label }}</td><td>{{ '%.2f'|format(row.allocation) }} ML</td></tr>{% endfor %}</tbody>
+</table>
+
+<h2>Bidding history</h2>
+<table>
+	<thead><tr><th>Bid id</th><th>Period</th><th>Quantity</th><th>Price</th><th>Accepted (latest run)</th><th>Submitted</th><th></th></tr>
+	</thead>
+	<tbody>
+		{% for bid in bid_history %}
+		<tr><td>{{ bid.bid_id }}</td>
+			<td>{{ bid.period_id }}</td>
+			<td>{{ '%.2f'|format(bid.quantity) }} ML</td>
+			<td>${{ '%.2f'|format(bid.price) }}</td>
+			<td>{{ '%.2f'|format(bid.accepted_quantity) }} ML</td>
+			<td>{{ bid.submitted_at }}</td>
+			<td><form method="post" action="/bids/{{ bid.bid_id }}/delete"><button type="submit">Delete</button></form></td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+</body>
+</html>
+
