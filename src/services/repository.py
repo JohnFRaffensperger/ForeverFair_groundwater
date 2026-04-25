@@ -191,10 +191,27 @@ class AuctionRepository:
 				pass
 		return sorted(values)
 
-	def _default_auction_id(self, conn: sqlite3.Connection) -> str:
+	def _default_auction_id(self, conn: sqlite3.Connection) -> str | None:
 		row = conn.execute("SELECT auction_id FROM auctions ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" ).fetchone()
-		if row is None: raise ValueError("No auctions are defined.")
+		if row is None: return None
 		return row["auction_id"]
+
+	def _next_auction_id(self, conn: sqlite3.Connection) -> str:
+		rows = conn.execute("SELECT auction_id FROM auctions").fetchall()
+		max_id = 0
+		for row in rows:
+			raw = str(row["auction_id"] or "").strip()
+			if raw.isdigit():
+				max_id = max(max_id, int(raw))
+				continue
+			digits = "".join(ch for ch in raw if ch.isdigit())
+			if not digits:
+				continue
+			try:
+				max_id = max(max_id, int(digits))
+			except Exception:
+				continue
+		return str(max_id + 1)
 
 	def current_participant_id(self) -> str:
 		with self._connect() as conn:
@@ -203,7 +220,7 @@ class AuctionRepository:
 	def load(self, auction_id: str | None = None) -> AuctionCase:
 		with self._connect() as conn:
 			auction_id = auction_id or self._default_auction_id(conn)
-			auction_row = conn.execute("SELECT auction_id, label, bid_close_label, status FROM auctions WHERE auction_id=?", (auction_id,) ).fetchone()
+			auction_row = conn.execute("SELECT auction_id, label, bid_close_label, status, auction_date, daysInPeriod, numberOfPeriods, auction_type FROM auctions WHERE auction_id=?", (auction_id,) ).fetchone()
 			if auction_row is None: raise ValueError(f"Unknown auction_id: {auction_id}")
 
 			period_rows = conn.execute("SELECT p.period_id, p.display_label FROM periods p JOIN auction_periods ap ON p.period_id=ap.period_id WHERE ap.auction_id=? ORDER BY ap.period_order", (auction_id,), ).fetchall()
@@ -303,7 +320,7 @@ class AuctionRepository:
 						)
 					)
 
-			return AuctionCase(catchment_name=self._meta(conn, "catchment_name"), source_note=self._meta(conn, "source_note"), current_participant_id=self._meta(conn, "current_trader_id"), auction=Auction(id=auction_row["auction_id"], label=auction_row["label"], bid_close_label=auction_row["bid_close_label"], status=auction_row["status"], periods=periods), participants=traders, wells=wells, control_points=control_points, response_factors=response_factors, bids=bids, rights_conversion=RightsConversion(policy_name=self._meta(conn, "rights_policy_name"), summary=self._meta(conn, "rights_policy_summary"),),)
+			return AuctionCase(catchment_name=self._meta(conn, "catchment_name"), source_note=self._meta(conn, "source_note"), current_participant_id=self._meta(conn, "current_trader_id"), auction=Auction(id=auction_row["auction_id"], label=auction_row["label"], bid_close_label=auction_row["bid_close_label"], status=auction_row["status"], periods=periods, auction_date=auction_row["auction_date"], days_in_period=auction_row["daysInPeriod"], number_of_periods=auction_row["numberOfPeriods"], auction_type=auction_row["auction_type"]), participants=traders, wells=wells, control_points=control_points, response_factors=response_factors, bids=bids, rights_conversion=RightsConversion(policy_name=self._meta(conn, "rights_policy_name"), summary=self._meta(conn, "rights_policy_summary"),),)
 
 	def current_participant(self, auction_case: AuctionCase) -> Participant: return next(p for p in auction_case.participants if p.id == auction_case.current_participant_id)
 
@@ -359,9 +376,12 @@ class AuctionRepository:
 			self._seed_from_json(conn)
 		return self.load()
 
-	def setup_auction(self, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None) -> Auction:
+	def setup_auction(self, auction_id: str | None, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None) -> Auction:
 		now = datetime.now(timezone.utc).isoformat()
 		with self._connect() as conn:
+			auction_id = str(auction_id).strip() if auction_id is not None else ""
+			if not auction_id:
+				auction_id = self._next_auction_id(conn)
 			source_auction_id = self._default_auction_id(conn)
 			conn.execute("INSERT INTO auctions(auction_id, label, bid_close_label, status, created_at, ran_at, auction_date, daysInPeriod, numberOfPeriods, auction_type) VALUES (?, ?, ?, 'OPEN', ?, NULL, ?, ?, ?, ?)", (auction_id, label, bid_close_label, now, auction_date, days_in_period, number_of_periods, auction_type),)
 			for idx, period_label in enumerate(period_labels):
@@ -373,16 +393,20 @@ class AuctionRepository:
 			for trader_row in traders:
 				for idx, _ in enumerate(period_labels):
 					period_id = idx + 1
-					row = conn.execute("SELECT allocation FROM trader_allocations WHERE auction_id=? AND trader_id=? AND period_id=?", (source_auction_id, trader_row["trader_id"], period_id), ).fetchone()
-					allocation = float(row["allocation"]) if row else 0.0
+					allocation = 0.0
+					if source_auction_id is not None:
+						row = conn.execute("SELECT allocation FROM trader_allocations WHERE auction_id=? AND trader_id=? AND period_id=?", (source_auction_id, trader_row["trader_id"], period_id), ).fetchone()
+						allocation = float(row["allocation"]) if row else 0.0
 					conn.execute("INSERT INTO trader_allocations(auction_id, trader_id, period_id, allocation) VALUES (?, ?, ?, ?)", (auction_id, trader_row["trader_id"], period_id, allocation),)
 
 			cps = conn.execute("SELECT control_point_id FROM control_points").fetchall()
 			for cp_row in cps:
 				for idx, _ in enumerate(period_labels):
 					period_id = idx + 1
-					row = conn.execute("SELECT bound FROM control_point_bounds WHERE auction_id=? AND control_point_id=? AND period_id=?", (source_auction_id, cp_row["control_point_id"], period_id), ).fetchone()
-					bound = float(row["bound"]) if row else 0.0
+					bound = 0.0
+					if source_auction_id is not None:
+						row = conn.execute("SELECT bound FROM control_point_bounds WHERE auction_id=? AND control_point_id=? AND period_id=?", (source_auction_id, cp_row["control_point_id"], period_id), ).fetchone()
+						bound = float(row["bound"]) if row else 0.0
 					conn.execute("INSERT INTO control_point_bounds(auction_id, control_point_id, period_id, bound) VALUES (?, ?, ?, ?)", (auction_id, cp_row["control_point_id"], period_id, bound),)
 
 			for idx, _ in enumerate(period_labels):
@@ -391,7 +415,7 @@ class AuctionRepository:
 				for row in rows:
 					conn.execute("INSERT OR REPLACE INTO response_factors(well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?, ?, ?, ?, ?)", (row["well_id"], row["control_point_id"], row["pumping_period"], row["effect_period"], float(row["factor_value"]),),)
 
-			if not clear_existing_bids:
+			if not clear_existing_bids and source_auction_id is not None:
 				rows = conn.execute("SELECT trader_id, well_id, period_id, quantity, price FROM bids WHERE auction_id=? AND deleted=0", (source_auction_id,), ).fetchall()
 				for row in rows:
 					if int(row["period_id"]) <= len(period_labels): conn.execute("INSERT INTO bids(auction_id, trader_id, well_id, period_id, quantity, price, submitted_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 0)", (auction_id, row["trader_id"], row["well_id"], row["period_id"], float(row["quantity"]), float(row["price"]), now,),)
@@ -408,7 +432,7 @@ class AuctionRepository:
 		with self._connect() as conn:
 			cursor = conn.execute("INSERT INTO auction_runs(auction_id, clearing_start_time, run_at, solve_status, objective_value) VALUES (?, ?, ?, ?, ?)", (auction_id, clearing_start_time, run_at, market_result.solve_status, float(market_result.objective_value)),)
 			run_id = int(cursor.lastrowid)
-			conn.execute("UPDATE auctions SET status='CLOSED', ran_at=? WHERE auction_id=?", (run_at, auction_id))
+			conn.execute("UPDATE auctions SET status='CLOSED', ran_at=?, auction_date=bid_close_label WHERE auction_id=?", (run_at, auction_id))
 
 			# NOTE: accepted_bids references old bids table which no longer exists in legacy schema.
 			# With multi-step bid support, we store accepted quantities in traderquota instead.

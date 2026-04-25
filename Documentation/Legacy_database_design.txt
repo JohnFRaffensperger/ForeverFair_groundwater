@@ -162,6 +162,214 @@ Table traderquota explicitly names three quota stages:
 
 
 ================================================================================
+LEGACY INTERFACE AND LOGIC AUDIT (reviewed April 2026)
+Sources: Django/foreverfair/foreverfair/auctions/, traders/, hydrology/, templates/
+================================================================================
+
+PURPOSE: Record interface affordances and logic rules found in the legacy Django
+code that are absent or incomplete in the current ForeverFair2026 implementation.
+These items inform what needs to be built or corrected.
+
+--------------------------------------------------------------------------------
+A. AUCTION MANAGER INTERFACE
+--------------------------------------------------------------------------------
+A.1  Auction list columns in Django admin: AuctionAdmin.list_display = ('date', 'tentative').
+     Current AuctionManager.html table shows: auction_id, label, status,
+     solve_status, objective_value, latest_run_at.
+     NEEDED: Add 'tentative' and 'closed' (date < now) columns to the table.
+
+A.2  Auction.processed field (BooleanField, not editable) tracks whether the
+     auction has been run. Currently we use solve_status from auction_runs;
+     the processed concept should map to "has been cleared at least once."
+     NEEDED: Surface a 'processed / run' indicator clearly in the table.
+
+A.3  Auction.closed() method: returns True if auction.date < datetime.now().
+     Current system has no explicit closed-status logic in models/controllers.
+     NEEDED: Implement an auction_closed() helper and surface it in the
+     manager and trader pages (e.g. greying out or labelling closed auctions).
+
+A.4  AuctionAdminForm validates closing date not in the past on auction creation.
+     This is already implemented in the app.py route.
+     CONFIRM: Ensure this validation is also enforced in the controller layer,
+     not only at the route layer.
+
+A.5  check_auction pre_save (commented out in legacy): also forbids editing an
+     auction whose date has already passed.
+     NEEDED: Decide and document: should closed auctions be editable (e.g. to
+     add a description or correct a label)? Legacy intent was no.
+
+--------------------------------------------------------------------------------
+B. LOGIN / LANDING PAGE INTERFACE
+--------------------------------------------------------------------------------
+B.1  Legacy login page (login.html + traders/views.home) shows:
+       - Next final auction: closing time in human format with countdown
+         ("P, D d M" format; "x days from now")
+       - Next tentative auction: closing time (separately)
+       - Logic: if both exist, shows which closes sooner first
+       - If neither exists: "No auction is scheduled currently."
+     Current LoginPage.html has no such auction status summary.
+     NEEDED: Display upcoming auction summary on the login page.
+
+B.2  Legacy resolves "next final" and "next tentative" by querying with
+     `date__gt=datetime.now(), tentative=False/True, order_by('date')[:1]`.
+     NEEDED: Add equivalent query in login route, passing context to template.
+
+--------------------------------------------------------------------------------
+C. TRADER PAGE INTERFACE
+--------------------------------------------------------------------------------
+C.1  Welcome message shows: trader's name, well name, well address/location,
+     and "Your allocation this week is X ML."
+     Current TraderPage.html shows trader and period rows but not the
+     well's address or name prominently in a welcome line.
+     NEEDED: Add well name and location to trader page welcome text.
+
+C.2  "Current bids" table columns: Auction date | Type | Week covered |
+     Your bids.
+     - Type column shows "Final" or "Tentative" for each auction.
+     - Tentative auctions are intended to be shown in grey (HTML comment in
+       trading.html: "Tentative auctions should be shown in grey").
+     NEEDED: Add auction type (Final/Tentative) column to bid table.
+     NEEDED: Apply CSS class for tentative rows (e.g. class="tentative").
+
+C.3  "Your bids" cell shows each bid step with quantity and price, and sales
+     (negative quantities) in a different class ("sales" in legacy CSS).
+     NEEDED: Distinguish buy vs sell bids visually.
+
+C.4  Edit link per open bid set: "(Edit these bids)" inline in the bids cell
+     for any auction that has not yet closed.
+     NEEDED: Show edit/delete controls only when auction is still open.
+
+C.5  "Latest auction results" table columns: Auction date | Week covered |
+     Traded quantity | Traded price | Final allocation | Your bids.
+     This is a separate table from current bids, showing history.
+     NEEDED: Add "Final allocation" and "Traded price" columns to bid history.
+
+C.6  "Your allocation" section: placeholder for a graph of allocation over
+     time (consented + auctioned) for next 12 months vs historical.
+     NEEDED: Note this as a future visualisation goal.
+
+C.7  BidSet.automatic field (BooleanField): represents a standing/automatic bid.
+     The trading page mentions "Also list standing bids."
+     NEEDED: Decide whether to implement automatic/standing bids; if yes,
+     add automatic flag to traderbids and expose in trader UI.
+
+C.8  Bid is per (trader, auction, period) — BidSet unique_together constraint.
+     One BidSet per period within each auction's bid_period range.
+     NEEDED: Enforce uniqueness at repository level (INSERT OR REPLACE or
+     explicit check).
+
+C.9  Period constraint: bid period must be within auction.bid_period_start to
+     auction.bid_period_end. Legacy check_bidset pre_save enforces this.
+     NEEDED: Add this range validation to BiddingController.submitBid().
+
+C.10 Trader must have a well before bidding can be accepted.
+     Legacy check_bidset raises InvalidBid if trader.well is None.
+     NEEDED: Add well-ownership check in BiddingController.submitBid().
+
+C.11 Cannot submit or modify bids on auctions whose closing date has passed.
+     Legacy check_if_closed (pre_save on Bid and BidSet) enforces this.
+     NEEDED: Add auction-closed check in BiddingController.submitBid()
+     and surfaced as a clear user message, not a 500 error.
+
+--------------------------------------------------------------------------------
+D. HYDROLOGY / CATCHMENT INTERFACE
+--------------------------------------------------------------------------------
+D.1  Legacy ControlPoint admin shows three constraint types as inline tables:
+       - ControlPointMaxDrawdown (upper_bound, alpha)
+       - ControlPointMinDrawdown (lower_bound, alpha)
+       - ControlPointMinDifference (min_difference, alpha)
+     Each has its own alpha. Current system has a single bound per
+     control_point_event row with no explicit constraint type distinction.
+     NEEDED: Decide whether to support all three constraint types or just max.
+     Document constraint type semantics clearly in the Hydrologist page.
+
+D.2  Alpha is auto-computed (update_alpha pre_save signal on
+     ControlPointMaxDrawdown):
+         alpha = upper_bound / sum(F[well, CP, u, t] * quota[well, u, t])
+     Alpha is capped at 1.0. If sum == 0, alpha = 1.0.
+     Currently alpha is not computed or stored in ForeverFair2026.
+     NEEDED: Implement alpha computation when bounds are applied or updated
+     (see hydrologist/apply-default-bounds route). Store alpha in DB.
+
+D.3  Catchment model has constraint_periods field (int): the number of
+     periods to apply hydrological constraints. Currently all periods in an
+     auction are implicitly constrained.
+     NEEDED: Decide whether to implement constraint_periods gating.
+
+D.4  ConstraintQuota is pre-computed on Auction post_save:
+     one row per (well, control_point, period, auction), storing alpha and
+     the computed proportional constraint value.
+     Currently ForeverFair2026 has no ConstraintQuota equivalent.
+     NEEDED: Implement ConstraintQuota computation during auction setup or
+     solve. This table is the basis for proportionalAllowance logic.
+
+D.5  Legacy Auction model has proportionalAllowance and
+     proportionalAllowanceFinal fields (not shown in Django models but in
+     the legacy SQLite DB: see Table: auctions in this file).
+     NEEDED: Clarify when proportionalAllowance is set vs
+     proportionalAllowanceFinal (tentative vs final auction).
+
+--------------------------------------------------------------------------------
+E. BIDDING LOGIC
+--------------------------------------------------------------------------------
+E.1  BidSetResult doubles as a cash transaction record (quantity, price, date).
+     Legacy Trader model has cash_transactions() and cash_balance() methods.
+     CashTransaction model tracks explicit cash additions/removals.
+     Currently ForeverFair2026 has no cash ledger.
+     NEEDED: Decide scope — at minimum, BidSetResult equivalent should be
+     stored as part of auction results for audit trail.
+
+E.2  Multiple bid steps per BidSet (up to 5 qty/price pairs in legacy SQLite;
+     unlimited Bid objects in Django model).
+     Currently ForeverFair2026 uses one qty/price pair per bid row.
+     NEEDED: Decide maximum steps supported. Legacy SQLite stored up to 5.
+     If supporting multi-step, solver must enumerate all active steps as
+     separate LP decision variables.
+
+E.3  get_quota(trader, period_start, period_end) in traders/models.py returns
+     {period: [consented_allocation, final_quota]} dict.
+     consented_allocation = sum of Consent.quantity for period.
+     final_quota = consented_allocation + sum of BidSetResult.quantity.
+     NEEDED: Implement equivalent in repository, driving from traderconsents
+     and traderquota tables (already modelled in legacy DB schema).
+
+--------------------------------------------------------------------------------
+F. VALIDATION RULES SUMMARY (currently missing from ForeverFair2026)
+--------------------------------------------------------------------------------
+F.1  Cannot create auction with closing date in the past.
+     [Partially implemented in app.py route — needs controller enforcement too.]
+
+F.2  Cannot edit an already-closed auction.
+     [Not implemented; legacy had it but commented out.]
+
+F.3  Cannot submit or modify a bid on a closed auction.
+     [Not implemented.]
+
+F.4  Bid period must be within auction.bid_period_start to bid_period_end.
+     [Not implemented.]
+
+F.5  Trader must own a well before bid is accepted.
+     [Not implemented.]
+
+F.6  Only one bid set per (trader, auction, period).
+     [Not enforced at DB level in current schema.]
+
+F.7  Alpha must not exceed 1.0.
+     [Not implemented — alpha computation not yet present.]
+
+--------------------------------------------------------------------------------
+G. ITEMS ALREADY CORRECT IN FOREVERFAIR2026
+--------------------------------------------------------------------------------
+G.1  Auction fields date, tentative, description, bid_period_start,
+     bid_period_end are present in the setup form.
+G.2  Closing date > now() validated in app.py route on auction creation.
+G.3  Soft delete on bids (deleted flag).
+G.4  Auto-generated auction IDs.
+G.5  Navigation structure (login -> trader -> manager -> catchment) matches
+     legacy intent.
+
+
+================================================================================
 IMPLEMENTATION STEPS: Move to legacy table structure and legacy logic
 ================================================================================
 Target state:

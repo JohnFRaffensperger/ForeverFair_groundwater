@@ -1,63 +1,87 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Auction manager guide</title>
-  <link rel="stylesheet" href="../static/site.css">
+<!DOCTYPE html><html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair 3.0, Auction Manager Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
 </head>
+
 <body>
-  <h1>Auction manager guide</h1>
-  <p><a href="/researcher">Researcher overview</a></p>
+<p><a href="/researcher">Researcher overview</a> | <a href="/trader">Trader's page</a> | <a href="/docs/auctionmanager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Auction Manager's page</h1>
 
-  <h2>Responsibilities</h2>
-  <ul>
-    <li>Confirm legal and policy authority before operation.</li>
-    <li>Confirm rights registry and participant setup are correct.</li>
-    <li>Confirm hydrology constraints are current and defensible.</li>
-    <li>Operate auction setup, clearing, and reporting steps.</li>
-  </ul>
+<h2>Set up future auction</h2>
+<form method="post" action="/manager/setup-auction">
+	<label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label><br/>
+	<label><input type="checkbox" name="tentative"> Tentative auction</label><br/>
+	<label>Description: <textarea name="description" rows="3" cols="52" placeholder="Optional description for operators and audit"></textarea></label><br/>
+	<label>Bid period start (integer): <input type="number" name="bid_period_start" min="1" required></label><br/>
+	<label>Bid period end (integer): <input type="number" name="bid_period_end" min="1" required></label><br/>
+	<button type="submit">Create auction</button>
+</form>
+<p><em>Legacy behavior: closing date must be in the future; auction type is Final unless Tentative is checked; bid periods are an integer range from start to end.</em></p>
 
-  <h2>Current manager actions in the software</h2>
-  <table>
-    <thead>
-      <tr><th>Action</th><th>What it does</th><th>Route</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Create auction</td><td>Creates an auction with period labels and optional bid carry-forward</td><td>/manager/setup-auction</td></tr>
-      <tr><td>Run auction</td><td>Loads data, solves LP, writes accepted bids and prices, closes auction</td><td>/manager/run-auction</td></tr>
-      <tr><td>Reset data</td><td>Resets SQLite runtime database from seed JSON</td><td>/manager/reset-data</td></tr>
-      <tr><td>View catchment outcomes</td><td>Shows well prices and control-point diagnostics from latest run</td><td>/catchment</td></tr>
-      <tr><td>View API state</td><td>Returns current auction and run summary as JSON</td><td>/api/system-state</td></tr>
-    </tbody>
-  </table>
+<h2>Run or review auctions</h2>
 
-  <h2>Recommended operating cycle</h2>
-  <ol>
-    <li>Load or refresh hydrology data for the case.</li>
-    <li>Set up the next auction and periods.</li>
-    <li>Open trader participation window.</li>
-    <li>Run clearing when bidding closes.</li>
-    <li>Publish results and archive diagnostics.</li>
-    <li>Prepare updates for the next period using observed inflows and new data.</li>
-  </ol>
+<form method="post" action="/manager/reset-data"></form>Number of auctions currently scheduled: {{ auctions|length }}. <button type="submit">Reset database from seed</button> {% if notice %}{{ notice }}{% endif %}</form>
 
-  <h2>Economic configuration principle</h2>
-  <p>The target configuration is trader-trades, not government-profit. Under proportional rights adjustment, payments by buyers are offset by receipts to sellers, with only explicit operating fees retained for market administration.</p>
+<table><thead><tr><th>Auction id</th><th>Label</th><th>Status</th><th>Latest solve status</th><th>Latest objective</th><th>Latest run at</th><th></th></tr></thead>
+	<tbody>{% for auction in auctions %}
+		<tr><td>{{ auction.auction_id }}</td>
+			<td>{{ auction.label }}</td>
+			<td>{{ auction.status }}</td>
+			<td>{{ auction.solve_status or 'Not run' }}</td>
+			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}-{% endif %}</td>
+			<td>{{ auction.latest_run_at or '-' }}</td>
+			<td><form method="post" action="/manager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form></td>
+		</tr>
+		{% endfor %}
+	</tbody></table>
 
-  <h2>Risk controls to add soon</h2>
-  <ul>
-    <li>Draft or tentative status before opening an auction.</li>
-    <li>Formal validation framework for all setup and import operations.</li>
-    <li>Cash transaction ledger and participant balances.</li>
-    <li>Clear role separation between manager and trader permissions.</li>
-  </ul>
+<h2>Responsibilities</h2>
+<ul>
+	<li>Confirm legal and policy authority before operation.</li>
+	<li>Confirm rights registry and participant setup are correct.</li>
+	<li>Confirm hydrology constraints are current and defensible.</li>
+	<li>Operate auction setup, clearing, and reporting steps.</li>
+</ul>
 
-  <h2>References</h2>
-  <ul>
-    <li><a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a></li>
-    <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
-    <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
-  </ul>
+<h2>Current manager actions in the software</h2>
+<table>
+	<thead>
+		<tr><th>Action</th><th>What it does</th><th>Route</th></tr>
+	</thead>
+	<tbody>
+		<tr><td>Create auction</td><td>Creates an auction with period labels and optional bid carry-forward</td><td>/manager/setup-auction</td></tr>
+		<tr><td>Run auction</td><td>Loads data, solves LP, writes accepted bids and prices, closes auction</td><td>/manager/run-auction</td></tr>
+		<tr><td>View catchment outcomes</td><td>Shows well prices and control-point diagnostics from latest run</td><td>/catchment</td></tr>
+		<tr><td>View API state</td><td>Returns current auction and run summary as JSON</td><td>/api/system-state</td></tr>
+	</tbody>
+</table>
+
+<h2>Recommended operating cycle</h2>
+<ol>
+	<li>Load or refresh hydrology data for the case.</li>
+	<li>Set up the next auction and periods.</li>
+	<li>Open trader participation window.</li>
+	<li>Run clearing when bidding closes.</li>
+	<li>Publish results and archive diagnostics.</li>
+	<li>Prepare updates for the next period using observed inflows and new data.</li>
+</ol>
+
+<h2>Economic configuration principle</h2>
+<p>The target configuration is trader-trades, not government-profit. Under proportional rights adjustment, payments by buyers are offset by receipts to sellers, with only explicit operating fees retained for market administration.</p>
+
+<h2>Risk controls to add soon</h2>
+<ul>
+	<li>Draft or tentative status before opening an auction.</li>
+	<li>Formal validation framework for all setup and import operations.</li>
+	<li>Cash transaction ledger and participant balances.</li>
+	<li>Clear role separation between manager and trader permissions.</li>
+</ul>
+
+<h2>References</h2>
+<ul>
+	<li><a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a></li>
+	<li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
+	<li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
+</ul>
 </body>
 </html>

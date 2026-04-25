@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 import sys
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -73,7 +74,10 @@ def doc_programmer(request: Request):
 def doc_trader(request: Request): return templates.TemplateResponse(request, "Trader.html", {})
 
 @app.get("/docs/auctionmanager", response_class=HTMLResponse)
-def doc_auctionmanager(request: Request): return templates.TemplateResponse(request, "AuctionManager.html", {})
+def doc_auctionmanager(request: Request):
+	context = AuctionController.getManagerPageState(repository)
+	context["notice"] = request.query_params.get("notice")
+	return templates.TemplateResponse(request, "AuctionManager.html", context)
 
 @app.get("/", response_class=HTMLResponse)
 def home(): return RedirectResponse(url="/researcher", status_code=303)
@@ -103,24 +107,50 @@ def delete_bid(request: Request, bid_id: str):
 
 @app.get("/manager", response_class=HTMLResponse)
 def manager_page(request: Request):
-	context = AuctionController.getManagerPageState(repository)
-	context["notice"] = request.query_params.get("notice")
-	return templates.TemplateResponse(request, "ManagerPage.html", context)
+	notice = request.query_params.get("notice")
+	if notice:
+		return RedirectResponse(url=f"/docs/auctionmanager?notice={notice}", status_code=303)
+	return RedirectResponse(url="/docs/auctionmanager", status_code=303)
 
 @app.post("/manager/setup-auction")
-def manager_setup_auction( auction_id: str = Form(...), label: str = Form(...), bid_close_label: str = Form(...), period_labels: str = Form(...), clear_existing_bids: bool = Form(default=True), auction_date: str | None = Form(default=None), days_in_period: int | None = Form(default=None), number_of_periods: int | None = Form(default=None), auction_type: str | None = Form(default=None), ):
-	AuctionController.SetUpAuction(repository, auction_id=auction_id.strip(), label=label.strip(), bid_close_label=bid_close_label.strip(), period_labels=[item.strip() for item in period_labels.split(",")], clear_existing_bids=clear_existing_bids, auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
-	return RedirectResponse(url="/manager?notice=Auction+created", status_code=303)
+def manager_setup_auction( bid_close_time: str = Form(...), tentative: bool = Form(default=False), description: str = Form(default=""), bid_period_start: int = Form(...), bid_period_end: int = Form(...), ):
+	# Legacy Django logic: closing date must not be in the past.
+	try:
+		close_dt = datetime.fromisoformat(bid_close_time)
+	except Exception:
+		return RedirectResponse(url="/docs/auctionmanager?notice=Error:+invalid+closing+date/time", status_code=303)
+	if close_dt < datetime.now():
+		return RedirectResponse(url="/docs/auctionmanager?notice=Error:+closing+date/time+cannot+be+in+the+past", status_code=303)
+	if bid_period_start < 1 or bid_period_end < bid_period_start:
+		return RedirectResponse(url="/docs/auctionmanager?notice=Error:+invalid+bid+period+range", status_code=303)
+
+	period_labels = [f"Period {idx}" for idx in range(bid_period_start, bid_period_end + 1)]
+	auction_type = "tentative" if tentative else "final"
+	label = description.strip() or f"Auction closing {close_dt.strftime('%Y-%m-%d %H:%M')}"
+
+	AuctionController.SetUpAuction(
+		repository,
+		auction_id=None,
+		label=label,
+		bid_close_label=close_dt.isoformat(timespec="minutes"),
+		period_labels=period_labels,
+		clear_existing_bids=True,
+		auction_date=None,
+		days_in_period=None,
+		number_of_periods=len(period_labels),
+		auction_type=auction_type,
+	)
+	return RedirectResponse(url="/docs/auctionmanager?notice=Auction+created", status_code=303)
 
 @app.post("/manager/run-auction")
 def manager_run_auction(auction_id: str = Form(...)):
 	AuctionController.runCurrentAuction(repository, auction_id=auction_id)
-	return RedirectResponse(url="/manager?notice=Auction+run+completed", status_code=303)
+	return RedirectResponse(url="/docs/auctionmanager?notice=Auction+run+completed", status_code=303)
 
 @app.post("/manager/reset-data")
 def manager_reset_data():
 	AuctionController.ResetAuctionData(repository)
-	return RedirectResponse(url="/manager?notice=Database+reset+from+seed", status_code=303)
+	return RedirectResponse(url="/docs/auctionmanager?notice=Database+reset+from+seed", status_code=303)
 
 @app.get("/catchment", response_class=HTMLResponse)
 def catchment_page(request: Request, auction_id: str | None = None):

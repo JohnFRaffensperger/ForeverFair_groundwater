@@ -18,7 +18,7 @@ def _compute_effect_date(auction_date: str | None, days_in_period: int | None, o
 	except Exception:
 		return str(offset)
 
-def SetUpAuction( repository: AuctionRepository, auction_id: str, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None, ):
+def SetUpAuction( repository: AuctionRepository, auction_id: str | None, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None, ):
 	clean_labels = [label.strip() for label in period_labels if label.strip()]
 	if len(clean_labels) == 0: raise ValueError("At least one period label is required.")
 	return repository.setup_auction(auction_id=auction_id, label=label, bid_close_label=bid_close_label, period_labels=clean_labels, clear_existing_bids=clear_existing_bids, auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
