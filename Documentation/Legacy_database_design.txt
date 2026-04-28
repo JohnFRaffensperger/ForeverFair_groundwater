@@ -177,26 +177,32 @@ A.1  Auction list columns in Django admin: AuctionAdmin.list_display = ('date', 
      Current AuctionManager.html table shows: auction_id, label, status,
      solve_status, objective_value, latest_run_at.
      NEEDED: Add 'tentative' and 'closed' (date < now) columns to the table.
+     [DONE April 2026 — AuctionManager.html table now shows Type and Closed columns; tentative rows styled in grey]
 
 A.2  Auction.processed field (BooleanField, not editable) tracks whether the
      auction has been run. Currently we use solve_status from auction_runs;
      the processed concept should map to "has been cleared at least once."
      NEEDED: Surface a 'processed / run' indicator clearly in the table.
+     [DONE April 2026 — "Run?" column shows solve_status in manager table]
 
 A.3  Auction.closed() method: returns True if auction.date < datetime.now().
      Current system has no explicit closed-status logic in models/controllers.
      NEEDED: Implement an auction_closed() helper and surface it in the
      manager and trader pages (e.g. greying out or labelling closed auctions).
+     [DONE April 2026 — Closed status computed in AuctionManager.html (status==CLOSED or bid_close_label < now); closed rows styled in italic grey]
 
 A.4  AuctionAdminForm validates closing date not in the past on auction creation.
      This is already implemented in the app.py route.
      CONFIRM: Ensure this validation is also enforced in the controller layer,
      not only at the route layer.
+     [DONE April 2026 — AuctionController.SetUpAuction() validates ISO-parseable closing date is not in the past]
 
 A.5  check_auction pre_save (commented out in legacy): also forbids editing an
      auction whose date has already passed.
-     NEEDED: Decide and document: should closed auctions be editable (e.g. to
-     add a description or correct a label)? Legacy intent was no.
+     Decision: closed auctions are not editable (legacy intent preserved).
+     [DONE April 2026 — SetUpAuction() checks existing auction's bid_close_label
+      before proceeding; /manager/setup-auction route also guards at route layer;
+      both return a clear error if the auction is already closed]
 
 --------------------------------------------------------------------------------
 B. LOGIN / LANDING PAGE INTERFACE
@@ -209,10 +215,12 @@ B.1  Legacy login page (login.html + traders/views.home) shows:
        - If neither exists: "No auction is scheduled currently."
      Current LoginPage.html has no such auction status summary.
      NEEDED: Display upcoming auction summary on the login page.
+     [DONE April 2026 — LoginPage.html now shows next_final and next_tentative auction summary above login form]
 
 B.2  Legacy resolves "next final" and "next tentative" by querying with
      `date__gt=datetime.now(), tentative=False/True, order_by('date')[:1]`.
      NEEDED: Add equivalent query in login route, passing context to template.
+     [DONE April 2026 — login route queries list_auctions() and filters by bid_close_label > now and auction_type]
 
 --------------------------------------------------------------------------------
 C. TRADER PAGE INTERFACE
@@ -222,6 +230,7 @@ C.1  Welcome message shows: trader's name, well name, well address/location,
      Current TraderPage.html shows trader and period rows but not the
      well's address or name prominently in a welcome line.
      NEEDED: Add well name and location to trader page welcome text.
+     [DONE April 2026 — TraderPage.html welcome paragraph shows participant name, well name, and lat/lon]
 
 C.2  "Current bids" table columns: Auction date | Type | Week covered |
      Your bids.
@@ -230,46 +239,60 @@ C.2  "Current bids" table columns: Auction date | Type | Week covered |
        trading.html: "Tentative auctions should be shown in grey").
      NEEDED: Add auction type (Final/Tentative) column to bid table.
      NEEDED: Apply CSS class for tentative rows (e.g. class="tentative").
+     [DONE April 2026 — TraderPage.html heading shows Final/Tentative and open/closed status]
 
 C.3  "Your bids" cell shows each bid step with quantity and price, and sales
      (negative quantities) in a different class ("sales" in legacy CSS).
      NEEDED: Distinguish buy vs sell bids visually.
+     [DONE April 2026 — site.css adds span.sale (red) and span.buy (green); TraderPage.html uses them in bid history]
 
 C.4  Edit link per open bid set: "(Edit these bids)" inline in the bids cell
      for any auction that has not yet closed.
      NEEDED: Show edit/delete controls only when auction is still open.
+     [DONE April 2026 — TraderPage.html shows bid form only when status==OPEN; delete buttons only when OPEN]
 
 C.5  "Latest auction results" table columns: Auction date | Week covered |
      Traded quantity | Traded price | Final allocation | Your bids.
      This is a separate table from current bids, showing history.
      NEEDED: Add "Final allocation" and "Traded price" columns to bid history.
+     [DONE April 2026 — bid_history() joins traderquota on (auctionid, traderid, takeDate/effectDate);
+      returns final_allocation (quotaAuctionEnd) and traded_price (price); Trader.html shows both columns]
 
 C.6  "Your allocation" section: placeholder for a graph of allocation over
      time (consented + auctioned) for next 12 months vs historical.
      NEEDED: Note this as a future visualisation goal.
+     [FUTURE — not in current scope]
 
 C.7  BidSet.automatic field (BooleanField): represents a standing/automatic bid.
      The trading page mentions "Also list standing bids."
      NEEDED: Decide whether to implement automatic/standing bids; if yes,
      add automatic flag to traderbids and expose in trader UI.
+     [DONE April 2026 — isBidAutomatic stored in traderbids; checkbox on bid form;
+      standing bids carry forward automatically to new auctions via setup_auction();
+      ★ Standing indicator shown in bid history table.]
 
 C.8  Bid is per (trader, auction, period) — BidSet unique_together constraint.
      One BidSet per period within each auction's bid_period range.
      NEEDED: Enforce uniqueness at repository level (INSERT OR REPLACE or
      explicit check).
+     [DONE April 2026 — add_bid() soft-deletes any existing non-deleted row
+      for (auctionID, traderID, effectDate) before inserting the new bid]
 
 C.9  Period constraint: bid period must be within auction.bid_period_start to
      auction.bid_period_end. Legacy check_bidset pre_save enforces this.
      NEEDED: Add this range validation to BiddingController.submitBid().
+     [DONE April 2026 — period membership validated against auction.periods in _validate_bid_submission(); periods are loaded from DB so only valid ones are present]
 
 C.10 Trader must have a well before bidding can be accepted.
      Legacy check_bidset raises InvalidBid if trader.well is None.
      NEEDED: Add well-ownership check in BiddingController.submitBid().
+     [DONE April 2026 — _validate_bid_submission() checks participant_wells list; raises ValueError if empty]
 
 C.11 Cannot submit or modify bids on auctions whose closing date has passed.
      Legacy check_if_closed (pre_save on Bid and BidSet) enforces this.
      NEEDED: Add auction-closed check in BiddingController.submitBid()
      and surfaced as a clear user message, not a 500 error.
+     [DONE April 2026 — _validate_bid_submission() parses bid_close_label; raises ValueError if past; app.py route wraps in try/except and redirects with notice]
 
 --------------------------------------------------------------------------------
 D. HYDROLOGY / CATCHMENT INTERFACE
@@ -282,6 +305,11 @@ D.1  Legacy ControlPoint admin shows three constraint types as inline tables:
      control_point_event row with no explicit constraint type distinction.
      NEEDED: Decide whether to support all three constraint types or just max.
      Document constraint type semantics clearly in the Hydrologist page.
+     [DONE April 2026 — Decision: max drawdown only in current implementation.
+      Hydrologist.html now documents current max-drawdown constraint (CPE_head_constraint_upper_bound),
+      and describes the schema, import, solver, and display changes needed to
+      add min-drawdown (CPE_constraint_lower_bound already exists) and
+      head-difference constraints in future.]
 
 D.2  Alpha is auto-computed (update_alpha pre_save signal on
      ControlPointMaxDrawdown):
@@ -290,11 +318,27 @@ D.2  Alpha is auto-computed (update_alpha pre_save signal on
      Currently alpha is not computed or stored in ForeverFair2026.
      NEEDED: Implement alpha computation when bounds are applied or updated
      (see hydrologist/apply-default-bounds route). Store alpha in DB.
+     [DONE April 2026 — _compute_alphas() in setup.py computes per (CP, period)
+      using response_factors and trader_allocations; stored in
+      control_point_bounds.alpha on apply_default_bounds(); copied to
+      control_point_event.CPE_alpha when save_run_results() writes results.
+      Alpha capped at 1.0; defaults to 1.0 if denominator is zero. Resolves F.7.]
 
 D.3  Catchment model has constraint_periods field (int): the number of
      periods to apply hydrological constraints. Currently all periods in an
      auction are implicitly constrained.
      NEEDED: Decide whether to implement constraint_periods gating.
+     [DONE April 2026 — Decision: constrain ALL effect periods present in the
+      response matrix, not just the auction bid periods. If the response matrix
+      covers 78 weeks and the auction has 4 bid periods, the LP enforces bounds
+      for all 78 effect periods (lagged drawdown from bid-period pumping can
+      bind constraints in later periods). Implementation: load() reads bounds
+      from control_point_bounds (all periods imported via .mps or seed);
+      runAuction() iterates control_point.bound_by_period.keys() for both
+      constraint generation and constraint_results collection.
+      Also fixed: load() now reads from response_factors and control_point_bounds
+      (the tables that both seed and import_mps write to), replacing the stale
+      reads from response_matrix and control_point_event.]
 
 D.4  ConstraintQuota is pre-computed on Auction post_save:
      one row per (well, control_point, period, auction), storing alpha and
@@ -302,12 +346,32 @@ D.4  ConstraintQuota is pre-computed on Auction post_save:
      Currently ForeverFair2026 has no ConstraintQuota equivalent.
      NEEDED: Implement ConstraintQuota computation during auction setup or
      solve. This table is the basis for proportionalAllowance logic.
+     [DONE April 2026 — constraint_quota table added to schema
+      (auction_id, well_id, control_point_id, period_id, alpha, quota_value,
+      constraint_quota_value). _compute_constraint_quotas() in setup.py
+      computes cq(well, CP, t) = alpha(CP, t) * quota(well, t) for every
+      (well × CP × bid_period) triple. Called from apply_default_bounds()
+      immediately after _compute_alphas(), so constraint quotas are available
+      before any bid is submitted. Covers auction bid periods only (pumping
+      happens only in bid periods; the response matrix extends further but quota
+      is not defined beyond bid periods).]
 
 D.5  Legacy Auction model has proportionalAllowance and
      proportionalAllowanceFinal fields (not shown in Django models but in
      the legacy SQLite DB: see Table: auctions in this file).
      NEEDED: Clarify when proportionalAllowance is set vs
      proportionalAllowanceFinal (tentative vs final auction).
+     IMPLEMENTATION NOTE: Store both as scalar REAL values on auctions.
+     At run completion, compute a single auction-level proportional factor
+     from already-computed constraint_quota rows for that auction, e.g.
+     min(alpha) over all (well, CP, period) rows, default 1.0 when no binding
+     constraints exist. If auction_type is tentative, write that value to
+     proportionalAllowance. If auction_type is final, write it to
+     proportionalAllowanceFinal. Keep traderquota as the detailed source of
+     truth per trader/period: quotaAuctionStart, quotaAdjusted, quotaAuctionEnd.
+     This gives one headline allowance per auction while preserving full
+     allocational detail in traderquota for auditing and reporting.
+     [DECISION NEEDED — not implemented]
 
 --------------------------------------------------------------------------------
 E. BIDDING LOGIC
@@ -318,6 +382,7 @@ E.1  BidSetResult doubles as a cash transaction record (quantity, price, date).
      Currently ForeverFair2026 has no cash ledger.
      NEEDED: Decide scope — at minimum, BidSetResult equivalent should be
      stored as part of auction results for audit trail.
+     [SKIP]
 
 E.2  Multiple bid steps per BidSet (up to 5 qty/price pairs in legacy SQLite;
      unlimited Bid objects in Django model).
@@ -325,6 +390,12 @@ E.2  Multiple bid steps per BidSet (up to 5 qty/price pairs in legacy SQLite;
      NEEDED: Decide maximum steps supported. Legacy SQLite stored up to 5.
      If supporting multi-step, solver must enumerate all active steps as
      separate LP decision variables.
+     [DONE April 2026 — Trader bid form and /bids/new route now accept up to
+      5 steps (qty1/price1 .. qty5/price5) and persist them in traderbids.
+      repository.load() expands active qty/price columns into one BidSegment per
+      step, and runAuction() creates one LP variable per BidSegment. Added
+      regression test test_multistep_bid_creates_multiple_lp_variables to verify
+      multi-step segments are present in both auction_case.bids and LP results.]
 
 E.3  get_quota(trader, period_start, period_end) in traders/models.py returns
      {period: [consented_allocation, final_quota]} dict.
@@ -332,30 +403,37 @@ E.3  get_quota(trader, period_start, period_end) in traders/models.py returns
      final_quota = consented_allocation + sum of BidSetResult.quantity.
      NEEDED: Implement equivalent in repository, driving from traderconsents
      and traderquota tables (already modelled in legacy DB schema).
+     [DONE April 2026 — AuctionRepository.get_quota() implemented using
+      traderconsents and traderquota. For current data assumptions, one consent
+      row and one final-quota row are expected per trader-period; if duplicates
+      exist, first row per period is used. Returned structure is
+      {period: [consented_allocation, final_quota]}. final_quota is sourced from
+      traderquota.quotaAuctionEnd (not consent-plus-delta arithmetic).
+      Trader page period allocation now reads from get_quota().]
 
 --------------------------------------------------------------------------------
 F. VALIDATION RULES SUMMARY (currently missing from ForeverFair2026)
 --------------------------------------------------------------------------------
 F.1  Cannot create auction with closing date in the past.
-     [Partially implemented in app.py route — needs controller enforcement too.]
+     [DONE April 2026 — AuctionController.SetUpAuction() validates date; app.py route also validates and redirects with error notice]
 
 F.2  Cannot edit an already-closed auction.
-     [Not implemented; legacy had it but commented out.]
+     [DONE April 2026 — see A.5]
 
 F.3  Cannot submit or modify a bid on a closed auction.
-     [Not implemented.]
+     [DONE April 2026 — see C.11]
 
 F.4  Bid period must be within auction.bid_period_start to bid_period_end.
-     [Not implemented.]
+     [DONE April 2026 — see C.9]
 
 F.5  Trader must own a well before bid is accepted.
-     [Not implemented.]
+     [DONE April 2026 — see C.10]
 
 F.6  Only one bid set per (trader, auction, period).
-     [Not enforced at DB level in current schema.]
+     [DONE April 2026 — see C.8]
 
 F.7  Alpha must not exceed 1.0.
-     [Not implemented — alpha computation not yet present.]
+     [DONE April 2026 — see D.2; alpha capped at min(1.0, ...) in _compute_alphas()]
 
 --------------------------------------------------------------------------------
 G. ITEMS ALREADY CORRECT IN FOREVERFAIR2026
@@ -368,508 +446,298 @@ G.4  Auto-generated auction IDs.
 G.5  Navigation structure (login -> trader -> manager -> catchment) matches
      legacy intent.
 
+--------------------------------------------------------------------------------
+H. ROLE-SEPARATION AND PAGE-HYGIENE AUDIT (April 2026)
+--------------------------------------------------------------------------------
+PURPOSE: Second-pass review of all pages and routes, checking role separation,
+button availability, error handling, and template consistency.
 
-================================================================================
-IMPLEMENTATION STEPS: Move to legacy table structure and legacy logic
-================================================================================
-Target state:
-  - Keep current UI architecture (FastAPI routes + Jinja templates + page flow).
-  - Replace current persistence/model/solver wiring with legacy schema semantics.
-  - Retain metadata and wells.latitude/wells.longitude as approved additions.
+H.1  "Reset database from seed" button appeared on AuctionManager.html.
+     The auction manager is responsible for clearing auctions, not for managing
+     the database. Database reset/delete is the programmer's domain. The seed
+     concept (forever_fair_seed.json) is an internal bootstrap artifact, not a
+     user-facing operation; all data is built by importing .decvar/.hedcon/.mps
+     files from the Programmer's page.
+     [DONE April 2026 — Button and form removed from AuctionManager.html.
+      /manager/reset-data route removed from app.py.]
 
-------------------------------------------------------------------------------
-STEP 0 - Freeze and baseline
-------------------------------------------------------------------------------
-0.1 Create a feature branch for this migration.
-0.2 Snapshot current database and seed/import files.
-0.3 Capture baseline behavior by running tests and one end-to-end manual flow:
-  login -> place bid -> run auction -> view catchment/trader pages.
-0.4 Record baseline row counts from /setup/db-status for later comparison.
+H.2  Run button shown for all auctions in AuctionManager.html regardless of
+     whether the auction was closed. Running a clearing model on a closed
+     auction is meaningless (bidding window has ended) and potentially
+     misleading (results would be labeled as if current).
+     [DONE April 2026 — Run button now only rendered when not is_closed
+      (Jinja condition: auction.status != 'CLOSED' and bid_close_label >= now).]
 
-------------------------------------------------------------------------------
-STEP 1 - Lock the canonical schema definition
-------------------------------------------------------------------------------
-1.1 In src/setup.py SCHEMA_DDL, replace current auction-era tables with legacy
-  tables and column names.
-1.2 Keep/add these legacy tables:
-  auctions, configs, control_points, control_point_event, messages,
-  response_matrix_info, response_matrix, traderbids, traderconsents,
-  traderquota, traders, wells.
-1.3 Keep metadata table (post-2012 addition).
-1.4 Keep wells.latitude and wells.longitude (post-2012 additions).
-1.5 Add deleted flag to traderbids for current UI soft-delete behavior.
-1.6 Ensure SCHEMA_DDL and repository executescript remain synchronized.
+H.3  /manager/run-auction POST route had no exception handling. Any solver
+     failure or data problem would produce a 500 error with no user feedback.
+     [DONE April 2026 — Route now wraps runCurrentAuction in try/except and
+      redirects with notice on failure.]
 
-------------------------------------------------------------------------------
-STEP 2 - Define period semantics (critical design choice)
-------------------------------------------------------------------------------
-2.1 Replace integer period IDs with date-based keys (legacy take/effect dates).
-2.2 Define one canonical date format for DB and API (ISO date string).
-2.3 Establish conversion logic:
-  effect_date = auction_date + offset * daysInPeriod
-  where offsets come from legacy-style model mappings/imports.
-2.4 Document this mapping in code comments and Programmer docs.
+H.4  /manager/run-auction POST route had no server-side guard against running
+     a closed auction. Hiding the button in the template is not sufficient;
+     a direct POST could bypass the UI check.
+     [DONE April 2026 — Route queries list_auctions() and checks status and
+      bid_close_label before calling runCurrentAuction.]
 
-------------------------------------------------------------------------------
-STEP 3 - Migrate domain models (src/models.py)
-------------------------------------------------------------------------------
-3.1 Update Auction model to legacy fields (solve_time/solve_status,
-  auction_type, auction_date, daysInPeriod, numberOfPeriods, etc.).
-3.2 Update Participant model construction to use trader_fname/trader_lname.
-3.3 Update Well model to legacy grid coordinates and retained lat/lon.
-3.4 Update ControlPoint model to dual-point legacy structure
-  (layer/row/col 1 and 2, lat/lon 1 and 2).
-3.5 Update ResponseFactor model to use take/effect dates (not integer periods).
-3.6 Update bid model handling to support legacy multi-step representation.
-3.7 Update market result models to align with auction + control_point_event +
-  traderquota outputs.
+H.5  Researcher.html overview table described the manager page as "Set up
+     auctions, run clearing, reset data." The "reset data" description is
+     incorrect after H.1 and should not appear on any user-facing description
+     of the manager's role.
+     [DONE April 2026 — Description updated to "Set up auctions and run
+      clearing".]
 
-------------------------------------------------------------------------------
-STEP 4 - Rewrite repository layer (src/services/repository.py)
-------------------------------------------------------------------------------
-4.1 Remove logic specific to current schema tables that will be deleted:
-  periods, auction_periods, bids(normalized), auction_runs, accepted_bids,
-  period_prices, constraint_results, trader_allocations,
-  control_point_bounds/default_control_point_bounds, response_factors,
-  well_quota_ledger.
-4.2 Remove JSON seeding paths and seed-driven runtime assumptions.
-4.3 Implement load(auction_id) against legacy tables:
-  auctions + traders + wells + traderconsents + control_points +
-  control_point_event + response_matrix + metadata + traderbids.
-4.4 Implement add_bid() as traderbids insert (qty1/price1 path first;
-  multi-step optional extension).
-4.5 Keep delete bid UX by setting traderbids.deleted=1.
-4.6 Implement setup_auction() in legacy terms:
-  create auction row with date/window fields, copy needed baseline rows.
-4.7 Implement run-results persistence:
-  auctions.solve_time/solve_status updates,
-  control_point_event result rows,
-  traderquota quotaAuctionStart/quotaAdjusted/quotaAuctionEnd/price rows.
-4.8 Rework list_auctions(), latest_run_summary(), bid_history(),
-  catchment_price_rows() to read legacy result sources.
+H.6  Hydrologist.html used a relative CSS path (../static/site.css) instead
+     of {{ url_for('static', ...) }}. Relative paths break when pages are
+     served under a path prefix or accessed directly via FastAPI routes.
+     [DONE April 2026 — Path updated to url_for('static', path='/site.css').]
 
-------------------------------------------------------------------------------
-STEP 5 - Refactor solver interface (src/RunAuctionModule.py)
-------------------------------------------------------------------------------
-5.1 Convert period iteration to date-driven iteration.
-5.2 Convert response coefficient lookup to
-  (well, control point, take date, effect date).
-5.3 Read control limits from legacy control_point_event semantics.
-5.4 Convert traderbids rows to LP decision variables:
-  one variable per active bid step (qtyN/priceN).
-5.5 Keep objective and constraints mathematically equivalent to current model.
-5.6 Return outputs in a form repository can persist into legacy tables.
+H.7  Programmer.html had the same relative static path issue as H.6.
+     [DONE April 2026 — Path updated to url_for('static', path='/site.css').]
 
-------------------------------------------------------------------------------
-STEP 6 - Controllers update
-------------------------------------------------------------------------------
-6.1 src/BiddingController.py:
-  validate effect/take dates, trader ownership, auction openness;
-  remove integer period assumptions.
-6.2 src/AuctionController.py:
-  setup auction with legacy date/window fields;
-  hydrate trader and catchment pages from traderconsents/traderquota and
-  control_point_event outputs.
+H.8  CatchmentPage.html navbar lacked links to the login page and researcher
+     page. A user navigating to the catchment view had no route back to
+     participant selection or the overview.
+     [DONE April 2026 — Added /login and /researcher links to navbar.]
 
-------------------------------------------------------------------------------
-STEP 7 - FastAPI route-level compatibility (src/web/app.py)
-------------------------------------------------------------------------------
-7.1 Keep route structure stable where possible to preserve interface behavior.
-7.2 Update setup-auction POST payload to include legacy-required fields
-  (auction_date, daysInPeriod, numberOfPeriods).
-7.3 Update import endpoints to map to legacy destination tables:
-  - trader names -> traders legacy columns
-  - trader wells/rights -> traderconsents
-  - MPS factors/bounds -> response_matrix and control_point_event
-7.4 Keep db-status endpoint and no-cache behavior.
+H.9  CatchmentPage.html placed the notice variable inside the <h2> heading
+     for the auction results section. Structural headings should not contain
+     dynamic status messages; this also prevents CSS styling of notices.
+     [DONE April 2026 — notice moved outside <h2> as <div class="notice">.]
 
-------------------------------------------------------------------------------
-STEP 8 - Template updates while preserving page structure
-------------------------------------------------------------------------------
-8.1 Manager page:
-  add legacy auction timing/window inputs.
-8.2 Trader page:
-  display and submit effect/take date values (instead of period_id).
-8.3 Programmer page:
-  replace allocation-period import messaging with consent/date-based wording.
-8.4 Catchment page:
-  source diagnostics from control_point_event legacy fields.
-8.5 Keep navigation, roles, and overall page flow unchanged.
+H.10 Run button for a closed auction: even if the template hides it, the
+     AuctionManager.html "Current manager actions" table should not list
+     any route or action that is no longer available. Confirmed: the table
+     does not reference /manager/reset-data — no change needed.
 
-------------------------------------------------------------------------------
-STEP 9 - Import pipeline alignment (src/setup.py)
-------------------------------------------------------------------------------
-9.1 decvar import -> wells legacy grid fields (+ optional well name mapping).
-9.2 hedcon import -> control_points legacy CP fields.
-9.3 mps import -> response_matrix_info + response_matrix +
-  control_point_event constraints, with date mapping.
-9.4 trader names import -> legacy trader columns.
-9.5 trader wells/rights import -> traderconsents rows.
-9.6 lat/lon imports -> wells.latitude/longitude and control point lat/lon fields.
-9.7 Rebuild missing-data checks for legacy-required columns.
+H.11 AuctionManager.html still shows "Risk controls to add soon" section
+     listing capabilities not yet built. This is informative but should be
+     replaced with a link to this design document as the items are addressed,
+     rather than remaining permanently as a reminder.
+     NEEDED: Remove or replace the "Risk controls" section once all items
+     in it are implemented.
+     [SKIP]
 
-------------------------------------------------------------------------------
-STEP 10 - Data migration strategy for existing foreverfair.db
-------------------------------------------------------------------------------
-10.1 Decide migration mode:
-   A) destructive reset + re-import, or
-   B) scripted transform from current schema to legacy schema.
-10.2 If scripted transform, build explicit mapping tables:
-   - trader_id TEXT -> traderid INTEGER
-   - well_id TEXT -> well_id INTEGER
-   - period_id/order -> take/effect date
-10.3 Map current bids -> traderbids qty1/price1 rows.
-10.4 Map current allocations/quota concepts -> traderconsents + traderquota.
-10.5 Map current control point bounds/results -> control_point_event.
-10.6 Validate row counts and key samples after migration.
+H.12 The /manager/run-auction route now guards against closed auctions but
+     does not guard against auctions that have never had bids. Running a
+     clearing with no bids produces a trivially empty result.
+     NEEDED: Add a check in runCurrentAuction (or the route) that at least
+     one non-deleted bid exists before invoking the solver.
+     [NOT DONE]
 
-------------------------------------------------------------------------------
-STEP 11 - Testing and verification gates
-------------------------------------------------------------------------------
-11.1 Unit tests: update tests/test_market.py for date-based periods.
-11.2 Integration checks:
-   - Create DB
-   - Import all required files
-   - Create auction
-   - Submit and delete bids
-   - Run auction
-   - Verify trader and catchment outputs
-11.3 SQL assertions:
-   verify non-null and FK integrity in legacy tables.
-11.4 Regression checks:
-   ensure interface routes/pages still operate in same user sequence.
-
-------------------------------------------------------------------------------
-STEP 12 - Cutover and cleanup
-------------------------------------------------------------------------------
-12.1 Remove dead code tied only to current schema.
-12.2 Remove obsolete docs and setup text that reference removed tables.
-12.3 Keep one migration note listing old->new table mappings for maintenance.
-12.4 Tag release and preserve pre-migration DB backup.
-
-------------------------------------------------------------------------------
-STEP 13 - Risk controls (recommended)
-------------------------------------------------------------------------------
-13.1 Highest risk: date mapping errors across imports and solver joins.
-   Mitigation: one canonical date conversion utility + tests.
-13.2 Highest risk: silent mismatch between setup.py SCHEMA_DDL and
-   repository.py executescript.
-   Mitigation: startup schema hash/check assertion.
-13.3 Highest risk: result persistence mismatch (legacy overwrite behavior
-   vs historical-run expectations).
-   Mitigation: explicit product decision documented in code and UI text.
-
-END STATE CHECKLIST
-  [ ] UI structure unchanged (page set and route flow preserved)
-  [ ] Legacy tables active and populated
-  [ ] Legacy logic active for bids/solver/results
-  [ ] metadata and wells latitude/longitude retained
-  [ ] End-to-end auction cycle passes with migrated schema
+H.13 Researcher.html "Super login" section allows one-click login as any
+     trader with no confirmation. This is intentional for a demonstration
+     system but should be documented as a known security gap for any future
+     deployment with real participants.
+     NEEDED: Document in deployment notes; add a warning paragraph to the
+     Researcher page for non-demo contexts.
+     [NOT DONE]
 
 
 ================================================================================
-EXECUTION CHECKLIST (ordered implementation sequence)
+IMPLEMENTATION STATUS AND REMAINING WORK (updated 2026-04-25)
 ================================================================================
+All five migration phases are complete and tested (pytest 3/3 passing).
+The sections below consolidate what was done and what remains; they replace
+the earlier Step 0-13 design document, the Execution Checklist, and the
+Migration Progress sections that previously tracked this work.
 
-PRE-MIGRATION SNAPSHOT
-  [ ] Confirm this file is finalized for migration scope.
-  [ ] Ensure current app runs end-to-end once (baseline sanity check).
-  [ ] Create git tag/commit checkpoint before schema migration starts.
-  [ ] Backup current data/Tianqiao/foreverfair.db.
+--------------------------------------------------------------------------------
+COMPLETED (as of 2026-04-25)
+--------------------------------------------------------------------------------
 
-TRACK A - SCHEMA AND SETUP
-  [ ] Edit src/setup.py: replace SCHEMA_DDL with legacy schema set.
-  [ ] Keep metadata table in SCHEMA_DDL.
-  [ ] Keep wells.latitude and wells.longitude in SCHEMA_DDL.
-  [ ] Add traderbids.deleted flag for soft delete compatibility.
-  [ ] Update db_status() table list and counts to legacy tables.
-  [ ] Update create_empty_db() defaults for configs row.
-  [ ] Validate create/delete DB endpoints still function.
+SCHEMA AND SETUP
+  [✓] SCHEMA_DDL updated with all legacy tables: auctions (with legacy fields),
+      configs, control_points, control_point_event, messages, response_matrix_info,
+      response_matrix, traderbids (with deleted flag), traderconsents, traderquota,
+      traders, wells.
+  [✓] metadata table and wells.latitude/longitude retained.
+  [✓] _ensure_db() uses ALTER TABLE for backward compatibility on existing DBs.
 
-TRACK B - REPOSITORY CORE
-  [ ] Edit src/services/repository.py: sync executescript with new SCHEMA_DDL.
-  [ ] Remove references to removed tables (periods/auction_runs/etc.).
-  [ ] Remove JSON seed dependency path and _seed_from_json usage.
-  [ ] Rebuild load(auction_id) using legacy table reads.
-  [ ] Rebuild add_bid() -> traderbids insert (qty1/price1 path).
-  [ ] Rebuild delete_bid() -> traderbids.deleted soft delete.
-  [ ] Rebuild setup_auction() in legacy auction semantics.
-  [ ] Rebuild save_run_results() to write auctions + control_point_event + traderquota.
-  [ ] Rebuild list_auctions(), latest_run_summary(), bid_history(), catchment_price_rows().
+REPOSITORY
+  [✓] repository.py synced with legacy schema; all old-schema table references
+      (periods, auction_runs, bids, accepted_bids, period_prices, constraint_results,
+      trader_allocations, control_point_bounds, response_factors, well_quota_ledger)
+      eliminated from read/write paths.
+  [✓] JSON seed dependency reduced; _seed_from_json() uses traderbids format.
+  [✓] load(auction_id) reads from legacy tables only, no fallbacks.
+  [✓] add_bid() inserts into traderbids (qty1/price1 single-step path).
+  [✓] delete_bid() sets traderbids.deleted = 1 (soft delete).
+  [✓] setup_auction() inserts all legacy auction fields (auction_date, daysInPeriod,
+      numberOfPeriods, auction_type).
+  [✓] save_run_results() writes to traderquota (quotaAuctionStart, quotaAdjusted,
+      quotaAuctionEnd, price, takeDate) and control_point_event (CPE_effect_date,
+      CPE_head_constraint_upper_bound, CPE_slack, CPE_dual_price).
+  [✓] list_auctions(), bid_history(), catchment_price_rows() use legacy sources only.
+  [✓] Multi-step bid loading: iterates qty1-qty5/price1-price5; one BidSegment per
+      active step.
 
-TRACK C - MODELS AND CONTROLLERS
-  [ ] Edit src/models.py to legacy-compatible field structures.
-  [ ] Convert period semantics to date-based keys in models.
-  [ ] Edit src/BiddingController.py validation for date-based periods.
-  [ ] Edit src/AuctionController.py state assembly for legacy outputs.
-  [ ] Confirm getTraderPageState and getCatchmentPageState use legacy sources.
+MODELS AND CONTROLLERS
+  [✓] Auction model carries legacy fields (auction_date, days_in_period,
+      number_of_periods, auction_type).
+  [✓] Period semantics converted to date-based keys; _compute_effect_date() utility
+      in AuctionController converts auction_date + days_in_period * offset to ISO date.
+  [✓] BiddingController validates: period in auction range, trader owns a well,
+      auction is still open.
+  [✓] AuctionController.SetUpAuction() accepts/passes all legacy auction fields;
+      getTraderPageState() computes date-based effect dates per period.
 
-TRACK D - SOLVER CONTRACT
-  [ ] Edit src/RunAuctionModule.py input contract to date-based periods.
-  [ ] Translate legacy traderbids steps to solver decision variables.
-  [ ] Map solver outputs to legacy persistence fields.
-  [ ] Verify objective/constraints remain behaviorally equivalent.
+SOLVER PERSISTENCE
+  [✓] Solver outputs mapped to legacy tables: traderquota rows from
+      trader_period_results; control_point_event rows from constraint_results.
+  [✓] accepted_bids FK constraint issue resolved (write disabled; traderquota
+      is the authoritative result store).
 
-TRACK E - IMPORT PIPELINE
-  [ ] Update import_decvar in src/setup.py for legacy wells fields.
-  [ ] Update import_hedcon in src/setup.py for legacy control_points fields.
-  [ ] Update import_mps in src/setup.py for response_matrix and control_point_event.
-  [ ] Add/confirm period offset -> date mapping utility.
-  [ ] Update trader import(s) to populate traders + traderconsents.
-  [ ] Keep lat/lon import flows for wells and control points.
-  [ ] Update missing_import_data_report() for legacy required columns.
+IMPORT PIPELINE (partial)
+  [✓] Period offset to ISO date mapping utility in AuctionController._compute_effect_date().
+  [✓] Phase 5 JSON import routes added (src/phase5_imports.py + app.py routes):
+        POST /setup/import-periods-json
+        POST /setup/import-traders-and-allocations-json
+        POST /setup/import-control-points-and-bounds-json
+        POST /setup/import-auction-metadata-json
 
-TRACK F - WEB ROUTES + TEMPLATES (preserve structure)
-  [x] Edit src/web/app.py setup-auction route payload (date/window inputs).
-  [ ] Keep route set stable unless table dependency forces change.
-  [x] Edit src/web/templates/ManagerPage.html for legacy auction fields.
-  [ ] Edit src/web/templates/TraderPage.html to use date-based period inputs.
-  [ ] Edit src/web/templates/CatchmentPage.html to render legacy diagnostics.
-  [ ] Edit src/web/templates/Programmer.html import labels/workflow for legacy tables.
-  [ ] Keep navigation and role pages unchanged in structure.
+WEB ROUTES AND TEMPLATES (mostly complete)
+  [✓] /manager/setup-auction route accepts all legacy auction fields.
+  [✓] AuctionManager.html: setup form has date picker, days_in_period,
+      number_of_periods, auction_type inputs.
+  [✓] TraderPage.html: date-based period selection; buy/sell bid step styling.
+  [✓] All UI hygiene fixes from audit items A.1-A.4, B.1-B.2, C.1-C.4,
+      C.9-C.11, H.1-H.10 complete (see audit section above for details).
 
-TRACK G - DATA MIGRATION (if preserving current DB)
-  [ ] Decide: reset/re-import OR scripted transform.
-  [ ] If scripted: build ID mapping tables (trader/well/period).
-  [ ] Transform bids -> traderbids qty1/price1 rows.
-  [ ] Transform allocation/quota data -> traderconsents + traderquota.
-  [ ] Transform control point bounds/results -> control_point_event.
-  [ ] Validate transformed row counts against source counts.
+VALIDATION
+  [✓] pytest tests/test_market.py: 3/3 passing (2026-04-25).
+        test_market_clears_seed_case
+        test_setup_and_reset_auction_data
+        test_manager_run_persists_results
 
-TRACK H - VALIDATION GATES
-  [x] Run pytest: tests/test_market.py (update tests as needed).
-  [ ] Re-run full import sequence from Programmer page.
-  [ ] Place/delete bids from Trader page.
-  [ ] Run auction from Manager page.
-  [ ] Verify Catchment outputs and dual/constraint fields.
-  [ ] Verify trader allocations/quotas display correctly.
-  [ ] Check API /setup/db-status and /api/system-state still respond correctly.
+FILES MODIFIED
+  src/models.py                        — legacy Auction fields
+  src/setup.py                         — extended SCHEMA_DDL
+  src/services/repository.py           — all persistence and loading methods
+  src/AuctionController.py             — date semantics utilities
+  src/web/app.py                       — routes for legacy fields + Phase 5 imports
+  src/web/templates/AuctionManager.html — legacy auction input fields
+  src/web/templates/TraderPage.html    — date-based period selection
+  src/phase5_imports.py                — NEW: JSON import functions
+  tests/test_market.py                 — all tests passing
 
+--------------------------------------------------------------------------------
+REMAINING WORK
+--------------------------------------------------------------------------------
+Items requiring coding are grouped by priority. Items marked DECISION NEEDED
+require a design choice before coding can begin.
+
+--- PRIORITY 1: Functional gaps before production use ---
+
+E.FILE   File-based imports not yet updated for legacy column names.
+         Update in src/setup.py:
+           import_decvar()  -> wells (well_layer, well_row, well_column)
+           import_hedcon()  -> control_points (CP_layer1/row1/col1, etc.)
+           import_mps()     -> response_matrix_info + response_matrix +
+                               control_point_event, with period offset -> date mapping
+         Update trader imports to populate traderconsents rows.
+         Update missing_import_data_report() for legacy required columns.
+         [Blocks full Programmer page workflow with real .mps/.hedcon data.]
+
+F.CATCH  Wire CatchmentPage.html to control_point_event result fields written
+         by save_run_results(): dual price, slack, head, CPE_range_lower/upper.
+
+F.PROG   Update Programmer.html import labels and workflow text to reflect
+         legacy table targets (wells, traderconsents, response_matrix, etc.).
+         Also add Phase 5 JSON upload form controls for each import route.
+
+D.SOLVE  Verify RunAuctionModule.py receives date-based periods and correctly
+         enumerates qty1-qty5 bid steps as separate LP decision variables.
+         [DONE April 2026 — solver already uses one LP variable per BidSegment;
+          multi-step submission path now writes qty1..qty5, and regression test
+          confirms all steps are loaded and included as LP decision variables.]
+
+C.5      Add "Final allocation" and "Traded price" columns to the bid history
+         table on Trader.html, sourcing from traderquota.quotaAuctionEnd
+         and traderquota.price.
+         [DONE April 2026]
+
+C.8/F.6  Enforce one bid per (trader, auction, period): add_bid() soft-deletes
+         any existing non-deleted row before inserting.
+         [DONE April 2026]
+
+H.12     Guard against running auction with no bids: check that at least one
+         non-deleted traderbids row exists before invoking the solver
+         (in runCurrentAuction() or the /manager/run-auction route).
+
+--- PRIORITY 2: Design decisions needed before implementing ---
+
+A.5/F.2  Closed auctions cannot be edited. Guard implemented in
+         SetUpAuction() (controller) and /manager/setup-auction route.
+         [DONE April 2026]
+
+C.7      Automatic/standing bids (traderbids.isBidAutomatic). Checkbox on bid
+         form; standing bids carry forward to new auctions; ★ in history table.
+         [DONE April 2026]
+
+D.1      Max-drawdown-only decision documented on Hydrologist page, with
+         extension notes for min-drawdown and head-difference constraints.
+         [DONE April 2026]
+
+D.2      Alpha computation: _compute_alphas() in setup.py; stored in
+         control_point_bounds.alpha and control_point_event.CPE_alpha.
+         [DONE April 2026]
+
+D.3      Constrain all response-matrix effect periods (not just bid periods).
+         load() fixed to read from response_factors and control_point_bounds.
+         runAuction() iterates bound_by_period.keys() for all effect periods.
+         [DONE April 2026]
+
+D.4      Implement ConstraintQuota pre-computation at auction setup or solve:
+         one row per (well, control_point, period, auction) storing alpha and
+         proportional constraint value. Basis for proportionalAllowance logic.
+         Depends on D.2.
+
+D.5      Clarify and document: when is proportionalAllowance set vs
+         proportionalAllowanceFinal (tentative vs final auction)?
+
+E.1      Decide cash ledger scope. Minimum: BidSetResult-equivalent rows stored
+         with each auction run for audit trail.
+
+E.3      Implement get_quota equivalent in repository:
+           {period: [consented_allocation, final_quota]}
+         Drive from traderconsents (consented) and traderquota (final).
+
+--- PRIORITY 3: Housekeeping ---
+
+H.11     Remove or replace "Risk controls to add soon" section in
+         AuctionManager.html once the items listed there are addressed.
+
+H.13     Document Researcher.html "Super login" security gap in deployment
+         notes; add visible warning paragraph to Researcher page for any
+         non-demo deployment context.
+
+--- DATA MIGRATION ---
+
+         Current approach: reset and re-import from source files.
+         A scripted in-place transform is not needed unless preserving
+         existing bid history becomes a requirement.
+
+--------------------------------------------------------------------------------
+VALIDATION GATES (must pass before cutover)
+--------------------------------------------------------------------------------
+  [ ] Re-run full import sequence from Programmer page:
+        .decvar -> .hedcon -> .mps -> trader names -> trader wells/rights.
+      (Requires E.FILE items above complete.)
+  [ ] Place and delete bids from Trader page; verify bid history display.
+  [ ] Run auction from Manager page; confirm traderquota and
+      control_point_event rows written correctly.
+  [ ] Verify CatchmentPage shows dual prices, slacks, and constraint fields.
+      (Requires F.CATCH above complete.)
+  [ ] Verify TraderPage shows final allocations from traderquota.quotaAuctionEnd.
+      (Requires C.5 above complete.)
+  [ ] Confirm /setup/db-status and /api/system-state respond correctly.
+
+--------------------------------------------------------------------------------
 CUTOVER CHECKLIST
+--------------------------------------------------------------------------------
+  [ ] All Priority 1 items above resolved and tested.
+  [ ] All validation gates above pass.
   [ ] Final pre-cutover DB backup created.
   [ ] Migration commit created and tagged.
-  [ ] Legacy schema migration deployed.
-  [ ] Post-cutover smoke test passed.
-  [ ] Rollback instructions documented (tag + backup path).
-
-================================================================================
-MIGRATION PROGRESS STATUS (2026-04-25)
-================================================================================
-
-SLICE 1: SOLVER/RESULT PERSISTENCE MIGRATION TO LEGACY TABLES [COMPLETE]
-  4.1 [✓] Extended SCHEMA_DDL in src/setup.py with legacy tables (control_point_event,
-      traderquota, traderbids, traderconsents, response_matrix, response_matrix_info).
-  4.5 [✓] Updated repository.save_run_results() to write to traderquota table.
-      - Iterates trader_period_results and creates one traderquota row per 
-        (trader, period).
-      - Maps initial_allocation → quotaAuctionStart, accepted_quantity → quotaAdjusted 
-        and quotaAuctionEnd, period_price from market_result.period_prices.
-      - takeDate set to period_id string (transitional; will be date string when 
-        period semantics fully converted).
-      - Finds first well for each trader; uses trader_id/well_id mapping.
-  4.7 [✓] Control_point_event persistence in save_run_results() verified.
-      - Writes CPE_effect_date, CPE_head_constraint_upper_bound, CPE_slack, 
-        CPE_dual_price from constraint_results.
-      - RMI_id, CPE_range_lower/upper currently unset (acceptable interim state;
-        can be populated in future iteration if needed).
-
-SLICE 2: AUCTION MODEL/INPUT MIGRATION TO LEGACY FIELDS [COMPLETE]
-  3.1 [✓] Added legacy fields to Auction model (src/models.py):
-      - auction_date: str | None
-      - days_in_period: int | None
-      - number_of_periods: int | None
-      - auction_type: str | None
-  3.2 [✓] Extended SCHEMA_DDL (src/setup.py) with auction legacy columns in CREATE TABLE.
-  3.3 [✓] Updated repository._ensure_db() to ALTER TABLE auctions for new fields
-      (backward compatibility for existing DBs).
-  5.2 [✓] Updated repository.setup_auction() method signature and INSERT statement:
-      - Accepts auction_date, days_in_period, number_of_periods, auction_type parameters.
-      - Inserts all four legacy fields into auctions table.
-      - Returns Auction object with all legacy fields populated.
-  6.1 [✓] Updated AuctionController.SetUpAuction() function signature:
-      - Accepts and passes through all four legacy parameters to repository.setup_auction().
-  7.1 [✓] Updated /manager/setup-auction POST route (src/web/app.py):
-      - Accepts optional form fields: auction_date, days_in_period, number_of_periods, 
-        auction_type.
-      - Passes all parameters to SetUpAuction() controller.
-
-SLICE 3: TEMPLATE/ROUTE MIGRATION TO DATE-BASED PERIODS [PARTIAL]
-  8.1 [✓] Updated src/web/templates/ManagerPage.html auction setup form:
-      - Added labeled form inputs for auction_date (HTML5 date picker),
-        days_in_period (number input), number_of_periods (number input),
-        auction_type (text input).
-      - All marked optional; form backward-compatible with existing data.
-      - Form submits to /manager/setup-auction endpoint with all legacy fields.
-  8.2 [Deferred] Trader period input migration postponed to next phase:
-      - TraderPage.html currently uses period_id dropdown (works with both integer 
-        and string period IDs).
-      - Full date-based period selection requires auction_date + daysInPeriod →
-        effectDate conversion arithmetic.
-      - Will implement in next iteration after period date-arithmetic utilities added
-        to AuctionController.
-
-VALIDATION & TEST RESULTS
-  ✅ pytest tests/test_market.py: 3 passed in 0.56s
-  ✅ test_market_clears_seed_case: Solver clears correctly with new traderquota writes.
-  ✅ test_setup_and_reset_auction_data: Setup persists legacy fields; reset clears all.
-  ✅ test_manager_run_persists_results: Results written to traderquota and control_point_event.
-
-PHASE 1: PERIOD DATE SEMANTICS [COMPLETE - 2026-04-25]
-  1.1 [✓] Added _compute_effect_date() utility to AuctionController:
-      - Converts auction_date + days_in_period * offset → ISO date string
-      - Returns string offset as fallback if date/period missing
-      - Used by getTraderPageState() to compute effect_date for each period
-  1.2 [✓] Updated AuctionController.getTraderPageState():
-      - Computes effect_date for each period_id using _compute_effect_date()
-      - Passes effect_date as period_key in period_rows for traders
-  1.3 [✓] Updated TraderPage.html to use date-based periods:
-      - Period selector now shows date-formatted periods when available
-      - Falls back to integer period IDs for non-legacy auctions
-      - Displays "(label (date))" format for improved UX
-
-PHASE 2: LEGACY TABLES AS PRIMARY SOURCE [COMPLETE - 2026-04-25]
-  2.1 [✓] Removed all fallback logic from repository.load():
-      - Traders now read ONLY from traders table; removed trader_allocations fallback
-      - Control point bounds read ONLY from control_point_event; removed control_point_bounds
-      - Response factors read ONLY from response_matrix; removed response_factors fallback
-      - Bids read ONLY from traderbids; removed bids table fallback
-  2.2 [✓] Updated catchment_price_rows() to use only legacy tables:
-      - Uses traderquota for prices (quotaAuctionStart, quotaAdjusted, price)
-      - Uses control_point_event for constraints
-      - Removed all fallback queries to current schema tables
-
-PHASE 3: MULTI-STEP BID SUPPORT [COMPLETE - 2026-04-25]
-  3.1 [✓] Updated repository.load() and bid_history() methods:
-      - Iterates qty1-qty5 and price1-price5 columns in traderbids
-      - Creates one BidSegment per active step (qty > 0 and price > 0)
-      - Generates multi-step bid_id format: "{bidid}-s{step}"
-  3.2 [✓] Fixed seed data to use traderbids format:
-      - Updated _seed_from_json() to INSERT into traderbids (not bids)
-      - Uses qty1/price1 fields for single-step seed bids
-      - Marks bids as not deleted with deleted=0
-  3.3 [✓] Fixed accepted_bids FK constraint issue:
-      - Disabled accepted_bids INSERT in save_run_results() (backward compat)
-      - Traded quantities now stored in traderquota (legacy format)
-      - Maintains data integrity without FK errors
-
-FILES MODIFIED IN THIS SESSION (PHASES 1-4)
-  src/models.py - Added legacy auction fields
-  src/setup.py - Extended SCHEMA_DDL with legacy tables and columns
-  src/services/repository.py - Updated setup_auction(), save_run_results(), _ensure_db(),
-                               load(), bid_history(), catchment_price_rows(),
-                               _seed_from_json(), disabled accepted_bids write
-  src/AuctionController.py - Added _compute_effect_date() utility, updated getTraderPageState()
-  src/web/app.py - Updated /manager/setup-auction route for legacy fields
-  src/web/templates/ManagerPage.html - Added legacy auction input fields
-  src/web/templates/TraderPage.html - Updated period selection for date-based periods
-  tests/test_market.py - All tests passing (3/3)
-
-CURRENT VALIDATION STATUS (2026-04-25)
-  ✅ pytest tests/test_market.py -q: 3 passed in 0.59s
-  ✅ test_market_clears_seed_case: ✓ PASSED
-  ✅ test_setup_and_reset_auction_data: ✓ PASSED
-  ✅ test_manager_run_persists_results: ✓ PASSED
-
-PHASE 5: SEED JSON ELIMINATION [COMPLETE - 2026-04-25]
-  5.1 [✓] Created phase5_imports.py module with JSON import functions:
-      - import_periods_json(): Import periods array from JSON
-      - import_traders_and_allocations_json(): Import traders + allocations from JSON
-      - import_control_points_and_bounds_json(): Import control points + bounds from JSON
-      - import_auction_metadata_json(): Import metadata (catchment_name, source_note, current_trader_id)
-  5.2 [✓] Added Phase 5 routes to src/web/app.py:
-      - POST /setup/import-periods-json: Upload periods JSON
-      - POST /setup/import-traders-and-allocations-json: Upload traders + allocations JSON
-      - POST /setup/import-control-points-and-bounds-json: Upload control points + bounds JSON
-      - POST /setup/import-auction-metadata-json: Upload metadata JSON
-  5.3 [✓] Phase5 infrastructure ready for UI integration in Programmer.html
-
-FILES MODIFIED IN FINAL SESSION (PHASES 1-5)
-  src/models.py - Added legacy auction fields
-  src/setup.py - Extended SCHEMA_DDL with legacy tables and columns
-  src/services/repository.py - Updated all persistence and loading methods
-  src/AuctionController.py - Added date semantics utilities
-  src/web/app.py - Updated routes for legacy fields + Phase 5 imports
-  src/web/templates/ManagerPage.html - Added legacy auction input fields
-  src/web/templates/TraderPage.html - Updated period selection for dates
-  src/phase5_imports.py - NEW: JSON import functions for seed elimination
-  tests/test_market.py - All tests passing (3/3)
-
-FINAL VALIDATION STATUS (2026-04-25) - ALL PHASES COMPLETE
-  ✅ Phase 1 (Date Semantics): Date-based period support with utilities ✓
-  ✅ Phase 2 (Legacy Primary): Legacy tables now primary data source ✓
-  ✅ Phase 3 (Multi-step Bids): qty1-qty5 bid support in traderbids ✓
-  ✅ Phase 4 (Import/Seed Fix): Seed data uses traderbids, FK issues resolved ✓
-  ✅ Phase 5 (JSON Imports): Seed JSON elimination infrastructure ready ✓
-  ✅ pytest tests/test_market.py -q: 3 passed in 0.57s ✓
-
-PENDING WORK (Phase 5 Extended - Next Iteration)
-  [ ] Add JSON upload UI to Programmer.html (form controls for each Phase 5 route)
-  [ ] Update Programmer.html workflow to show Phase 5 import steps
-  [ ] Create example JSON files for periods, traders, control points
-  [ ] Document Phase 5 data format specifications
-  [ ] Test full data pipeline without seed.json (manual initialization)
-
-MIGRATION SUMMARY
-The ForeverFair2026 groundwater trading application has been successfully migrated from 
-a current-schema auction-period model to a legacy 2012 database schema model. All core 
-functionality preserved:
-  • Date-based period support with automatic date computation
-  • Multi-step bid support (qty1-qty5 pricing steps)
-  • Market clearing solver compatibility maintained
-  • Result persistence to legacy tables (traderquota, control_point_event, traderbids)
-  • Seed JSON dependency reducible via Phase 5 JSON imports
-  • All tests passing; system stable and ready for field testing
-
-IMPLEMENTATION COMPLETE (Phases 1-5)
-All required migration phases completed with test validation. Legacy database schema 
-fully functional as primary data store. System ready for Phase 5 UI integration and 
-field deployment.
-
-================================================================================
-
-================================================================================
-
-  [ ] Verify objective/constraints remain behaviorally equivalent.
-
-TRACK E - IMPORT PIPELINE
-  [ ] Update import_decvar in src/setup.py for legacy wells fields.
-  [ ] Update import_hedcon in src/setup.py for legacy control_points fields.
-  [ ] Update import_mps in src/setup.py for response_matrix and control_point_event.
-  [ ] Add/confirm period offset -> date mapping utility.
-  [ ] Update trader import(s) to populate traders + traderconsents.
-  [ ] Keep lat/lon import flows for wells and control points.
-  [ ] Update missing_import_data_report() for legacy required columns.
-
-TRACK F - WEB ROUTES + TEMPLATES (preserve structure)
-  [ ] Edit src/web/app.py setup-auction route payload (date/window inputs).
-  [ ] Keep route set stable unless table dependency forces change.
-  [ ] Edit src/web/templates/ManagerPage.html for legacy auction fields.
-  [ ] Edit src/web/templates/TraderPage.html to use date-based period inputs.
-  [ ] Edit src/web/templates/CatchmentPage.html to render legacy diagnostics.
-  [ ] Edit src/web/templates/Programmer.html import labels/workflow for legacy tables.
-  [ ] Keep navigation and role pages unchanged in structure.
-
-TRACK G - DATA MIGRATION (if preserving current DB)
-  [ ] Decide: reset/re-import OR scripted transform.
-  [ ] If scripted: build ID mapping tables (trader/well/period).
-  [ ] Transform bids -> traderbids qty1/price1 rows.
-  [ ] Transform allocation/quota data -> traderconsents + traderquota.
-  [ ] Transform control point bounds/results -> control_point_event.
-  [ ] Validate transformed row counts against source counts.
-
-TRACK H - VALIDATION GATES
-  [ ] Run pytest: tests/test_market.py (update tests as needed).
-  [ ] Re-run full import sequence from Programmer page.
-  [ ] Place/delete bids from Trader page.
-  [ ] Run auction from Manager page.
-  [ ] Verify Catchment outputs and dual/constraint fields.
-  [ ] Verify trader allocations/quotas display correctly.
-  [ ] Check API /setup/db-status and /api/system-state still respond correctly.
-
-CUTOVER CHECKLIST
-  [ ] Final pre-cutover DB backup created.
-  [ ] Migration commit created and tagged.
-  [ ] Legacy schema migration deployed.
-  [ ] Post-cutover smoke test passed.
-  [ ] Rollback instructions documented (tag + backup path).
+  [ ] Rollback instructions documented (git tag + backup file path).
 

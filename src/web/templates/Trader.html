@@ -1,67 +1,134 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trader guide</title>
-  <link rel="stylesheet" href="../static/site.css">
+<!DOCTYPE html><html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair 3.0, Trader Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
 </head>
 <body>
-  <h1>Trader guide</h1>
-  <p><a href="/researcher">Researcher overview</a></p>
+	<p><a href="/login">Switch participant</a> | <a href="/trader">Trader's page</a> | <a href="/auctionmanager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+	<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Trader page</h1>
 
-  <h2>What this system does</h2>
-  <p>Forever Fair runs a groundwater allocation auction. Traders submit bids by period and well. The system clears bids against environmental constraints and returns accepted quantities and implied prices.</p>
+	{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 
-  <h2>Before you participate</h2>
-  <ul>
-    <li>Your account must be configured by the auction manager.</li>
-    <li>Your wells must be recorded in the system.</li>
-    <li>You should understand market rules and payment obligations.</li>
-    <li>Your metering and reporting obligations must be in place.</li>
-  </ul>
+<p>Welcome, <strong>{{ current_participant.name }}</strong>.
+{% if current_well %}
+  Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
+{% else %}
+  No well is registered for your account.
+{% endif %}
+</p>
 
-  <h2>How to submit a bid</h2>
-  <ol>
-    <li>Log in at the participant login page and select your participant identity.</li>
-    <li>Open the trader page.</li>
-    <li>Select a well and auction period.</li>
-    <li>Enter quantity and price for each tradable period. (Consider prohibiting raising bids for later periods. Warn that future quota won now can be scaled down.)</li>
-    <li>Submit your bid. It will then appear in your bid history.</li>
-  </ol>
+<h2>Auction {{ auction_case.auction.id }}
+  — {% if auction_case.auction.auction_type == 'tentative' %}<em>Tentative</em>{% else %}Final{% endif %}
+  — {% if auction_case.auction.status == 'CLOSED' %}Closed{% else %}Open, closes {{ auction_case.auction.closed_date }}{% endif %}
+</h2>
 
-  <h2>Bidding Principle</h2>
-  <p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less. A future release will support fuller multi-step bid curves directly in the UI.</p>
+{% if auction_case.auction.status == 'OPEN' %}
+<h2>Enter new bid</h2>
+<form method="post" action="/bids/new">
+	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
+	<input type="hidden" name="well_id" value="{{ current_well.id }}">
 
-  <h2>Trading cadence and flexibility</h2>
-  <ul>
-    <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
-    <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
-    <li>If you do not rebid in a cycle, prior bids can be reused automatically when enabled by the manager.</li>
-  </ul>
+	<label>Period:
+		<select name="period_id" required>
+		{%- for row in period_rows %}
+			<option value="{{ row.period_key }}">{{ row.period_label }}</option>
+		{%- endfor %}
+		</select>
+	</label>
+	<label>Quantity requested (ML): <input type="number" name="quantity" min="0.1" step="0.1" required></label>
+	<label>Bid price ($/ML): <input type="number" name="price" min="0.01" step="0.01" required></label>
+	<p><strong>Optional additional steps</strong> (up to 5 total):</p>
+	<label>Step 2 quantity (ML): <input type="number" name="quantity2" min="0.1" step="0.1"></label>
+	<label>Step 2 bid price ($/ML): <input type="number" name="price2" min="0.01" step="0.01"></label>
+	<label>Step 3 quantity (ML): <input type="number" name="quantity3" min="0.1" step="0.1"></label>
+	<label>Step 3 bid price ($/ML): <input type="number" name="price3" min="0.01" step="0.01"></label>
+	<label>Step 4 quantity (ML): <input type="number" name="quantity4" min="0.1" step="0.1"></label>
+	<label>Step 4 bid price ($/ML): <input type="number" name="price4" min="0.01" step="0.01"></label>
+	<label>Step 5 quantity (ML): <input type="number" name="quantity5" min="0.1" step="0.1"></label>
+	<label>Step 5 bid price ($/ML): <input type="number" name="price5" min="0.01" step="0.01"></label>
+	<label><input type="checkbox" name="is_automatic" value="true"> Standing bid — carry forward automatically to future auctions</label>
+	<button type="submit">Submit bid</button>
+</form>
+{% else %}
+<p><em>Bidding is closed for this auction.</em></p>
+{% endif %}
 
-  <h2>Current validation rules</h2>
-  <ul>
-    <li>Auction must be open.</li>
-    <li>The selected well must belong to your participant account.</li>
-    <li>Period must be part of the active auction.</li>
-    <li>Quantity and price must be positive.</li>
-  </ul>
+<h2>Allocations from auction {{ auction_case.auction.id }}</h2>
+<table><thead><tr><th>Period</th><th>Allocated quantity</th></tr></thead>
+	<tbody>{% for row in period_rows %}<tr><td>{{ row.period_label }}</td><td>{{ '%.2f'|format(row.allocation) }} ML</td></tr>{% endfor %}</tbody>
+</table>
 
-  <h2>Interpreting results</h2>
-  <ul>
-    <li>Accepted quantity may be less than submitted quantity.</li>
-    <li>Prices are driven by binding control-point constraints.</li>
-    <li>Future periods may be revised in later operational updates.</li>
-  </ul>
+<h2>Bidding history</h2>
+<table>
+	<thead><tr><th>Bid id</th><th>Period</th><th>Quantity</th><th>Bid price</th><th>Final allocation</th><th>Traded price</th><th>Submitted</th><th></th><th></th></tr>
+	</thead>
+	<tbody>
+		{% for bid in bid_history %}
+		<tr><td>{{ bid.bid_id }}</td>
+			<td>{{ bid.period_id }}</td>
+			<td>{% if bid.quantity < 0 %}<span class="sale">{{ '%.2f'|format(bid.quantity) }} ML (sell)</span>{% else %}<span class="buy">{{ '%.2f'|format(bid.quantity) }} ML</span>{% endif %}</td>
+			<td>${{ '%.2f'|format(bid.price) }}</td>
+			<td>{% if bid.final_allocation is not none %}{{ '%.2f'|format(bid.final_allocation) }} ML{% else %}&mdash;{% endif %}</td>
+			<td>{% if bid.traded_price is not none %}${{ '%.2f'|format(bid.traded_price) }}{% else %}&mdash;{% endif %}</td>
+			<td>{{ bid.submitted_at }}</td>
+			<td>{% if bid.is_automatic %}<abbr title="Standing bid: will carry forward to future auctions">&#9733; Standing</abbr>{% endif %}</td>
+			<td>{% if auction_case.auction.status == 'OPEN' %}<form method="post" action="/bids/{{ bid.bid_id }}/delete"><button type="submit">Delete</button></form>{% endif %}</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
 
-  <h2>Planned extension</h2>
-  <p>A future release is planned to allow trader registration without an owned well, so a trader can buy water on behalf of an control point<\p>
+<hr>
+<h2>Trader guide</h2>
 
-  <h2>References</h2>
-  <ul>
-    <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
-    <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
-  </ul>
+<h3>What this system does</h3>
+<p>Forever Fair runs a groundwater allocation auction. Traders submit bids by period and well. The system clears bids against environmental constraints and returns accepted quantities and implied prices.</p>
+
+<h3>Before you participate</h3>
+<ul>
+  <li>Your account must be configured by the auction manager.</li>
+  <li>Your wells must be recorded in the system.</li>
+  <li>You should understand market rules and payment obligations.</li>
+  <li>Your metering and reporting obligations must be in place.</li>
+</ul>
+
+<h3>How to submit a bid</h3>
+<ol>
+  <li>Log in at the participant login page and select your participant identity.</li>
+  <li>Select a well and auction period.</li>
+  <li>Enter quantity and price for each tradable period.</li>
+  <li>Submit your bid. It will then appear in your bid history.</li>
+</ol>
+
+<h3>Bidding principle</h3>
+<p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
+
+<h3>Trading cadence and flexibility</h3>
+<ul>
+  <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
+  <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
+  <li>If you do not rebid in a cycle, prior bids can be reused automatically when enabled by the manager.</li>
+</ul>
+
+<h3>Current validation rules</h3>
+<ul>
+  <li>Auction must be open.</li>
+  <li>The selected well must belong to your participant account.</li>
+  <li>Period must be part of the active auction.</li>
+  <li>Quantity and price must be positive.</li>
+</ul>
+
+<h3>Interpreting results</h3>
+<ul>
+  <li>Accepted quantity may be less than submitted quantity.</li>
+  <li>Prices are driven by binding control-point constraints.</li>
+  <li>Future periods may be revised in later operational updates.</li>
+</ul>
+
+<h3>References</h3>
+<ul>
+  <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
+  <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
+</ul>
+
 </body>
 </html>

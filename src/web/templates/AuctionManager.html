@@ -4,33 +4,50 @@
 </head>
 
 <body>
-<p><a href="/researcher">Researcher overview</a> | <a href="/trader">Trader's page</a> | <a href="/docs/auctionmanager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/researcher">Researcher overview</a> | <a href="/trader">Trader's page</a> | <a href="/auctionmanager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Auction Manager's page</h1>
 
 <h2>Set up future auction</h2>
 <form method="post" action="/manager/setup-auction">
 	<label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label><br/>
+	<label>First water take date/time: <input type="datetime-local" id="first-water-take-time" name="first_water_take_time" value="{{ default_first_water_take }}" required></label><br/>
+	<label>Last water take date/time: <input type="datetime-local" id="last-water-take-time" name="last_water_take_time" value="{{ default_last_water_take }}" required></label><br/>
 	<label><input type="checkbox" name="tentative"> Tentative auction</label><br/>
-	<label>Description: <textarea name="description" rows="3" cols="52" placeholder="Optional description for operators and audit"></textarea></label><br/>
-	<label>Bid period start (integer): <input type="number" name="bid_period_start" min="1" required></label><br/>
-	<label>Bid period end (integer): <input type="number" name="bid_period_end" min="1" required></label><br/>
 	<button type="submit">Create auction</button>
 </form>
-<p><em>Legacy behavior: closing date must be in the future; auction type is Final unless Tentative is checked; bid periods are an integer range from start to end.</em></p>
+<p><em>Closing date must be in the future; auction type is Final unless Tentative is checked.</em></p>
+{% if period_length_hours %}
+	{% if period_length_hours == 1 %}
+		<p><strong>Response matrix period length:</strong> 1 hour.</p>
+	{% elif period_length_hours == 24 %}
+		<p><strong>Response matrix period length:</strong> 1 day.</p>
+	{% elif period_length_hours == 168 %}
+		<p><strong>Response matrix period length:</strong> 1 week.</p>
+	{% else %}
+		<p><strong>Response matrix period length:</strong> {{ period_length_hours }} hours.</p>
+	{% endif %}
+	<p><strong>Default last constrained date:</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %} (using {{ response_period_count }} response periods){% endif %}</p>
+{% else %}
+	<p><strong>Response matrix period length:</strong> not set yet. Import an .mps file on Programmer page and choose hour/day/week.</p>
+	<p><strong>Default last constrained date:</strong> n/a</p>
+{% endif %}
 
 <h2>Run or review auctions</h2>
 
-<form method="post" action="/manager/reset-data"></form>Number of auctions currently scheduled: {{ auctions|length }}. <button type="submit">Reset database from seed</button> {% if notice %}{{ notice }}{% endif %}</form>
+<p>Number of auctions currently scheduled: {{ auctions|length }}. {% if notice %}<strong>{{ notice }}</strong>{% endif %}</p>
 
-<table><thead><tr><th>Auction id</th><th>Label</th><th>Status</th><th>Latest solve status</th><th>Latest objective</th><th>Latest run at</th><th></th></tr></thead>
+<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th></tr></thead>
 	<tbody>{% for auction in auctions %}
-		<tr><td>{{ auction.auction_id }}</td>
-			<td>{{ auction.label }}</td>
-			<td>{{ auction.status }}</td>
-			<td>{{ auction.solve_status or 'Not run' }}</td>
-			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}-{% endif %}</td>
-			<td>{{ auction.latest_run_at or '-' }}</td>
-			<td><form method="post" action="/manager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form></td>
+		{% set is_tentative = auction.auction_type == 'tentative' %}
+		{% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
+		<tr{% if is_tentative %} class="tentative"{% endif %}>
+			<td>{{ auction.auction_id }}</td>
+			<td>{{ auction.closed_date }}</td>
+			<td>{% if is_tentative %}Tentative{% else %}Final{% endif %}</td>
+			<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
+			<td>{{ auction.solve_status or '—' }}</td>
+			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
+			<td>{% if not is_closed %}<form method="post" action="/manager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
 		</tr>
 		{% endfor %}
 	</tbody></table>
@@ -42,6 +59,56 @@
 	<li>Confirm hydrology constraints are current and defensible.</li>
 	<li>Operate auction setup, clearing, and reporting steps.</li>
 </ul>
+
+<script>
+(function(){
+	const closeInput = document.querySelector('input[name="bid_close_time"]');
+	const firstInput = document.getElementById('first-water-take-time');
+	const lastInput = document.getElementById('last-water-take-time');
+	const constrained = document.getElementById('last-constrained-date');
+	const periodLenHours = Number("{{ period_length_hours or 0 }}");
+	const responsePeriods = Number("{{ response_period_count or 0 }}");
+
+	function toLocalValue(dt){
+		const yyyy = dt.getFullYear();
+		const mm = String(dt.getMonth() + 1).padStart(2, '0');
+		const dd = String(dt.getDate()).padStart(2, '0');
+		const hh = String(dt.getHours()).padStart(2, '0');
+		const mi = String(dt.getMinutes()).padStart(2, '0');
+		return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+	}
+	function nextMonday(dt){
+		const copy = new Date(dt.getTime());
+		const day = copy.getDay();
+		let add = (8 - day) % 7;
+		if (add === 0) add = 7;
+		copy.setDate(copy.getDate() + add);
+		copy.setHours(0, 0, 0, 0);
+		return copy;
+	}
+	function refreshDefaultsFromClose(){
+		if (!closeInput || !closeInput.value) return;
+		const closeDt = new Date(closeInput.value);
+		if (Number.isNaN(closeDt.getTime())) return;
+		const first = nextMonday(closeDt);
+		firstInput.value = toLocalValue(first);
+		const last = new Date(first.getTime());
+		last.setDate(last.getDate() + 28);
+		lastInput.value = toLocalValue(last);
+		refreshLastConstrained();
+	}
+	function refreshLastConstrained(){
+		if (!constrained || !firstInput || !firstInput.value || !periodLenHours || !responsePeriods) return;
+		const first = new Date(firstInput.value);
+		if (Number.isNaN(first.getTime())) return;
+		const lc = new Date(first.getTime() + periodLenHours * responsePeriods * 3600 * 1000);
+		constrained.textContent = toLocalValue(lc);
+	}
+	if (closeInput) closeInput.addEventListener('change', refreshDefaultsFromClose);
+	if (firstInput) firstInput.addEventListener('change', refreshLastConstrained);
+	refreshLastConstrained();
+})();
+</script>
 
 <h2>Current manager actions in the software</h2>
 <table>

@@ -1,4 +1,10 @@
 body {/* background: rgb(240,240,240); color: black;*/ font-family: garamond; margin-left: 15%; margin-right: 20%;}
+a.special {background: silver; color: navy; text-decoration: none;} a.special:hover {color: brown; text-decoration: none;}
+a {text-decoration: none;}
+
+button {font: inherit; cursor: pointer;}
+div.notice {background: #fffbe6; border: 1px solid #e0c040; padding: 0.4em 0.8em; margin-bottom: 1em;}
+form {line-height: 150%;}
 
 h1 {font-size: 160%; font-weight: normal; margin-left: -7%; font-family: garamond;}
 h1.title {margin-left: 0%; font-family: garamond;}
@@ -7,21 +13,20 @@ h3 {font-size: 100%; font-weight: bold; margin-left: -2%; font-family: garamond;
 h4 {font-size: 100%; font-weight: normal; margin-left: 0%; font-family: garamond;}
 
 p {font-size: 100%; font-weight: normal; font-family: garamond; margin-bottom: 1em;}
-
-pre {font-family: verdana, monospace;}
+pre {font-family: verdana, monospace; font-size: 85%;}
+span.sale {color: #a00;}
+span.buy {color: #060;}
 sub {font-size: 80%;} super {font-size: 80%;}
 
-form {line-height: 150%;}
-
 table {width: 100%; border-collapse: collapse; font-size: 100%; margin-top: 1em;}
-td {font-family: garamond; font-size: 100%; padding: 7px 6px; border: 1px solid #ddd; text-align: left; vertical-align: top;}
-th {padding: 7px 6px; border: 1px solid #ddd; text-align: left; vertical-align: top; background: #f3f3f3; font-weight: 700; text-transform: none; letter-spacing: 0;}
+td {border: 1px solid #ddd; font-family: garamond; line-height: 80%; padding: 7px 6px; text-align: left; vertical-align: top;} 
+th {padding: 7px 6px; border: 1px solid #ddd; text-align: left; vertical-align: bottom; background: #f3f3f3; font-weight: 700; text-transform: none; letter-spacing: 0;} */
 
-a.special {background: silver; color: navy; text-decoration: none;} a.special:hover {color: brown; text-decoration: none;}
-a {text-decoration: none;}
-
-button {font: inherit; cursor: pointer;}
+tr.tentative td {color: #888;}
+tr.closed td {color: #aaa; font-style: italic;}
+ul, ol {font-size: 100%; list-style-position: inside; padding-left: 0; padding-inline-start: 0; margin-left: 0; margin-bottom: 1em; font-weight: normal; font-family: garamond;}
 
 @media print {
 body, h1, h2, h3, h4, h5, h6, p, table {margin-left: 0%; margin-right: 0%; page-break-inside: avoid;}
-div.marginnote {font-size: 100%; font-weight: normal; margin: 0.9em 0% 0em; position: relative; width: 100%;} }
+div.marginnote {font-size: 100%; font-weight: normal; margin: 0.9em 0% 0em; position: relative; width: 100%;}
+}

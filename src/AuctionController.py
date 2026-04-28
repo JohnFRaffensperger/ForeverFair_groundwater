@@ -2,30 +2,32 @@
 # Purpose: Coordinate setup, execution, and view state for auctions.
 
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from RunAuctionModule import runAuction
 from services.repository import AuctionRepository
 
-def _compute_effect_date(auction_date: str | None, days_in_period: int | None, offset: int) -> str:
-	"""Convert auction_date + offset * days_in_period to ISO date string.
-	If auction_date or days_in_period missing, return offset as string (integer fallback)."""
-	if not auction_date or not days_in_period:
-		return str(offset)
+def SetUpAuction( repository: AuctionRepository, auction_id: str | None, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, clear_existing_bids: bool = True, auction_type: str | None = None, ):
+	# A.5: forbid editing a closed auction.
+	if auction_id:
+		existing = next((a for a in repository.list_auctions() if str(a.get("auction_id")) == str(auction_id)), None)
+		if existing is not None:
+			now_iso = datetime.now().isoformat(timespec="minutes")
+			bid_close = existing.get("closed_date") or ""
+			if existing.get("status") == "CLOSED" or (bid_close and bid_close < now_iso): raise ValueError("Cannot edit a closed auction.")
 	try:
-		base = datetime.fromisoformat(auction_date).date()
-		effect_date = base + timedelta(days=offset * days_in_period)
-		return effect_date.isoformat()
-	except Exception:
-		return str(offset)
-
-def SetUpAuction( repository: AuctionRepository, auction_id: str | None, label: str, bid_close_label: str, period_labels: list[str], clear_existing_bids: bool = True, auction_date: str | None = None, days_in_period: int | None = None, number_of_periods: int | None = None, auction_type: str | None = None, ):
-	clean_labels = [label.strip() for label in period_labels if label.strip()]
-	if len(clean_labels) == 0: raise ValueError("At least one period label is required.")
-	return repository.setup_auction(auction_id=auction_id, label=label, bid_close_label=bid_close_label, period_labels=clean_labels, clear_existing_bids=clear_existing_bids, auction_date=auction_date, days_in_period=days_in_period, number_of_periods=number_of_periods, auction_type=auction_type,)
+		close_dt = datetime.fromisoformat(closed_date)
+		if close_dt < datetime.now(): raise ValueError("Auction closing date/time must be in the future.")
+	except ValueError as e:
+		if "must be in the future" in str(e) or "Cannot edit" in str(e): raise  # re-raise our own validation errors only
+		# unparseable closed_date (freeform string) — allow through
+	if datetime.fromisoformat(last_water_take_date) < datetime.fromisoformat(first_water_take_date): raise ValueError("lastWaterTakeDate must be on or after firstWaterTakeDate")
+	if int(period_length_hours) <= 0: raise ValueError("period_length_hours must be positive")
+	return repository.setup_auction(auction_id=auction_id, closed_date=closed_date, first_water_take_date=first_water_take_date, last_water_take_date=last_water_take_date, period_length_hours=int(period_length_hours), clear_existing_bids=clear_existing_bids, auction_type=auction_type,)
 
 def ResetAuctionData(repository: AuctionRepository): return repository.reset_runtime_to_seed()
 
 def runCurrentAuction(repository: AuctionRepository, auction_id: str):
+	if not repository.has_active_bids(auction_id): raise ValueError("The auction cannot run because it has no bids.")
 	clearing_start_time = datetime.now(timezone.utc).isoformat()
 	auction_case = repository.load(auction_id)
 	market_result = runAuction(auction_case)
@@ -38,19 +40,18 @@ def getTraderPageState(repository: AuctionRepository, auction_id: str | None = N
 	current_wells = repository.wells_for_participant(auction_case, current_participant)
 	current_well = current_wells[0] if current_wells else None
 	bid_history = repository.bid_history(auction_case.auction.id, current_participant.id)
-	# Compute effect dates for periods if auction_date and days_in_period are set
+	
 	period_rows = []
-	for idx, period in enumerate(auction_case.auction.periods):
-		effect_date = _compute_effect_date(auction_case.auction.auction_date, auction_case.auction.days_in_period, idx)
-		period_rows.append({
-			"period_id": period.id,
-			"period_key": effect_date,  # Use effect_date as key for date-based periods
-			"period_label": period.label,
-			"allocation": round(current_participant.allocation_by_period.get(period.id, 0.0), 3),
-		})
+	for period in auction_case.auction.periods:
+		period_key = str(period.id)
+		quota = repository.get_quota(participant_id=current_participant.id, period_start=period_key, auction_id=auction_case.auction.id,).get(period_key, [0.0, 0.0])
+		period_rows.append({"period_id": period.id, "period_key": period_key, "period_label": period.label, "allocation": quota[1],})
 	return {"auction_case": auction_case, "current_participant": current_participant, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_case.auction.id,}
 
-def getManagerPageState(repository: AuctionRepository) -> dict: return {"auctions": repository.list_auctions()}
+def getManagerPageState(repository: AuctionRepository) -> dict:
+	period_length_hours = repository.latest_period_length_hours()
+	response_period_count = repository.response_matrix_period_count()
+	return {"auctions": repository.list_auctions(), "period_length_hours": period_length_hours, "response_period_count": response_period_count,}
 
 def getCatchmentPageState(repository: AuctionRepository, auction_id: str | None = None) -> dict:
 	auction_case = repository.load(auction_id)

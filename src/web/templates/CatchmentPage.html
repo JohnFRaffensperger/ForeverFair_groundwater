@@ -7,10 +7,11 @@
 	<link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
 </head>
 <body>
-<p><a href="/trader">Trader's page</a> | <a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/login">Login</a> | <a href="/researcher">Researcher</a> | <a href="/trader">Trader's page</a> | <a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. {{ catchment_name }} catchment view</h1>
 
-<h2>Results for auction {{ auction.id }}: {{ auction.label }}  {% if notice %}{{ notice }}{% endif %}</h2>
+<h2>Results for auction {{ auction.id }}</h2>
+{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 
 <h3>Prices at each well</h3>
 <table><thead><tr><th>Well</th><th>Period</th><th>Price</th></tr></thead>

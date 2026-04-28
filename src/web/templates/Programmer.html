@@ -4,134 +4,145 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Programmer's page</title>
-  <link rel="stylesheet" href="../static/site.css">
+  <link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
 </head>
 <body>
 	  <p><a href="/researcher">Researcher page</a></p>
 
   <h1>Programmer's page</h1>
   
-  <h2>Software architecture</h2>
-  <ul><li>Web routes and pages: FastAPI app in src/web/app.py.</li>
-    <li>Persistence: SQLite repository in src/services/repository.py.</li>
-    <li>Solver: PuLP model in src/RunAuctionModule.py.</li>
-    <li>Auction orchestration: src/AuctionController.py and src/BiddingController.py.</li>
-  </ul>
+  <p>The software architecture for web routes and pages is the FastAPI app in src/web/app.py. An SQLite repository provides data persistence in src/services/repository.py.
+	The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt.
+	The linear programming optimization solver is PuLP model in src/RunAuctionModule.py. Auction orchestration is done in src/AuctionController.py and src/BiddingController.py.</p>
 
   <h2>Installing the necessary Python libraries</h2>
-  <p>From the workspace root (<code>ForeverFair2026</code>), install all dependencies:</p>
+  <p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p>
   <pre>pip install -e ".[dev]"</pre>
-  <p>This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's <code>pyproject.toml</code>.</p>
-  <p>To start the development server after installation, run:</p>
+  <p>2. To start the development server after installation, run:</p>
   <pre>python -m uvicorn src.web.app:app --reload</pre>
-  <p>Then visit <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a> in your browser.</p>
-
-  <h2>Recommended import modules</h2>
-  <table>
-    <thead>
-      <tr><th>Module</th><th>Input</th><th>Output tables</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>import_decvar.py</td><td>*.decvar</td><td>wells (MODFLOW layer, row, column metadata)</td></tr>
-      <tr><td>import_hedcon.py</td><td>*.hedcon</td><td>control_points (location metadata)</td></tr>
-      <tr><td>import_mps.py</td><td>*.mps</td><td>response_factors, control_point_bounds, initial rights records</td></tr>
-      <tr><td>import_gwm2k.py</td><td>case folder</td><td>calls all import steps in sequence</td></tr>
-    </tbody>
-  </table>
-
-  <h2>Index decoding rules used by legacy code</h2>
-  <p>Well token format: wellNNNN.</p>
-  <pre>well_number = 1 + floor((index - 1) / number_pump_periods)
-pump_period = 1 + (index - 1) mod number_pump_periods</pre>
-  <p>Control-point token format in HEDCON: bonNNNN.</p>
-  <pre>control_point = 1 + floor((index - 1) / number_control_periods)</pre>
-  <p>Control-point token format in MPS rows: numeric row name.</p>
-  <pre>control_point = 1 + floor((row_index - 1) / number_control_periods)
-effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
-
-  <h2>SQLite integration notes</h2>
-  <ul><li>Use sqlite3 transactions and commit only after each stage succeeds.</li>
-    <li>Add dry-run mode to parse and validate without writing rows.</li>
-    <li>Add idempotent behavior for repeat imports of the same case.</li>
-    <li>Write pytest fixtures for a tiny synthetic decvar/hedcon/mps set.</li>
-  </ul>
-
-  <h2>How to use an existing groundwater model</h2>
-  <p>Run your model through GWM2K or similar to export a linear program, with decvar, hedcon, and mps files.
+  <p>3. Open your browser to <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.</p>
+  <p>4. Your hydrologist should run the hydrology model through GWM2K or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.
     This code here reads those files to get the response matrix, the number of wells, the number of control points, and the number of time periods.
 	In principle, then, this code will work with any groundwater model that works with GWM2K.
-	Typically, this is the responsibility of a competent hydrologist. Buttons below allow you to import these files.</p>
+	 Buttons below allow you to import these files, and import_gwm2k.py runs the steps in sequence.</p>
 
-<h2>1. Database status</h2>
-  {% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %}
+<h2>Database status</h2>
+{% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %}
 
-  <h3>Missing groundwater import data</h3>
-  {% if missing_report and missing_report.db_exists %}
-  <table>
-    <thead>
-      <tr>
-        <th>Table</th>
-        <th>Total rows</th>
-        <th>Missing gw_model_row</th>
-        <th>Missing gw_model_column</th>
-        <th>Missing latitude</th>
-        <th>Missing longitude</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>wells</td>
-        <td>{{ missing_report.wells.total }}</td>
-        <td>{{ missing_report.wells.missing_gw_model_row }}</td>
-        <td>{{ missing_report.wells.missing_gw_model_column }}</td>
-        <td>{{ missing_report.wells.missing_latitude }}</td>
-        <td>{{ missing_report.wells.missing_longitude }}</td>
-      </tr>
-      <tr>
-        <td>control_points</td>
-        <td>{{ missing_report.control_points.total }}</td>
-        <td>{{ missing_report.control_points.missing_gw_model_row }}</td>
-        <td>{{ missing_report.control_points.missing_gw_model_column }}</td>
-        <td>{{ missing_report.control_points.missing_latitude }}</td>
-        <td>{{ missing_report.control_points.missing_longitude }}</td>
-      </tr>
-    </tbody>
-  </table>
+{% if missing_report and missing_report.db_exists %}
+<table><thead><tr><th>Table</th>
+	<th>Total rows</th><th>Missing gw_model_row</th><th>Missing gw_model_column</th><th>Missing latitude</th><th>Missing longitude</th></tr></thead>
+	<tbody><tr><td>wells</td><td>{{ missing_report.wells.total }}</td><td>{{ missing_report.wells.missing_gw_model_row }}</td><td>{{ missing_report.wells.missing_gw_model_column }}</td><td>{{ missing_report.wells.missing_latitude }}</td><td>{{ missing_report.wells.missing_longitude }}</td></tr>
+	<tr><td>control_points</td><td>{{ missing_report.control_points.total }}</td><td>{{ missing_report.control_points.missing_gw_model_row }}</td><td>{{ missing_report.control_points.missing_gw_model_column }}</td><td>{{ missing_report.control_points.missing_latitude }}</td><td>{{ missing_report.control_points.missing_longitude }}</td></tr>
+</tbody></table>
 
-  <p><strong>Sample wells with missing values:</strong>
-    {% if missing_report.sample_missing_well_ids %}
-      {{ missing_report.sample_missing_well_ids|join(', ') }}
-    {% else %}
-      none
-    {% endif %}
-  </p>
-  <p><strong>Sample control points with missing values:</strong>
-    {% if missing_report.sample_missing_control_point_ids %}
-      {{ missing_report.sample_missing_control_point_ids|join(', ') }}
-    {% else %}
-      none
-    {% endif %}
-  </p>
-  {% else %}
-  <p><em>No database file found yet. Create or import a database to see missing-data checks.</em></p>
-  {% endif %}
+<p><strong>Sample wells with missing values: </strong>{% if missing_report.sample_missing_well_ids %} {{ missing_report.sample_missing_well_ids|join(', ') }} {% else %}none{% endif %}</p>
+<p><strong>Sample control points with missing values: </strong>{% if missing_report.sample_missing_control_point_ids %}{{ missing_report.sample_missing_control_point_ids|join(', ') }}{% else %}none{% endif %}</p>
+{% else %}<p><em>No database file found. Create or import a database to see missing-data checks.</em></p>{% endif %}
 
-  <div id="db-status-panel"><em>Loading&hellip;</em></div>
+<div id="db-status-panel"><em>Loading&hellip;</em></div>
 
-  <form id="create-db-form" method="post" action="/setup/create-db" style="display:inline-block; margin-right:1em;">
-    <button type="submit">Create empty database</button>
-  </form>
-  <form id="delete-db-form" method="post" action="/setup/delete-db" style="display:inline-block;"
-        onsubmit="return confirm('Are you sure you want to delete the whole Forever Fair database?')">
-    <button type="submit">Delete database</button>
-  </form>
+<form id="create-db-form" method="post" action="/setup/create-db" style="display:inline-block; margin-right:1em;"><button type="submit">Create empty database</button></form>
+<form id="delete-db-form" method="post" action="/setup/delete-db" style="display:inline-block;"onsubmit="return confirm('Are you sure you want to delete the whole Forever Fair database?')">
+<button type="submit">Delete database</button></form>
+
+<h1>Setting up the database: 7 files</h1>
+<p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
+
+<h2>1. Import .decvar file</h2>
+<p>Forever Fair uses this data for the list of wells. A GWM2K .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
+	The layer, row, and col fields are the MODFLOW grid coordinates. Module import_decvar.py stores this data in table wells with one well row per unique well number.
+	(Confusingly, GWM2K writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
+	The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
+<div id="decvar-result" style="display:none"></div>
+<form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
+<p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>2. Import .hedcon file</h2>
+<p>Forever Fair uses this information for the list of control points and head constraints by time periods.
+	A GWM2K .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
+	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
+	Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
+	The module also stores per-period bounds from RHS_head in table default_control_point_bounds. 
+	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
+(Like the wellNNNN convention in the GWM2K .decvar file, GWM2k formats control-point tokens in HEDCON as bonNNNN.)</p>
+
+<div id="hedcon-result" style="display:none"></div>
+<form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
+<p><label for="hedcon-file">File type ".hedcon":</label> <input type="file" id="hedcon-file" name="file" accept=".hedcon" required> <button id="hedcon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>3. Import .mps file</h2>
+<p>Forever Fair gets the groundwater response matrix from this file.
+	A GWM2K .mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well capacities (BOUNDS section).
+	The COLUMNS section is the important part, because it contains the response matrix. RHS is a repeat from the hedcon file. 
+	Forever Fair ignores well capacities, because users are on their own to know their well capacities;
+	the auction manager is not responsible if they try to buy more than their well capacity. This is a valuable feature,
+	because the auction design allows users to increase their well capacity without notifying anyone.
+	Module import_mps.py writes to tables response_matrix and default_control_point_bounds. The BOUNDS section is read to ensure well rows exist (fallback if DECVAR was not imported first), but the capacity values are not stored.
+
+	Import populates the response_matrix table (auction-scoped) and default_control_point_bounds (RHS bounds, no auction, 
+	used as optimizer fallback). control_point_bounds is left empty; apply defaults for a specific auction from the Hydrologist maintenance page. 
+	Requires an existing manager-created auction for response factors. 
+	Default dimensions are from the Tianqiao example. Caution, import may be slow because these can be big files.
+Control-point token format in MPS rows: numeric row name.</p>
+<pre>control_point = 1 + floor((row_index - 1) / number_control_periods)
+effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
+<div id="mps-result" style="display:none"></div>
+<form id="mps-form" method="post" action="/setup/import-mps" enctype="multipart/form-data">
+<p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
+<p><label for="period-unit">MODFLOW period length:</label>
+  <select id="period-unit" name="period_unit" required>
+    <option value="hour">hour</option>
+    <option value="day" selected>day</option>
+    <option value="week">week</option>
+  </select>
+</p>
+</form>
+
+<h2>4. Import trader names</h2>
+<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. A template file is at data/Tianqiao/Trader_names.csv.</p>
+<p>The import derives trader_id, name, and trader_loginid from the last name. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Li</em>, <em>Li1</em>, <em>Li2</em>).</p>
+<div id="trader-names-result" style="display:none"></div>
+<form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
+<p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>5. Import trader-well assignments</h2>
+<p>Upload a tab-delimited file with columns name and well_id. A template file is at data/Tianqiao/Trader_wells.csv.</p>
+<p>Requirements:</p>
+<ul><li>name must exactly match a value in the traders.name column (case-sensitive).</li>
+<li>well_id must exactly match a value in the wells.well_id column.</li>
+<li>A trader may have more than one well; each well can be assigned to only one trader.</li>
+</ul>
+<p>The import updates wells.trader_id for each matched row. Rows that fail either check are skipped and listed in the notice.</p>
+<div id="trader-wells-result" style="display:none"></div>
+<form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
+<p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>6. Import well latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. Updates the wells table with spatial coordinates.</p>
+<div id="well-lat-lon-result" style="display:none"></div>
+<form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
+<p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>7. Import control point latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude. Updates the control_points table with spatial coordinates.</p>
+<div id="control-point-lat-lon-result" style="display:none"></div>
+<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
+<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>Deferred feature: auction cash ledger (E.1)</h2>
+<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in traderquota, but no explicit transaction journal is written for each trader. A robust implementation would add a dedicated table such as cash_transactions with fields for trader, auction, period, transaction type, quantity, unit price, signed cash value, timestamp, and source run id. During save_run_results(), insert one ledger row per trader-period result so balances are auditable and reproducible. Add repository helpers to return running balances and transaction history, and expose these on Trader and Researcher pages. Keep writes idempotent per run id.</p>
 
   <script>
     (function () {
       var storageKey = 'programmer_scroll_y';
-      function saveScroll() {
-        try { sessionStorage.setItem(storageKey, String(window.scrollY || window.pageYOffset || 0)); } catch (_) {}
-      }
+      function saveScroll() {try { sessionStorage.setItem(storageKey, String(window.scrollY || window.pageYOffset || 0)); } catch (_) {}}
       function restoreScroll() {
         var savedY = null;
         try { savedY = sessionStorage.getItem(storageKey); } catch (_) {}
@@ -144,9 +155,7 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
         restoreScroll();
         setTimeout(function () { restoreScroll(); try { sessionStorage.removeItem(storageKey); } catch (_) {} }, 120);
       });
-      document.addEventListener('submit', function (ev) {
-        if (ev.target && ev.target.tagName === 'FORM') { saveScroll(); }
-      }, true);
+      document.addEventListener('submit', function (ev) {if (ev.target && ev.target.tagName === 'FORM') { saveScroll(); }}, true);
     })();
   </script>
 
@@ -155,46 +164,15 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
       .then(r => r.json())
       .then(data => {const panel = document.getElementById('db-status-panel'); const createForm = document.getElementById('create-db-form'); const deleteForm = document.getElementById('delete-db-form');
         
-        if (!data.exists) {
-          panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path;
-          createForm.style.display = 'inline-block';
-          deleteForm.style.display = 'none';
-          return;}
-        
+        if (!data.exists) {panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path; createForm.style.display = 'inline-block'; deleteForm.style.display = 'none'; return;}
         const tables = data.tables || {};
         const names = Object.keys(tables).sort();
         let rows = names.map(t => `<tr><td>${t}</td><td>${tables[t]}</td></tr>`).join('');
-        panel.innerHTML = `<p>Database exists: <code>${data.db_path}</code> &mdash; ${names.length} tables.</p>` + `<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${rows}</tbody></table>`;
+        panel.innerHTML = `<p>Database exists: ${data.db_path} &mdash; ${names.length} tables.</p>` + `<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${rows}</tbody></table>`;
         createForm.style.display = 'none';
-        deleteForm.style.display = 'inline-block';
-      })
+        deleteForm.style.display = 'inline-block';})
       .catch(err => {document.getElementById('db-status-panel').textContent = 'Error fetching status: ' + err;});
   </script>
-
-  <h2>2. Import .decvar file</h2>
-  <p>A GWM2K .decvar file defines decision variables (<code>wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period</code>). One well row is created per unique well number, with grid location stored from ROW and COL.</p>
-  <div id="decvar-result" style="display:none"></div>
-  <form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
-    <p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
-  </form>
-
-  <h2>3. Import .hedcon file</h2>
-  <p>A GWM2K .hedcon file lists head constraints (<code>bonNNNN LAYER ROW COL SENSE RHS_head stress_period</code>). Import creates one control-point row per unique control-point number and stores per-period bounds from <code>RHS_head</code> in <code>default_control_point_bounds</code>. These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.</p>
-  <div id="hedcon-result" style="display:none"></div>
-  <form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
-    <p><label for="hedcon-file">File type ".hedcon":</label> <input type="file" id="hedcon-file" name="file" accept=".hedcon" required> <button id="hedcon-submit" type="submit" style="display:none">Import</button></p>
-  </form>
-
-  <h2>4. Import .mps file</h2>
-  <p>A GWM2K .mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well capacities (BOUNDS section).
-	 Import populates the <code>response_factors</code> table (auction-scoped) and <code>default_control_point_bounds</code> (RHS bounds, no auction, 
-	 used as optimizer fallback). <code>control_point_bounds</code> is left empty; apply defaults for a specific auction from the Hydrologist maintenance page. 
-	 Requires an existing manager-created auction for response factors. 
-	 Default dimensions are from the Tianqiao example. Caution, import may be slow because these can be big files.</p>
-  <div id="mps-result" style="display:none"></div>
-  <form id="mps-form" method="post" action="/setup/import-mps" enctype="multipart/form-data">
-    <p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
-  </form>
 
   <script>
     var paramLabels = {};
@@ -261,49 +239,49 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
                       paramNames:[], noticeKeyword:'decvar',
                       resultId:'decvar-result',
                       isImported: function (t) { return (t.wells || 0) > 0; },
-                      statusText: function (t) { return 'DECVAR import already present. wells has ' + (t.wells || 0) + ' rows.'; } });
+                      statusText: function (t) { return 'DECVAR import is present. wells has ' + (t.wells || 0) + ' rows.'; } });
 
         setupImport({ formId:'hedcon-form', fileId:'hedcon-file', submitId:'hedcon-submit',
                       paramClass:'hedcon-param', storageKey:'hedcon_params',
                       paramNames:[], noticeKeyword:'hedcon',
                       resultId:'hedcon-result',
                       isImported: function (t) { return (t.control_points || 0) > 0 && (t.default_control_point_bounds || 0) > 0; },
-                      statusText: function (t) { return 'HEDCON import already present. control_points has ' + (t.control_points || 0) + ' rows and default_control_point_bounds has ' + (t.default_control_point_bounds || 0) + ' rows.'; } });
+                      statusText: function (t) { return 'HEDCON import is present. control_points has ' + (t.control_points || 0) + ' rows and default_control_point_bounds has ' + (t.default_control_point_bounds || 0) + ' rows.'; } });
 
         setupImport({ formId:'mps-form', fileId:'mps-file', submitId:'mps-submit',
                       paramClass:'mps-param', storageKey:'mps_params',
                       paramNames:[],
                       noticeKeyword:'mps', resultId:'mps-result',
-                      isImported: function (t) { return (t.response_factors || 0) > 0; },
-                      statusText: function (t) { return 'MPS import already present. response_factors has ' + (t.response_factors || 0) + ' rows.'; } });
+                      isImported: function (t) { return (t.response_matrix || 0) > 0; },
+                      statusText: function (t) { return 'MPS import is present. response_matrix has ' + (t.response_matrix || 0) + ' rows.'; } });
 
         setupImport({ formId:'trader-names-form', fileId:'trader-names-file', submitId:'trader-names-submit',
                       paramClass:'trader-names-param', storageKey:'trader_names_params',
                       paramNames:[], noticeKeyword:'trader-names',
                       resultId:'trader-names-result',
                       isImported: function (t) { return (t.traders || 0) > 0; },
-                      statusText: function (t) { return 'Trader names import already present. traders has ' + (t.traders || 0) + ' rows.'; } });
+                      statusText: function (t) { return 'Trader names import is present. traders has ' + (t.traders || 0) + ' rows.'; } });
 
         setupImport({ formId:'trader-wells-form', fileId:'trader-wells-file', submitId:'trader-wells-submit',
                       paramClass:'trader-wells-param', storageKey:'trader_wells_params',
                       paramNames:[], noticeKeyword:'trader-well',
                       resultId:'trader-wells-result',
                       isImported: function (t) { return (t.wells_with_trader_id || 0) > 0; },
-                      statusText: function (t) { return 'Trader-well assignments already present. ' + (t.wells_with_trader_id || 0) + ' wells assigned.'; } });
+                      statusText: function (t) { return 'Trader-well assignments is present. ' + (t.wells_with_trader_id || 0) + ' wells assigned.'; } });
 
         setupImport({ formId:'well-lat-lon-form', fileId:'well-lat-lon-file', submitId:'well-lat-lon-submit',
                       paramClass:'well-lat-lon-param', storageKey:'well_lat_lon_params',
                       paramNames:[], noticeKeyword:'well lat-lon',
                       resultId:'well-lat-lon-result',
                       isImported: function (t) { return (t.wells_with_lat || 0) > 0; },
-                      statusText: function (t) { return 'Well lat/lon already present. ' + (t.wells_with_lat || 0) + ' wells georeferenced.'; } });
+                      statusText: function (t) { return 'Well lat/lon is present. ' + (t.wells_with_lat || 0) + ' wells georeferenced.'; } });
 
         setupImport({ formId:'control-point-lat-lon-form', fileId:'control-point-lat-lon-file', submitId:'control-point-lat-lon-submit',
                       paramClass:'control-point-lat-lon-param', storageKey:'control_point_lat_lon_params',
                       paramNames:[], noticeKeyword:'control-point lat-lon',
                       resultId:'control-point-lat-lon-result',
                       isImported: function (t) { return (t.cps_with_lat || 0) > 0; },
-                      statusText: function (t) { return 'Control point lat/lon already present. ' + (t.cps_with_lat || 0) + ' control points georeferenced.'; } });
+                      statusText: function (t) { return 'Control point lat/lon is present. ' + (t.cps_with_lat || 0) + ' control points georeferenced.'; } });
       })
       .catch(function () {
         setupImport({ formId:'decvar-form', fileId:'decvar-file', submitId:'decvar-submit',
@@ -350,42 +328,6 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
                       statusText: function () { return ''; } });
       });
   </script>
-
-  <h2>5. Import trader names</h2>
-  <p>Upload a tab-delimited file with columns <code>full_name</code>, <code>trader_first_name</code>, and <code>trader_last_name</code>. A template file is at <code>data/Tianqiao/Trader_names.csv</code>.</p>
-  <p>The import derives <code>trader_id</code>, <code>name</code>, and <code>trader_loginid</code> from the last name. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Li</em>, <em>Li1</em>, <em>Li2</em>).</p>
-  <div id="trader-names-result" style="display:none"></div>
-  <form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
-    <p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
-  </form>
-
-  <h2>6. Import trader-well assignments</h2>
-  <p>Upload a tab-delimited file with columns <code>name</code> and <code>well_id</code>. A template file is at <code>data/Tianqiao/Trader_wells.csv</code>.</p>
-  <p>Requirements:</p>
-  <ul>
-    <li><code>name</code> must exactly match a value in the <code>traders.name</code> column (case-sensitive).</li>
-    <li><code>well_id</code> must exactly match a value in the <code>wells.well_id</code> column.</li>
-    <li>A trader may have more than one well; each well can be assigned to only one trader.</li>
-  </ul>
-  <p>The import updates <code>wells.trader_id</code> for each matched row. Rows that fail either check are skipped and listed in the notice.</p>
-  <div id="trader-wells-result" style="display:none"></div>
-  <form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
-    <p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
-  </form>
-
-  <h2>7. Import well latitude and longitude</h2>
-  <p>Upload a tab-delimited file with columns <code>well_id</code>, <code>latitude</code>, and <code>longitude</code>. Updates the <code>wells</code> table with spatial coordinates.</p>
-  <div id="well-lat-lon-result" style="display:none"></div>
-  <form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
-    <p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-  </form>
-
-  <h2>8. Import control point latitude and longitude</h2>
-  <p>Upload a tab-delimited file with columns <code>control_point_id</code>, <code>latitude</code>, and <code>longitude</code>. Updates the <code>control_points</code> table with spatial coordinates.</p>
-  <div id="control-point-lat-lon-result" style="display:none"></div>
-  <form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
-    <p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-  </form>
 
 </body>
 </html>

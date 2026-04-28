@@ -6,6 +6,25 @@
 <p><a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Select participant</h1>
 <p>This is demonstration software. Select your name to continue — no password required.</p>
+
+{% if next_final or next_tentative %}
+  {% if next_final and next_tentative %}
+    {% if next_final.closed_date <= next_tentative.closed_date %}
+      <p>The next auction is a <em>final</em> auction, closing at {{ next_final.closed_date }}.<br>
+         The next tentative auction closes at {{ next_tentative.closed_date }}.</p>
+    {% else %}
+      <p>The next auction is a <em>tentative</em> auction, closing at {{ next_tentative.closed_date }}.<br>
+         The next final auction closes at {{ next_final.closed_date }}.</p>
+    {% endif %}
+  {% elif next_final %}
+    <p>The next auction is a <em>final</em> auction, closing at {{ next_final.closed_date }}.</p>
+  {% else %}
+    <p>The next auction is a <em>tentative</em> auction, closing at {{ next_tentative.closed_date }}.</p>
+  {% endif %}
+{% else %}
+  <p>No auction is scheduled currently.</p>
+{% endif %}
+
 <form method="post" action="/login">
 	<label>Participant: <select name="participant_id" required>
 		{% for p in participants %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}

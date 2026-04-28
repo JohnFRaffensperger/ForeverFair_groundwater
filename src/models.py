@@ -10,14 +10,16 @@ class AuctionPeriod(BaseModel):
 
 class Auction(BaseModel):
 	id: str
-	label: str
-	bid_close_label: str
 	status: str
 	periods: list[AuctionPeriod]
-	auction_date: str | None = None
-	days_in_period: int | None = None
-	number_of_periods: int | None = None
+	first_water_take_date: str | None = None
+	last_water_take_date: str | None = None
+	period_length_hours: int | None = None
 	auction_type: str | None = None
+	created_date: str | None = None
+	closed_date: str | None = None
+	solve_status: str | None = None
+	objective_value: float | None = None
 
 class Participant(BaseModel):
 	id: str
@@ -97,4 +99,5 @@ class MarketResult(BaseModel):
 	accepted_bids: list[AcceptedBid]
 	trader_period_results: list[TraderPeriodResult]
 	constraint_results: list[ConstraintResult]
-	period_prices: dict[str, float]
+	well_period_prices: dict[str, float]  # key: "{well_id}_{period_id}", value: dual of quantity equality constraint
+
