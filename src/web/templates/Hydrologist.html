@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+﻿<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hydrologist's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
 <p><a href="/researcher">Researcher page</a></p>
@@ -70,12 +70,12 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 <p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i></p>
 <p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
 <p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase.</p>
-<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_event.CPE_head_constraint_upper_bound.</p>
+<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_event.head_constraint_upper_bound.</p>
 <p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
 
 <h3>Variables</h3>
 <p><i>bid</i><sub><i>itb</i></sub> = quantity of bid step <i>b</i> accepted at well <i>i</i>, bid period <i>t</i>. Bounded [0, <i>Q</i><sub><i>itb</i></sub>].</p>
-<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in traderquota.price.</p>
+<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in trader_quota.price.</p>
 <p><i>q</i><sub><i>it</i></sub> = aggregate pumping at well <i>i</i>, bid period <i>t</i>. Free auxiliary variable; equals the sum of accepted bids by constraint 3.</p>
 
 <h3>Model</h3>
@@ -92,7 +92,7 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <p>4. Control-point drawdown constraint. 
 	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
-	The dual variable <i>&lambda;</i><sub><i>cp,e</i></sub> is the shadow price on the drawdown limit (stored in control_point_event.CPE_dual_price); the slack is CPE_slack.
+	The dual variable <i>&lambda;</i><sub><i>cp,e</i></sub> is the shadow price on the drawdown limit (stored in control_point_event.dual_price); the slack is slack.
 	&sum;<sub><i>i,t</i></sub> <i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
 
 <p>5. Variable bounds. 0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub> (constraint 2). <i>q</i><sub><i>it</i></sub> is free (unconstrained in sign).</p>
@@ -101,18 +101,18 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <p>The current version enforces only <strong>upper-bound drawdown constraints only</strong>, corresponding to constraint 4 above.
 Each control point has a single bound per period: <i>s</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>it</i></sub>. 
-The database stores these bounds in control_point_event.CPE_head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
-After the auction runs, the code returns the dual price CPE_dual_price and slack CPE_slack for each row.
+The database stores these bounds in control_point_event.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
+After the auction runs, the code returns the dual price dual_price and slack slack for each row.
 This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
 for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
 
 <p>You may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
 A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
-The database schema already has the necessary column control_point_event.CPE_constraint_lower_bound. To implement minimum drawdown constraints, you would have to make the following changes:</p>
+The database schema already has the necessary column control_point_event.constraint_lower_bound. To implement minimum drawdown constraints, you would have to make the following changes:</p>
 <ul>
-<li>Import pipeline (src/setup.py): populate CPE_constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
+<li>Import pipeline (src/setup.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
-<li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both CPE_head_constraint_upper_bound and CPE_constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
+<li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
 <li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
 </ul>
 
@@ -125,7 +125,7 @@ A head-difference constraint bounds the drawdown difference between two location
 	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_event. 
 	To implement head-difference constraints, you would have to make the following changes:</p>
 <ul>
-<li>Schema (src/setup.py): add columns CPE_head_difference_lower_bound and CPE_head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
+<li>Schema (src/setup.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
 <li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>

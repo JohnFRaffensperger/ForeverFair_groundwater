@@ -1,0 +1,167 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forever Fair Database Documentation</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
+</head>
+<body>
+<p><a href="/researcher">Researcher overview</a> | <a href="/programmer">Programmer page</a> | <a href="/auctionmanager">Auction manager page</a></p>
+
+<h1>Forever Fair Database Documentation</h1>
+<p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/setup.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and setup import helpers.</p>
+
+<h2>Table: metadata</h2>
+<p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global metadata entry. Used for keys such as inferred GWM dimensions and other import metadata.</p>
+<p><strong>meta_value (TEXT, NOT NULL):</strong> Value for the metadata key, stored as text and interpreted by caller logic.</p>
+
+<h2>Table: traders</h2>
+<p><strong>trader_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal numeric trader identifier used throughout joins and foreign keys.</p>
+<p><strong>name_tag (TEXT, NOT NULL):</strong> Trader display/name key used by UI and several import joins (for example trader-well assignment import). One trader can own more than one well.</p>
+<p><strong>trader_loginid (TEXT):</strong> Login identifier value imported with trader names. Currently derived from surname in importer.</p>
+<p><strong>trader_password (TEXT):</strong> Reserved legacy column for password storage; not used by current auth flow.</p>
+<p><strong>trader_first_name (TEXT):</strong> Trader first name imported from trader names file.</p>
+<p><strong>trader_last_name (TEXT):</strong> Trader last name imported from trader names file.</p>
+<p><strong>trader_address (TEXT):</strong> Reserved contact/location field.</p>
+<p><strong>trader_city (TEXT):</strong> Reserved contact/location field.</p>
+<p><strong>trader_phone (TEXT):</strong> Reserved contact field.</p>
+<p><strong>trader_email (TEXT):</strong> Reserved contact field.</p>
+
+<h2>Table: wells</h2>
+<p><strong>well_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal well identifier used by bids, response matrix rows, and quota/result tables.</p>
+<p><strong>name (TEXT, NOT NULL):</strong> Well label (for example gwm-well-N) imported from DECVAR/MPS and used for display and fallback matching.</p>
+<p><strong>trader_id (INTEGER, FOREIGN KEY to traders.trader_id):</strong> Assigned owner/trader for the well, populated by trader-well import. One trader can own more than one well.</p>
+<p><strong>gw_model_layer (INTEGER):</strong> Groundwater model layer index from DECVAR.</p>
+<p><strong>gw_model_row (INTEGER):</strong> Groundwater model row index from DECVAR.</p>
+<p><strong>gw_model_column (INTEGER):</strong> Groundwater model column index from DECVAR.</p>
+<p><strong>latitude (REAL):</strong> Well latitude imported from lat/lon file.</p>
+<p><strong>longitude (REAL):</strong> Well longitude imported from lat/lon file.</p>
+
+<h2>Table: control_points</h2>
+<p><strong>control_point_id (TEXT, PRIMARY KEY):</strong> Control point identifier (for example gwm-cp-N), used across constraints and events.</p>
+<p><strong>name (TEXT, NOT NULL):</strong> Display name for control point.</p>
+<p><strong>gw_model_row (INTEGER):</strong> Groundwater model row index for control point.</p>
+<p><strong>gw_model_column (INTEGER):</strong> Groundwater model column index for control point.</p>
+<p><strong>latitude (REAL):</strong> Control point latitude.</p>
+<p><strong>longitude (REAL):</strong> Control point longitude.</p>
+
+<h2>Table: auctions</h2>
+<p><strong>auction_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Auction identifier used for all auction-scoped data.</p>
+<p><strong>status (TEXT, NOT NULL):</strong> Auction lifecycle state (for example OPEN/CLOSED).</p>
+<p><strong>created_date (TEXT, NOT NULL):</strong> Timestamp when auction row was created.</p>
+<p><strong>closed_date (TEXT):</strong> Scheduled close datetime (also used in page logic to infer closure).</p>
+<p><strong>firstWaterTakeDate (TEXT):</strong> First settlement/take period datetime anchor.</p>
+<p><strong>lastWaterTakeDate (TEXT):</strong> Last settlement/take period datetime anchor.</p>
+<p><strong>period_length_hours (INTEGER):</strong> Period size in hours for this auction context.</p>
+<p><strong>auction_type (TEXT):</strong> Auction category (for example tentative vs final).</p>
+<p><strong>solve_status (TEXT):</strong> LP solver status from latest run.</p>
+<p><strong>objective_value (REAL):</strong> Objective value from latest solved run.</p>
+
+<h2>Table: trader_allocations</h2>
+<p><strong>auction_id (TEXT, NOT NULL):</strong> Auction key for allocation row scope.</p>
+<p><strong>trader_id (INTEGER, NOT NULL, FOREIGN KEY to traders.trader_id):</strong> Trader receiving initial allocation.</p>
+<p><strong>period_id (TEXT, NOT NULL):</strong> Period key label for allocation.</p>
+<p><strong>allocation (REAL, NOT NULL):</strong> Initial/assigned allocation quantity for that trader-period.</p>
+<p><strong>Primary key:</strong> (auction_id, trader_id, period_id) enforces one allocation row per trader-period per auction.</p>
+
+<h2>Table: default_control_point_bounds</h2>
+<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
+<p><strong>period_id (INTEGER, NOT NULL):</strong> Effect period index (1-based period from import decoding).</p>
+<p><strong>bound (REAL, NOT NULL):</strong> Default head bound for that control point and period.</p>
+<p><strong>imported_at (TEXT, NOT NULL, default ''):</strong> Import timestamp for provenance.</p>
+<p><strong>Primary key:</strong> (control_point_id, period_id).</p>
+
+<h2>Table: control_point_bounds</h2>
+<p><strong>auction_id (TEXT, NOT NULL):</strong> Auction key where bounds are applied.</p>
+<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
+<p><strong>period_id (TEXT, NOT NULL):</strong> Auction period key string.</p>
+<p><strong>bound (REAL, NOT NULL):</strong> Auction-specific bound used by solver calculations.</p>
+<p><strong>alpha (REAL):</strong> Derived scaling factor per control point and period.</p>
+<p><strong>Primary key:</strong> (auction_id, control_point_id, period_id).</p>
+
+<h2>Table: response_matrix</h2>
+<p><strong>well_id (INTEGER, NOT NULL, FOREIGN KEY to wells.well_id):</strong> Source well for response coefficient.</p>
+<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Affected control point.</p>
+<p><strong>pumping_period (INTEGER, NOT NULL):</strong> Pumping period index in response matrix dimension.</p>
+<p><strong>effect_period (INTEGER, NOT NULL):</strong> Effect period index in response matrix dimension.</p>
+<p><strong>factor_value (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect.</p>
+<p><strong>Primary key:</strong> (well_id, control_point_id, pumping_period, effect_period).</p>
+
+<h2>Table: constraint_results</h2>
+<p><strong>auction_id (INTEGER, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope for solved constraint row.</p>
+<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point for the constraint result.</p>
+<p><strong>period_id (TEXT, NOT NULL):</strong> Period key where the result applies.</p>
+<p><strong>used_capacity (REAL, NOT NULL):</strong> Computed usage level at the control point-period.</p>
+<p><strong>bound_capacity (REAL, NOT NULL):</strong> Constraint bound/capacity in effect for that row.</p>
+<p><strong>dual_value (REAL, NOT NULL):</strong> LP dual/shadow price for that constraint row.</p>
+<p><strong>Primary key:</strong> (auction_id, control_point_id, period_id).</p>
+
+<h2>Table: constraint_quota</h2>
+<p><strong>auction_id (TEXT, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
+<p><strong>well_id (INTEGER, NOT NULL, FOREIGN KEY to wells.well_id):</strong> Well key for quota decomposition.</p>
+<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
+<p><strong>period_id (TEXT, NOT NULL):</strong> Bid/effect period key.</p>
+<p><strong>alpha (REAL, NOT NULL):</strong> Alpha used in quota decomposition.</p>
+<p><strong>quota_value (REAL, NOT NULL):</strong> Well quota in that period before control-point weighting.</p>
+<p><strong>constraint_quota_value (REAL, NOT NULL):</strong> Product alpha * quota_value per well/control-point/period.</p>
+<p><strong>Primary key:</strong> (auction_id, well_id, control_point_id, period_id).</p>
+
+<h2>Table: response_matrix_info</h2>
+<p><strong>rmi_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Row identifier for a response-matrix metadata snapshot.</p>
+<p><strong>period_length_hours (NUMERIC):</strong> Declared period length in hours for imported matrix.</p>
+<p><strong>rmi_loaded_date (TEXT):</strong> Timestamp of matrix metadata import.</p>
+<p><strong>cubic_meters_per_impulse_unit (INTEGER):</strong> Reserved conversion field for legacy/model unit handling.</p>
+<p><strong>notes (TEXT):</strong> Free-text note describing import source/context.</p>
+
+<h2>Table: trader_license</h2>
+<p><strong>license_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> License row identifier.</p>
+<p><strong>trader_id (INTEGER):</strong> Trader for this license row.</p>
+<p><strong>well_id (INTEGER):</strong> Well associated with this license row.</p>
+<p><strong>license_quantity (REAL):</strong> Licensed quantity value for the period.</p>
+<p><strong>license_date (TEXT):</strong> Optional source/license date-time for this row.</p>
+<p><strong>bid_period (INTEGER):</strong> Integer bid period index (for example 1..26).</p>
+
+<h2>Table: trader_quota</h2>
+<p><strong>quota_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Trader quota event row identifier.</p>
+<p><strong>trader_id (INTEGER):</strong> Trader associated with this quota result.</p>
+<p><strong>auction_id (INTEGER):</strong> Auction that produced this quota row.</p>
+<p><strong>well_id (INTEGER):</strong> Well context for this quota row.</p>
+<p><strong>quota_auction_start (REAL):</strong> Initial/starting quantity prior to market adjustment.</p>
+<p><strong>quota_adjusted (REAL):</strong> Quantity adjustment from clearing outcome.</p>
+<p><strong>quota_auction_end (REAL):</strong> Final quantity after adjustment.</p>
+<p><strong>price (REAL):</strong> Price associated with the row's auction-period settlement.</p>
+<p><strong>take_date (TEXT):</strong> Period/date key for the quota row.</p>
+
+<h2>Table: control_point_event</h2>
+<p><strong>cpe_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Control-point event row identifier.</p>
+<p><strong>control_point_id (TEXT):</strong> Control point associated with event/result row.</p>
+<p><strong>auction_id (INTEGER, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
+<p><strong>effect_date (TEXT):</strong> Effect period/date key for the row.</p>
+<p><strong>head (REAL):</strong> Reserved head value field.</p>
+<p><strong>constraint_lower_bound (REAL):</strong> Reserved lower-bound field for two-sided constraints.</p>
+<p><strong>head_constraint_upper_bound (REAL):</strong> Upper head bound used in reporting.</p>
+<p><strong>range_lower (REAL):</strong> Reserved lower range statistic.</p>
+<p><strong>range_upper (REAL):</strong> Reserved upper range statistic.</p>
+<p><strong>slack (REAL):</strong> Constraint slack in solved run for control-point period.</p>
+<p><strong>dual_price (REAL):</strong> Constraint dual price for control-point period.</p>
+<p><strong>alpha (REAL):</strong> Alpha value copied for this event row.</p>
+
+<h2>Table: trader_bids</h2>
+<p><strong>bid_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Bid row identifier.</p>
+<p><strong>well_id (INTEGER):</strong> Well where bid applies.</p>
+<p><strong>trader_id (INTEGER):</strong> Trader placing the bid.</p>
+<p><strong>auction_id (INTEGER):</strong> Auction where bid is submitted.</p>
+<p><strong>bid_date (TEXT):</strong> Bid submission timestamp.</p>
+<p><strong>effect_date (TEXT):</strong> Period key/date where bid quantity-price steps apply.</p>
+<p><strong>expiry_date (TEXT):</strong> Optional expiry timestamp/date for bid validity.</p>
+<p><strong>is_bid_automatic (INTEGER, default 0):</strong> Flag for system-generated/automatic bid handling.</p>
+<p><strong>qty1..qty5 (REAL):</strong> Up to five quantity breakpoints for stepwise bid curve.</p>
+<p><strong>price1..price5 (REAL):</strong> Up to five prices aligned with qty1..qty5.</p>
+<p><strong>deleted (INTEGER, NOT NULL, default 0):</strong> Soft-delete flag used to hide/cancel bids without hard delete.</p>
+
+<h2>Notes</h2>
+<p>SQLite type affinity is flexible; declared field types indicate intended use but SQLite may store compatible values across affinities.</p>
+<p>Several legacy columns are reserved for future/compatibility behavior and may not be populated in current workflows.</p>
+</body>
+</html>

@@ -1,36 +1,33 @@
-# setup.py. JFR / Claude, 2026-04-24.
+﻿# setup.py. JFR / Claude, 2026-04-24.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.
 
 from __future__ import annotations
+import gc
 import math
 import re
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS metadata (meta_key TEXT PRIMARY KEY, meta_value TEXT NOT NULL );
-CREATE TABLE IF NOT EXISTS traders (trader_id TEXT PRIMARY KEY, name TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT );
-CREATE TABLE IF NOT EXISTS wells (well_id TEXT PRIMARY KEY, name TEXT NOT NULL, trader_id TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id) );
+CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT );
+CREATE TABLE IF NOT EXISTS wells (well_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, trader_id INTEGER, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id) );
 CREATE TABLE IF NOT EXISTS control_points (control_point_id TEXT PRIMARY KEY, name TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL );
 CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT NOT NULL, created_date TEXT NOT NULL, closed_date TEXT, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, auction_type TEXT, solve_status TEXT, objective_value REAL );
-CREATE TABLE IF NOT EXISTS trader_allocations (auction_id TEXT NOT NULL, trader_id TEXT NOT NULL, period_id TEXT NOT NULL, allocation REAL NOT NULL, PRIMARY KEY (auction_id, trader_id, period_id), FOREIGN KEY (trader_id) REFERENCES traders(trader_id) );
+CREATE TABLE IF NOT EXISTS trader_allocations (auction_id TEXT NOT NULL, trader_id INTEGER NOT NULL, period_id TEXT NOT NULL, allocation REAL NOT NULL, PRIMARY KEY (auction_id, trader_id, period_id), FOREIGN KEY (trader_id) REFERENCES traders(trader_id) );
 CREATE TABLE IF NOT EXISTS default_control_point_bounds (control_point_id TEXT NOT NULL, period_id INTEGER NOT NULL, bound REAL NOT NULL, imported_at TEXT NOT NULL DEFAULT '', PRIMARY KEY (control_point_id, period_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
 CREATE TABLE IF NOT EXISTS control_point_bounds (auction_id TEXT NOT NULL, control_point_id TEXT NOT NULL, period_id TEXT NOT NULL, bound REAL NOT NULL, alpha REAL, PRIMARY KEY (auction_id, control_point_id, period_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
-CREATE TABLE IF NOT EXISTS response_matrix (well_id TEXT NOT NULL, control_point_id TEXT NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
-CREATE TABLE IF NOT EXISTS bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id TEXT NOT NULL, trader_id TEXT NOT NULL, well_id TEXT NOT NULL, period_id TEXT NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, submitted_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (trader_id) REFERENCES traders(trader_id), FOREIGN KEY (well_id) REFERENCES wells(well_id) );
-CREATE TABLE IF NOT EXISTS accepted_bids (auction_id INTEGER NOT NULL, bid_id INTEGER NOT NULL, accepted_quantity REAL NOT NULL, PRIMARY KEY (auction_id, bid_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (bid_id) REFERENCES bids(bid_id) );
+CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id TEXT NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
 CREATE TABLE IF NOT EXISTS constraint_results (auction_id INTEGER NOT NULL, control_point_id TEXT NOT NULL, period_id TEXT NOT NULL, used_capacity REAL NOT NULL, bound_capacity REAL NOT NULL, dual_value REAL NOT NULL, PRIMARY KEY (auction_id, control_point_id, period_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
-CREATE TABLE IF NOT EXISTS well_quota_ledger (well_id TEXT NOT NULL, auction_id TEXT NOT NULL, period_id TEXT NOT NULL, quota_auction_start REAL NOT NULL, quota_adjusted REAL, quota_auction_end REAL, clearing_price REAL, adjustment_method TEXT, PRIMARY KEY (well_id, auction_id, period_id), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) );
-CREATE TABLE IF NOT EXISTS constraint_quota (auction_id TEXT NOT NULL, well_id TEXT NOT NULL, control_point_id TEXT NOT NULL, period_id TEXT NOT NULL, alpha REAL NOT NULL, quota_value REAL NOT NULL, constraint_quota_value REAL NOT NULL, PRIMARY KEY (auction_id, well_id, control_point_id, period_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
-CREATE TABLE IF NOT EXISTS configs (id INTEGER PRIMARY KEY, currDate TEXT, currAucSolve TEXT );
-CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, message_type TEXT, message TEXT );
-CREATE TABLE IF NOT EXISTS response_matrix_info (RMI_id INTEGER PRIMARY KEY AUTOINCREMENT, RMI_hours_period_length NUMERIC, RMI_creation_date TEXT, RMI_cubic_meters_per_impulse_unit INTEGER, RMI_notes TEXT );
-CREATE TABLE IF NOT EXISTS traderconsents (consentid TEXT PRIMARY KEY, traderID TEXT, wellID TEXT, consentQuantity REAL, startDate TEXT, expiryDate TEXT );
-CREATE TABLE IF NOT EXISTS traderquota (quotaid INTEGER PRIMARY KEY AUTOINCREMENT, traderid TEXT, auctionid TEXT, wellID TEXT, quotaAuctionStart REAL, quotaAdjusted REAL, quotaAuctionEnd REAL, price REAL, lprowName TEXT, takeDate TEXT );
-CREATE TABLE IF NOT EXISTS control_point_event (CPE_id INTEGER PRIMARY KEY AUTOINCREMENT, RMI_id INTEGER, CP_id TEXT, auction_id TEXT, CPE_effect_date TEXT, CPE_equality_constraint_right_hand_side REAL, CPE_head REAL, CPE_constraint_lower_bound REAL, CPE_head_constraint_upper_bound REAL, CPE_LProw_name TEXT, CPE_range_lower REAL, CPE_range_upper REAL, CPE_slack REAL, CPE_dual_price REAL, CPE_alpha REAL, FOREIGN KEY (RMI_id) REFERENCES response_matrix_info(RMI_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) );
-CREATE TABLE IF NOT EXISTS traderbids (bidid INTEGER PRIMARY KEY AUTOINCREMENT, well_id TEXT, traderID TEXT, auctionID TEXT, bidDate TEXT, effectDate TEXT, expiryDate TEXT, isBidAutomatic INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0 );
+CREATE TABLE IF NOT EXISTS constraint_quota (auction_id TEXT NOT NULL, well_id INTEGER NOT NULL, control_point_id TEXT NOT NULL, period_id TEXT NOT NULL, alpha REAL NOT NULL, quota_value REAL NOT NULL, constraint_quota_value REAL NOT NULL, PRIMARY KEY (auction_id, well_id, control_point_id, period_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
+CREATE TABLE IF NOT EXISTS response_matrix_info (rmi_id INTEGER PRIMARY KEY AUTOINCREMENT, period_length_hours NUMERIC, rmi_loaded_date TEXT, cubic_meters_per_impulse_unit INTEGER, notes TEXT );
+CREATE TABLE IF NOT EXISTS trader_license (license_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, well_id INTEGER, license_quantity REAL, license_date TEXT, bid_period INTEGER );
+CREATE TABLE IF NOT EXISTS trader_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, auction_id INTEGER, well_id INTEGER, quota_auction_start REAL, quota_adjusted REAL, quota_auction_end REAL, price REAL, take_date TEXT );
+CREATE TABLE IF NOT EXISTS control_point_event (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id TEXT, auction_id INTEGER, effect_date TEXT, head REAL, constraint_lower_bound REAL, head_constraint_upper_bound REAL, range_lower REAL, range_upper REAL, slack REAL, dual_price REAL, alpha REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id) );
+CREATE TABLE IF NOT EXISTS trader_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, effect_date TEXT, expiry_date TEXT, is_bid_automatic INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0 );
 """
 
 _WELL_RE = re.compile(r'[Ww][Ee][Ll][Ll](\d+)', re.ASCII)
@@ -45,7 +42,7 @@ def db_status(db_path: Path) -> dict:
 		tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name" ).fetchall()]
 		counts = {t: conn.execute(f"SELECT COUNT(*) FROM [{t}]").fetchone()[0] for t in tables}
 		if "wells" in tables:
-			counts["wells_with_trader_id"] = conn.execute("SELECT COUNT(*) FROM wells WHERE trader_id != '' AND trader_id IS NOT NULL").fetchone()[0]
+			counts["wells_with_trader_id"] = conn.execute("SELECT COUNT(*) FROM wells WHERE trader_id IS NOT NULL").fetchone()[0]
 			counts["wells_with_lat"] = conn.execute("SELECT COUNT(*) FROM wells WHERE latitude IS NOT NULL").fetchone()[0]
 		if "control_points" in tables: counts["cps_with_lat"] = conn.execute("SELECT COUNT(*) FROM control_points WHERE latitude IS NOT NULL").fetchone()[0]
 		conn.close()
@@ -58,20 +55,30 @@ def create_empty_db(db_path: Path) -> None:
 	db_path.parent.mkdir(parents=True, exist_ok=True)
 	conn = sqlite3.connect(db_path)
 	conn.executescript(SCHEMA_DDL)
-	_ensure_spatial_columns(conn)
 	conn.close()
 
-def _ensure_spatial_columns(conn: sqlite3.Connection) -> None:
-	"""Ensure spatial metadata columns exist for wells and control_points."""
-	table_columns = {"wells": [("gw_model_row", "INTEGER"), ("gw_model_column", "INTEGER"), ("latitude", "REAL"), ("longitude", "REAL"),], "control_points": [("gw_model_row", "INTEGER"), ("gw_model_column", "INTEGER"), ("latitude", "REAL"), ("longitude", "REAL"),],}
-	for table, columns in table_columns.items():
-		existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-		for col_name, col_type in columns:
-			if col_name not in existing: conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}")
-
 def delete_db(db_path: Path) -> None:
-	"""Delete the database file if it exists."""
-	if db_path.exists(): db_path.unlink()
+	"""Delete the database file and any WAL/SHM sidecar files if they exist."""
+	failed: list[str] = []
+	for suffix in ("", "-wal", "-shm"):
+		p = db_path.parent / (db_path.name + suffix)
+		if not p.exists():
+			continue
+		last_exc: OSError | None = None
+		for _ in range(20):
+			if not p.exists():
+				break
+			try:
+				p.unlink()
+				break
+			except OSError as exc:
+				last_exc = exc
+				# If a leaked sqlite3 handle is waiting for GC finalization, release it.
+				gc.collect()
+				time.sleep(0.05)
+		if p.exists():
+			failed.append(f"{p}: {last_exc}")
+	if failed: raise OSError("Failed to delete one or more database files: " + "; ".join(failed))
 
 def _decode_well(token: str, num_pump_periods: int) -> tuple[int, int]:
 	"""wellNNNN → (well_number, pump_period), both 1-based."""
@@ -204,15 +211,14 @@ def import_decvar(db_path: Path, text: str) -> dict:
 	Index NNNN is 1-based sequential across all (well × pump_period) combinations:
 		well_number  = 1 + (NNNN - 1) // num_pump_periods
 		pump_period  = 1 + (NNNN - 1) %  num_pump_periods
-	Wells are inserted with trader_id='' (unassigned; FK checks off during import).
-	gw_model_row and gw_model_column are populated from the first pump-period entry.
+	Wells are inserted with trader_id=NULL (unassigned; FK checks off during import).
+	gw_model_layer, gw_model_row, and gw_model_column are populated from the first pump-period entry.
 	latitude and longitude remain NULL until georeferenced data is supplied.
 	"""
 	num_wells, num_pump_periods = _infer_decvar_dimensions(text)
 
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA foreign_keys = OFF")
-	_ensure_spatial_columns(conn)
 	seen: set[int] = set()
 	inserted = 0
 	errors: list[str] = []
@@ -224,12 +230,13 @@ def import_decvar(db_path: Path, text: str) -> dict:
 			well_num, pump_period = _decode_well(tokens[0], num_pump_periods)
 			if well_num in seen: continue
 			seen.add(well_num)
-			# tokens[3]=ROW, tokens[4]=COL give the grid location of this physical well
+			# tokens[2]=LAYER, tokens[3]=ROW, tokens[4]=COL give the grid location of this physical well
+			gw_model_layer = int(tokens[2]) if len(tokens) >= 3 and tokens[2].lstrip("-").isdigit() else None
 			gw_model_row = int(tokens[3]) if len(tokens) >= 4 and tokens[3].lstrip("-").isdigit() else None
 			gw_model_column = int(tokens[4]) if len(tokens) >= 5 and tokens[4].lstrip("-").isdigit() else None
-			well_id = f"gwm-well-{well_num}"
-			conn.execute("INSERT OR IGNORE INTO wells" "(well_id, name, trader_id, gw_model_row, gw_model_column, latitude, longitude)" " VALUES (?,?,?,?,?,?,?)", (well_id, f"Well {well_num}", "", gw_model_row, gw_model_column, None, None))
-			conn.execute("UPDATE wells SET gw_model_row=COALESCE(gw_model_row, ?)," " gw_model_column=COALESCE(gw_model_column, ?) WHERE well_id=?", (gw_model_row, gw_model_column, well_id))
+			well_id = int(well_num)
+			conn.execute("INSERT OR IGNORE INTO wells" "(well_id, name, trader_id, gw_model_layer, gw_model_row, gw_model_column, latitude, longitude)" " VALUES (?,?,?,?,?,?,?,?)", (well_id, f"gwm-well-{well_num}", None, gw_model_layer, gw_model_row, gw_model_column, None, None))
+			conn.execute("UPDATE wells SET gw_model_layer=COALESCE(gw_model_layer, ?)," " gw_model_row=COALESCE(gw_model_row, ?)," " gw_model_column=COALESCE(gw_model_column, ?) WHERE well_id=?", (gw_model_layer, gw_model_row, gw_model_column, well_id))
 			inserted += 1
 		except Exception as exc:
 			errors.append(str(exc))
@@ -256,7 +263,6 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 	if num_control_points is None or num_control_periods is None: num_control_points, num_control_periods = _infer_hedcon_dimensions(text)
 
 	conn = sqlite3.connect(db_path)
-	_ensure_spatial_columns(conn)
 	imported_at = datetime.now().isoformat()
 	seen: set[int] = set()
 	cp_inserted = 0
@@ -302,12 +308,12 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 	  RHS:      rhs_label  rhs_name  row_index  value
 				(rhs_label and rhs_name at [0],[1] ignored)
 	  BOUNDS:   bound_type  bnd_name  wellNNNN  value
-				Only the first pump-period entry per well is stored as an initial right.
+				UP bounds are stored in trader_license as one row per well and bid period.
 	"""
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA foreign_keys = OFF")
-	_ensure_spatial_columns(conn)
 	imported_at = datetime.now().isoformat()
+	conn.execute("DELETE FROM trader_license")
 
 	max_well_idx, max_row_idx = _infer_mps_indexes(text)
 	num_wells = _load_int_meta(conn, "gwm_num_wells")
@@ -332,9 +338,15 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 	section = None
 	rf_count = 0
 	bound_count = 0
-	right_count = 0
-	prev_well_num = 0
+	license_count = 0
+	wells_ensured = 0
 	errors: list[str] = []
+	well_trader_map: dict[int, int | None] = {}
+	unassigned_wells: set[int] = set()
+	for row in conn.execute("SELECT well_id, trader_id FROM wells").fetchall():
+		well_id = int(row[0])
+		trader_id = None if row[1] is None else int(row[1])
+		well_trader_map[well_id] = trader_id
 
 	for raw_line in text.splitlines():
 		line = raw_line.rstrip()
@@ -366,7 +378,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 			try:
 				well_num, pump_period = _decode_well(col_token, num_pump_periods)
 				cp_num, effect_period = _decode_cp(row_token, num_control_periods)
-				well_id = f"gwm-well-{well_num}"
+				well_id = int(well_num)
 				cp_id   = f"gwm-cp-{cp_num}"
 				conn.execute("INSERT OR REPLACE INTO response_matrix" "(well_id, control_point_id," " pumping_period, effect_period, factor_value)" " VALUES (?,?,?,?,?)", (well_id, cp_id, pump_period, effect_period, coef))
 				rf_count += 1
@@ -391,18 +403,29 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 		elif section == "BOUNDS":
 			# Format: bnd_type  bnd_name  wellNNNN  value
 			if len(tokens) < 4: continue
+			if str(tokens[0]).upper() != "UP": continue
 			col_token = tokens[2]
 			if not _WELL_RE.match(col_token): continue
 			try: val = float(tokens[3])
 			except ValueError: continue
 			try:
-				well_num, _ = _decode_well(col_token, num_pump_periods)
-				# PHP logic: store only the first pump-period entry per well as initial right
-				if well_num == prev_well_num + 1:
-					well_id = f"gwm-well-{well_num}"
-					conn.execute("INSERT OR IGNORE INTO wells" "(well_id, name, trader_id, gw_model_row, gw_model_column, latitude, longitude)" " VALUES (?,?,?,?,?,?,?)", (well_id, f"Well {well_num}", "", None, None, None, None))
-					prev_well_num = well_num
-					right_count += 1
+				well_num, pump_period = _decode_well(col_token, num_pump_periods)
+				well_id = int(well_num)
+				before_changes = conn.total_changes
+				conn.execute("INSERT OR IGNORE INTO wells" "(well_id, name, trader_id, gw_model_layer, gw_model_row, gw_model_column, latitude, longitude)" " VALUES (?,?,?,?,?,?,?,?)", (well_id, f"gwm-well-{well_num}", None, None, None, None, None, None))
+				if conn.total_changes > before_changes:
+					wells_ensured += 1
+				if well_id not in well_trader_map:
+					row = conn.execute("SELECT trader_id FROM wells WHERE well_id=?", (well_id,)).fetchone()
+					well_trader_map[well_id] = None if row is None or row[0] is None else int(row[0])
+				trader_id = well_trader_map.get(well_id)
+				if trader_id is None:
+					if well_id not in unassigned_wells:
+						unassigned_wells.add(well_id)
+						errors.append(f"BOUNDS well{well_id}: skipped license insert because wells.trader_id is NULL. Import trader-well assignments first.")
+					continue
+				conn.execute("INSERT INTO trader_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (int(trader_id), well_id, float(val), None, int(pump_period)))
+				license_count += 1
 			except Exception as exc:
 				errors.append(f"BOUNDS {col_token}: {exc}")
 
@@ -412,10 +435,10 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 	if num_control_points: _set_meta(conn, "gwm_num_control_points", str(num_control_points))
 	if num_control_periods: _set_meta(conn, "gwm_num_control_periods", str(num_control_periods))
 	conn.commit()
-	conn.execute("INSERT INTO response_matrix_info(RMI_hours_period_length, RMI_creation_date, RMI_notes) VALUES (?, ?, ?)", (float(period_length_hours), imported_at, "Imported from .mps via Programmer page",),)
+	conn.execute("INSERT INTO response_matrix_info(period_length_hours, rmi_loaded_date, notes) VALUES (?, ?, ?)", (float(period_length_hours), imported_at, "Imported from .mps via Programmer page",),)
 	conn.commit()
 	conn.close()
-	return {"response_matrix_inserted": rf_count, "control_point_bounds_inserted": bound_count, "well_rights_inserted": right_count, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": int(period_length_hours), "errors": errors[:20],}
+	return {"response_matrix_inserted": rf_count, "control_point_bounds_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": int(period_length_hours), "errors": errors[:20],}
 
 def _compute_alphas(conn: sqlite3.Connection, auction_id: str) -> dict:
 	"""Compute alpha for each (control_point_id, period_id) for the given auction.
@@ -525,7 +548,6 @@ def missing_import_data_report(db_path: Path) -> dict:
 	"""Report missing gw model coordinates and lat/lon for wells and control points."""
 	if not db_path.exists(): return {"db_exists": False, "wells": {}, "control_points": {},}
 	conn = sqlite3.connect(db_path)
-	_ensure_spatial_columns(conn)
 	conn.row_factory = sqlite3.Row
 
 	well_counts = conn.execute("SELECT " "COUNT(*) AS total," "SUM(CASE WHEN gw_model_row IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_row," "SUM(CASE WHEN gw_model_column IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_column," "SUM(CASE WHEN latitude IS NULL THEN 1 ELSE 0 END) AS missing_latitude," "SUM(CASE WHEN longitude IS NULL THEN 1 ELSE 0 END) AS missing_longitude " "FROM wells" ).fetchone()
@@ -539,7 +561,7 @@ def import_trader_names(db_path: Path, text: str) -> dict:
 	"""Import traders from a tab-delimited file.
 
 	Expected columns: full_name, trader_first_name, trader_last_name.
-	Derives trader_id, name, and trader_loginid from trader_last_name.
+	Stores trader name in name_tag and trader_loginid from trader_last_name.
 	If the same last name appears more than once in the file, the first keeps the plain
 	last name and subsequent ones get a numeric suffix (1, 2, …).
 	"""
@@ -578,9 +600,8 @@ def import_trader_names(db_path: Path, text: str) -> dict:
 	errors: list[str] = []
 	for (first_name, last_name), suffix in zip(parsed, suffixes):
 		display = last_name + suffix
-		trader_id = "trader-" + last_name.lower() + suffix
 		try:
-			cur = conn.execute("INSERT OR IGNORE INTO traders" "(trader_id, name, trader_loginid, trader_first_name, trader_last_name)" " VALUES (?,?,?,?,?)", (trader_id, display, display, first_name, last_name),)
+			cur = conn.execute("INSERT OR IGNORE INTO traders" "(name_tag, trader_loginid, trader_first_name, trader_last_name)" " VALUES (?,?,?,?)", (display, display, first_name, last_name),)
 			if cur.rowcount: inserted += 1
 			else: skipped += 1
 		except Exception as exc: errors.append(str(exc))
@@ -591,7 +612,7 @@ def import_trader_names(db_path: Path, text: str) -> dict:
 def import_trader_wells(db_path: Path, text: str) -> dict:
 	"""Import trader-well assignments from a tab-delimited file.
 
-	Expected columns: name (must match traders.name), well_id (must match wells.well_id).
+	Expected columns: name (must match traders.name_tag), well_id (must match wells.well_id).
 	Sets wells.trader_id for each matched row.
 	A well_id can only be assigned to one trader; a trader may have multiple wells.
 	"""
@@ -617,15 +638,15 @@ def import_trader_wells(db_path: Path, text: str) -> dict:
 		name_val = cols[name_idx].strip()
 		well_id_val = cols[well_idx].strip()
 		if not name_val or not well_id_val: continue
-		trader_row = conn.execute("SELECT trader_id FROM traders WHERE name=?", (name_val,) ).fetchone()
+		trader_row = conn.execute("SELECT trader_id FROM traders WHERE name_tag=?", (name_val,) ).fetchone()
 		if trader_row is None:
 			errors.append(f"Trader name not found in traders table: {name_val!r}")
 			continue
-		well_row = conn.execute("SELECT well_id FROM wells WHERE well_id=?", (well_id_val,) ).fetchone()
+		well_row = conn.execute("SELECT well_id FROM wells WHERE well_id=? OR name=?", (well_id_val, well_id_val) ).fetchone()
 		if well_row is None:
 			errors.append(f"Well ID not found in wells table: {well_id_val!r}")
 			continue
-		conn.execute("UPDATE wells SET trader_id=? WHERE well_id=?", (trader_row["trader_id"], well_id_val),)
+		conn.execute("UPDATE wells SET trader_id=? WHERE well_id=?", (trader_row["trader_id"], well_row["well_id"]),)
 		assigned += 1
 	conn.commit()
 	conn.close()
@@ -655,7 +676,6 @@ def import_well_lat_lon(db_path: Path, text: str) -> dict:
 	if well_idx is None or lat_idx is None or lon_idx is None: return {"wells_updated": 0, "rows_skipped": 0, "errors": ["Missing required columns well_id, latitude, longitude. " f"Found: {header}"],}
 
 	conn = sqlite3.connect(db_path)
-	_ensure_spatial_columns(conn)
 	updated = 0
 	skipped = 0
 	errors: list[str] = []
@@ -681,7 +701,7 @@ def import_well_lat_lon(db_path: Path, text: str) -> dict:
 			errors.append(f"Invalid latitude/longitude for well_id={well_id!r}")
 			continue
 
-		cur = conn.execute("UPDATE wells SET latitude=?, longitude=? WHERE well_id=?", (lat_val, lon_val, well_id),)
+		cur = conn.execute("UPDATE wells SET latitude=?, longitude=? WHERE well_id=? OR name=?", (lat_val, lon_val, well_id, well_id),)
 		if cur.rowcount: updated += 1
 		else:
 			skipped += 1
@@ -715,7 +735,6 @@ def import_control_point_lat_lon(db_path: Path, text: str) -> dict:
 	if cp_idx is None or lat_idx is None or lon_idx is None: return {"control_points_updated": 0, "rows_skipped": 0, "errors": ["Missing required columns control_point_id, latitude, longitude. " f"Found: {header}"],}
 
 	conn = sqlite3.connect(db_path)
-	_ensure_spatial_columns(conn)
 	updated = 0
 	skipped = 0
 	errors: list[str] = []
@@ -741,7 +760,7 @@ def import_control_point_lat_lon(db_path: Path, text: str) -> dict:
 			errors.append(f"Invalid latitude/longitude for control_point_id={cp_id!r}")
 			continue
 
-		cur = conn.execute("UPDATE control_points SET latitude=?, longitude=? WHERE control_point_id=?", (lat_val, lon_val, cp_id),)
+		cur = conn.execute("UPDATE control_points SET latitude=?, longitude=? WHERE control_point_id=? OR name=?", (lat_val, lon_val, cp_id, cp_id),)
 		if cur.rowcount: updated += 1
 		else:
 			skipped += 1

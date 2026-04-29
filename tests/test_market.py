@@ -1,4 +1,4 @@
-# tests/test_market.py. Claude guided by JFR, 2026 04 21.
+﻿# tests/test_market.py. Claude guided by JFR, 2026 04 21.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
 from datetime import datetime, timedelta
@@ -52,9 +52,12 @@ def test_manager_run_persists_results(tmp_path):
 def test_multistep_bid_creates_multiple_lp_variables(tmp_path):
 	repository = _make_repo(tmp_path)
 	auction_id = _seed_auction_id(repository)
-	period_key = repository.load(auction_id).auction.periods[0].id
+	auction_case = repository.load(auction_id)
+	period_key = auction_case.auction.periods[0].id
+	participant_id = next(w.participant_id for w in auction_case.wells if w.participant_id)
+	well_id = next(w.id for w in auction_case.wells if w.participant_id == participant_id)
 
-	first_step = repository.add_bid(auction_id=auction_id, participant_id="trader-chen", well_id="well-01", period_id=period_key, quantity=6.0, price=20.0, bid_steps=[(6.0, 20.0), (4.0, 14.0), (2.0, 9.0)],)
+	first_step = repository.add_bid(auction_id=auction_id, participant_id=participant_id, well_id=well_id, period_id=period_key, quantity=6.0, price=20.0, bid_steps=[(6.0, 20.0), (4.0, 14.0), (2.0, 9.0)],)
 	base_id = first_step.id[:-3]  # strip trailing "-s1"
 	expected_ids = {f"{base_id}-s1", f"{base_id}-s2", f"{base_id}-s3"}
 
@@ -66,22 +69,25 @@ def test_multistep_bid_creates_multiple_lp_variables(tmp_path):
 	accepted_ids = {item.bid_id for item in result.accepted_bids}
 	assert expected_ids.issubset(accepted_ids)
 
-def test_get_quota_uses_consents_and_final_quota(tmp_path):
+def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	repository = _make_repo(tmp_path)
 	auction_id = _seed_auction_id(repository)
-	period_key = repository.load(auction_id).auction.periods[0].id
+	auction_case = repository.load(auction_id)
+	period_key = auction_case.auction.periods[0].id
+	participant_id = next(w.participant_id for w in auction_case.wells if w.participant_id)
+	well_id = next(w.id for w in auction_case.wells if w.participant_id == participant_id)
 	with repository._connect() as conn:
-		conn.execute("INSERT INTO traderconsents(consentid, traderID, wellID, consentQuantity, startDate, expiryDate) VALUES (?, ?, ?, ?, ?, ?)", ("consent-1", "trader-chen", "well-01", 90.0, period_key, period_key),)
-		conn.execute("INSERT INTO traderquota(traderid, auctionid, wellID, quotaAuctionStart, quotaAdjusted, quotaAuctionEnd, price, takeDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", ("trader-chen", auction_id, "well-01", 90.0, 12.0, 12.0, 10.0, period_key),)
+		conn.execute("INSERT INTO trader_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (int(participant_id), int(well_id), 90.0, None, 1),)
+		conn.execute("INSERT INTO trader_quota(trader_id, auction_id, well_id, quota_auction_start, quota_adjusted, quota_auction_end, price, take_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (int(participant_id), auction_id, int(well_id), 90.0, 12.0, 12.0, 10.0, period_key),)
 
-	quota = repository.get_quota(participant_id="trader-chen", period_start=period_key, auction_id=auction_id)
+	quota = repository.get_quota(participant_id=participant_id, period_start=period_key, auction_id=auction_id)
 	assert quota[period_key] == [90.0, 12.0]
 
 def test_manager_run_rejects_auction_with_no_bids(tmp_path):
 	repository = _make_repo(tmp_path)
 	auction_id = _seed_auction_id(repository)
 	with repository._connect() as conn:
-		conn.execute("UPDATE traderbids SET deleted=1 WHERE auctionID=?", (auction_id,))
+		conn.execute("UPDATE trader_bids SET deleted=1 WHERE auction_id=?", (auction_id,))
 
 	try:
 		runCurrentAuction(repository, auction_id)

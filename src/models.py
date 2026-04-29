@@ -30,6 +30,7 @@ class Well(BaseModel):
 	id: str
 	name: str
 	participant_id: str
+	gw_model_layer: int | None = None
 	gw_model_row: int | None = None
 	gw_model_column: int | None = None
 	latitude: float | None = None

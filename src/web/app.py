@@ -52,6 +52,10 @@ def researcher_page(request: Request):
 	participants = repository.list_participants()
 	return templates.TemplateResponse(request, "Researcher.html", {"participants": participants})
 
+@app.get("/database-documentation", response_class=HTMLResponse)
+def database_documentation_page(request: Request):
+	return templates.TemplateResponse(request, "Database_documentation.html", {})
+
 @app.get("/hydrologist", response_class=HTMLResponse)
 def doc_hydrologist(request: Request):
 	import sqlite3 as _sqlite3
@@ -153,7 +157,6 @@ def manager_page():
 
 @app.post("/manager/setup-auction")
 def manager_setup_auction( bid_close_time: str = Form(...), tentative: bool = Form(default=False), first_water_take_time: str = Form(...), last_water_take_time: str = Form(...), existing_auction_id: str = Form(default=""), ):
-	# Legacy Django logic: closing date must not be in the past.
 	try: close_dt = datetime.fromisoformat(bid_close_time)
 	except Exception: return _flash_redirect("/auctionmanager", "Error: invalid closing date/time")
 	try:
@@ -237,10 +240,14 @@ def setup_create_db():
 
 @app.post("/setup/delete-db")
 def setup_delete_db():
+	db_path = DATA_DIR / "foreverfair.db"
 	try:
-		db_setup.delete_db(DATA_DIR / "foreverfair.db")
+		db_setup.delete_db(db_path)
+		if db_path.exists(): return _flash_redirect("/programmer", "Error deleting database: database file still exists")
 		return _flash_redirect("/programmer", "Database deleted")
 	except Exception as e:
+		import logging
+		logging.getLogger("uvicorn.error").exception("Delete-db failed for %s", db_path)
 		return _flash_redirect("/programmer", f"Error deleting database: {e}")
 
 @app.post("/setup/import-decvar")
@@ -276,12 +283,44 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 		return _flash_redirect("/programmer", f"Error importing MPS: {e}")
 	notice = (f"MPS import complete: {result['response_matrix_inserted']} response factors,"
 		      f" {result['control_point_bounds_inserted']} bounds,"
-		      f" {result['well_rights_inserted']} well rights"
+		      f" {result['license_rows_inserted']} trader-license rows"
+		      f" ({result['wells_ensured']} wells ensured)"
 		      f" (using: {result['num_wells']} wells, {result['num_pump_periods']} pump periods,"
 		      f" {result['num_control_points']} control points, {result['num_control_periods']} control periods)")
 	notice += f"; period length set to {result['period_length_hours']} hours"
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
+
+@app.get("/setup/current-period-unit")
+def setup_current_period_unit():
+	db_path = DATA_DIR / "foreverfair.db"
+	if not db_path.exists(): return {"period_unit": None, "period_length_hours": None}
+	hours = repository.latest_period_length_hours()
+	if hours is None: return {"period_unit": None, "period_length_hours": None}
+	if hours == 1: unit = "hour"
+	elif hours == 168: unit = "week"
+	else: unit = "day"
+	return {"period_unit": unit, "period_length_hours": hours}
+
+@app.post("/setup/set-period-unit")
+async def setup_set_period_unit(request: Request):
+	body = await request.json()
+	unit = str(body.get("period_unit", "")).strip().lower()
+	unit_hours = {"hour": 1, "day": 24, "week": 168}.get(unit)
+	if unit_hours is None: return {"ok": False, "error": "invalid period unit"}
+	db_path = DATA_DIR / "foreverfair.db"
+	if not db_path.exists(): return {"ok": False, "error": "database does not exist"}
+	import sqlite3
+	conn = sqlite3.connect(db_path)
+	try:
+		row = conn.execute("SELECT rmi_id FROM response_matrix_info ORDER BY rmi_id DESC LIMIT 1").fetchone()
+		if row is None:
+			return {"ok": False, "error": "no response_matrix_info row; import MPS first"}
+		conn.execute("UPDATE response_matrix_info SET period_length_hours=? WHERE rmi_id=?", (float(unit_hours), row[0]))
+		conn.commit()
+	finally:
+		conn.close()
+	return {"ok": True, "period_length_hours": unit_hours}
 
 @app.post("/setup/import-trader-names")
 async def setup_import_trader_names(file: UploadFile = File(...)):

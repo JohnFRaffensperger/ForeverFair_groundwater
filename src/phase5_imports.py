@@ -108,7 +108,7 @@ def import_traders_and_allocations_json(db_path: Path, json_text: str) -> dict:
         # Insert trader
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO traders(trader_id, name) VALUES (?, ?)",
+                "INSERT OR REPLACE INTO traders(trader_id, name_tag) VALUES (?, ?)",
                 (trader_id, name)
             )
             traders_inserted += 1
