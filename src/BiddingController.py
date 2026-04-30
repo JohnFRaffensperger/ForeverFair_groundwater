@@ -9,14 +9,15 @@ from services.repository import AuctionRepository
 
 MAX_BID_STEPS = 5
 
-def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, well_id: str, period_id: str, quantity: float, price: float) -> None:
+def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, well_id: str, period_id: str, quantity: float, price: float,) -> None:
 	period_id = str(period_id).strip()
 	if auction_case.auction.status != "OPEN": raise ValueError("Auction is not open for bids.")
 	# F.3/C.11: Reject bids after the closing datetime even if status is still OPEN.
 	try:
-		close_dt = datetime.fromisoformat(auction_case.auction.closed_date)
-		if close_dt < datetime.now():
-			raise ValueError("Auction bidding period has closed.")
+		close_text = str(auction_case.auction.closed_date or "").strip()
+		if close_text:
+			close_dt = datetime.fromisoformat(close_text)
+			if close_dt < datetime.now(): raise ValueError("Auction bidding period has closed.")
 	except ValueError as e:
 		if "bidding period has closed" in str(e):
 			raise  # re-raise our own validation error only
@@ -33,20 +34,14 @@ def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, wel
 	if quantity <= 0: raise ValueError("Bid quantity must be positive.")
 	if price <= 0: raise ValueError("Bid price must be positive.")
 
-
 def _validate_bid_steps(bid_steps: list[tuple[float, float]]) -> None:
-	if not bid_steps:
-		raise ValueError("At least one bid step is required.")
-	if len(bid_steps) > MAX_BID_STEPS:
-		raise ValueError(f"At most {MAX_BID_STEPS} bid steps are supported.")
+	if not bid_steps: raise ValueError("At least one bid step is required.")
+	if len(bid_steps) > MAX_BID_STEPS: raise ValueError(f"At most {MAX_BID_STEPS} bid steps are supported.")
 	for quantity, price in bid_steps:
-		if quantity <= 0:
-			raise ValueError("Bid quantity must be positive.")
-		if price <= 0:
-			raise ValueError("Bid price must be positive.")
+		if quantity <= 0: raise ValueError("Bid quantity must be positive.")
+		if price <= 0: raise ValueError("Bid price must be positive.")
 
-
-def submitBid(repository: AuctionRepository, auction_id: str, participant_id: str, well_id: str, period_id: str, quantity: float, price: float, is_automatic: bool = False, bid_steps: list[tuple[float, float]] | None = None) -> BidSegment:
+def submitBid(repository: AuctionRepository, auction_id: str, participant_id: str, well_id: str, period_id: str, quantity: float, price: float, is_automatic: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
 	auction_case = repository.load(auction_id)
 	_validate_bid_submission(auction_case, participant_id, well_id, period_id, quantity, price)
 	steps = bid_steps if bid_steps is not None else [(quantity, price)]

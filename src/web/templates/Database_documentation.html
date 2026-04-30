@@ -7,7 +7,7 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Database Documentation</h1>
 
-<p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/setup.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and setup import helpers.</p>
+<p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/SetupForeverFairDB.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and SetupForeverFairDB import helpers.</p>
 
 <h2>Table: metadata</h2>
 <p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global metadata entry. Used for keys such as inferred GWM dimensions and other import metadata.</p>

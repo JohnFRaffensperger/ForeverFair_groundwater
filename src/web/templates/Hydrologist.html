@@ -131,7 +131,7 @@ for example, to protect aquifer storage or sensitive groundwater-dependent ecosy
 A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
 The database schema already has the necessary column control_point_event.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
 <ul>
-<li>Import pipeline (src/setup.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
+<li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
 <li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
 <li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
@@ -146,7 +146,7 @@ A head-difference constraint bounds the drawdown difference between two location
 	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_event. 
 	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
 <ul>
-<li>Schema (src/setup.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
+<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
 <li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>

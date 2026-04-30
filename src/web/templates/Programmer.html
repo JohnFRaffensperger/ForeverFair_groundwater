@@ -7,13 +7,13 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
-<p>The software architecture for web routes and pages is the FastAPI app in src/web/app.py. An SQLite repository provides data persistence in src/services/repository.py.
+<p>The software architecture for web routes and pages is the FastAPI app in src/web/ForeverFairPages.py. An SQLite repository provides data persistence in src/services/repository.py.
 The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt anything.
 The linear programming optimization solver is PuLP model in src/RunAuctionModule.py. Auction orchestration is done in src/AuctionController.py and src/BiddingController.py.</p>
 
 <h2>Installing the necessary Python libraries</h2>
 <p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
-<p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.app:app --reload</pre>
+<p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.ForeverFairPages:app --reload</pre>
 <p>3. Open your browser to <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.</p>
 <p>4. Your hydrologist should run the hydrology model through USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> 
 	or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.

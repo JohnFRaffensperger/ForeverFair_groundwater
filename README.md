@@ -34,7 +34,7 @@ Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying 
 3. Start the app:
 
 ```bash
-uvicorn main:app --reload
+python -m uvicorn src.web.ForeverFairPages:app --reload
 ```
 
 4. Open `http://127.0.0.1:8000`.

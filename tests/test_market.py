@@ -1,4 +1,4 @@
-﻿# tests/test_market.py. Claude guided by JFR, 2026 04 21.
+# tests/test_market.py. Claude guided by JFR, 2026 04 21.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
@@ -7,16 +7,11 @@ from pathlib import Path
 from AuctionController import ResetAuctionData, SetUpAuction, runCurrentAuction
 from RunAuctionModule import runAuction
 from services.repository import AuctionRepository
-import setup as db_setup
 
 def _make_repo(tmp_path: Path) -> AuctionRepository:
 	project_root = Path(__file__).resolve().parents[1]
-	seed_path = project_root / "data" / "Tianqiao" / "forever_fair_seed.json"
-	db_path = tmp_path / "groundwater_market.db"
-	db_setup.create_empty_db(db_path)
-	repository = AuctionRepository(seed_path=seed_path, db_path=db_path)
-	repository.reset_runtime_to_seed()
-	return repository
+	debug_db = project_root / "data" / "Tianqiao" / "small_debug_database.db"
+	return AuctionRepository(db_path=tmp_path / "small_debug_database_temp.db", debug_db_path=debug_db)
 
 def _seed_auction_id(repository: AuctionRepository) -> str: return repository.load().auction.id
 

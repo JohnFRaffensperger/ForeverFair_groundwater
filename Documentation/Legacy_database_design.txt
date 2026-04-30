@@ -195,7 +195,7 @@ E.3      Implement get_quota equivalent in repository:
          Drive from traderconsents (consented) and traderquota (final).
 
 E.FILE   File-based imports not yet updated for legacy column names.
-         Update in src/setup.py:
+         Update in src/SetupForeverFairDB.py:
            import_decvar()  -> wells (well_layer, well_row, well_column)
            import_hedcon()  -> control_points (CP_layer1/row1/col1, etc.)
            import_mps()     -> response_matrix_info + response_matrix +
@@ -242,4 +242,64 @@ VALIDATION GATES (must pass before cutover)
   [ ] Verify CatchmentPage shows dual prices, slacks, and constraint fields.
       (Requires F.CATCH above complete.)
   [ ] Verify TraderPage shows final allocations from traderquota.quotaAuctionEnd.
-      (Requires C.5 above complete.
+      (Requires C.5 above complete.)
+--------------------------------------------------------------------------------
+LEGACY DJANGO BID-PROCESSING REVIEW (source: C:\Users\johnr\Documents\Work documents\2 Research\Water\Programming\Django)
+Date reviewed: 2026-04-30
+--------------------------------------------------------------------------------
+
+1. Starting with an empty bids table, how are initial bids established?
+   - In this legacy code, initial bids are established by creating BidSet rows and Bid rows.
+   - There is no automatic default-bid initialization in the auction model/solver flow itself.
+   - The explicit bulk initializer is foreverfair\foreverfair\sample_bids.py, which:
+       a) creates Consent rows (quantity=1.0) per trader/period,
+       b) creates one BidSet per (trader, auction, period),
+       c) inserts five Bid rows per BidSet (fixed price/quantity ladder).
+   - The Django admin can also create BidSet/Bid rows manually.
+
+2. When bids are adjusted with alpha, where are adjusted bids stored?
+   - Bids are not alpha-adjusted and re-stored as adjusted Bid rows.
+   - Alpha is computed onto ControlPointMaxDrawdown.alpha (hydrology/models.py, update_alpha pre_save).
+   - The alpha-scaled quantity is stored in ConstraintQuota.value, with alpha denormalized in
+     ConstraintQuota.alpha (auctions/models.py, calculate_constraint_quotas).
+   - Therefore, alpha-adjusted values are stored in ConstraintQuota, not in Bid/BidSet.
+
+3. From which table does optimization read bids?
+   - The solver reads bids via Bid.objects.filter(set__auction=auction)
+     (foreverfair\foreverfair\solve_water_LP.py).
+   - BidSet is used for grouping by trader/period; bid quantity/price inputs are from Bid rows.
+
+4. After solution, which trader-related tables does the code write to?
+   - In the reviewed legacy Django solver path: none.
+   - foreverfair\foreverfair\solve_water_LP.py constructs LP, solves, writes LP file, and deletes LP,
+     but does not persist BidSetResult, CashTransaction, Consent, or other trader-result rows.
+   - BidSetResult exists as a model (and get_quota reads it), but the solver path shown does not create it.
+
+Evidence files reviewed:
+- foreverfair\foreverfair\auctions\models.py
+- foreverfair\foreverfair\hydrology\models.py
+- foreverfair\foreverfair\traders\models.py
+- foreverfair\foreverfair\sample_bids.py
+- foreverfair\foreverfair\solve_water_LP.py
+
+--------------------------------------------------------------------------------
+RUN BUTTON CALL CHAIN (AuctionManager)
+--------------------------------------------------------------------------------
+1) AuctionManager.html Run button submits POST /manager/run-auction with auction_id.
+2) src/web/ForeverFairPages.py: manager_run_auction(auction_id)
+  - repository.list_auctions() for guard checks
+  - AuctionController.apply_default_bounds(repository, auction_id)
+3) src/AuctionController.py: apply_default_bounds(...)
+  - _resolve_existing_auction_id(...)
+  - copy default_control_point_bounds -> control_point_bounds (this auction)
+  - _compute_alphas(...)
+  - _compute_constraint_quotas(...)
+4) src/web/ForeverFairPages.py: manager_run_auction(...) then calls
+  - AuctionController.runCurrentAuction(repository, auction_id)
+5) src/AuctionController.py: runCurrentAuction(...)
+  - _prepare_auction_for_run(repository, auction_id)
+  - repository.has_active_bids(auction_id)
+  - repository.load(auction_id)
+  - RunAuctionModule.runAuction(auction_case)
+  - repository.save_run_results(auction_id, market_result, ...)
+6) src/web/ForeverFairPages.py: manager_run_auction(...) returns flash redirect to /auctionmanager.
