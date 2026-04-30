@@ -1,4 +1,5 @@
 # phase5_imports.py - Phase 5 import utilities for seed JSON elimination
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Provide JSON-based import functions to initialize database without seed.json
 
 import json

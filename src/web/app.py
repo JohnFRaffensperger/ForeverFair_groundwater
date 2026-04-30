@@ -1,4 +1,5 @@
 # web/app.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Define FastAPI routes and wire web dependencies.
 
 from __future__ import annotations
@@ -99,6 +100,9 @@ def doc_auctionmanager(request: Request):
 	else:
 		context["default_last_constrained"] = ""
 	resp = templates.TemplateResponse(request, "AuctionManager.html", context)
+	resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+	resp.headers["Pragma"] = "no-cache"
+	resp.headers["Expires"] = "0"
 	if notice: resp.delete_cookie("flash")
 	return resp
 
@@ -156,7 +160,7 @@ def manager_page():
 	return RedirectResponse(url="/auctionmanager", status_code=303)
 
 @app.post("/manager/setup-auction")
-def manager_setup_auction( bid_close_time: str = Form(...), tentative: bool = Form(default=False), first_water_take_time: str = Form(...), last_water_take_time: str = Form(...), existing_auction_id: str = Form(default=""), ):
+def manager_setup_auction (bid_close_time: str = Form(...), tentative: bool = Form(default=False), first_water_take_time: str = Form(...), last_water_take_time: str = Form(...), ):
 	try: close_dt = datetime.fromisoformat(bid_close_time)
 	except Exception: return _flash_redirect("/auctionmanager", "Error: invalid closing date/time")
 	try:
@@ -166,14 +170,6 @@ def manager_setup_auction( bid_close_time: str = Form(...), tentative: bool = Fo
 		return _flash_redirect("/auctionmanager", "Error: invalid water-take date/time")
 	if close_dt < datetime.now(): return _flash_redirect("/auctionmanager", "Error: closing date/time cannot be in the past")
 	if last_take_dt < first_take_dt: return _flash_redirect("/auctionmanager", "Error: lastWaterTakeDate must be on or after firstWaterTakeDate")
-	# A.5: reject attempts to edit a closed auction at the route layer.
-	if existing_auction_id.strip():
-		now_iso = datetime.now().isoformat(timespec="minutes")
-		auctions = repository.list_auctions()
-		target = next((a for a in auctions if str(a.get("auction_id")) == existing_auction_id.strip()), None)
-		if target is not None:
-			bid_close = target.get("closed_date") or ""
-			if target.get("status") == "CLOSED" or (bid_close and bid_close < now_iso): return _flash_redirect("/auctionmanager", "Error: Cannot edit a closed auction")
 
 	auction_type = "tentative" if tentative else "final"
 	period_length_hours = repository.latest_period_length_hours()
@@ -181,11 +177,8 @@ def manager_setup_auction( bid_close_time: str = Form(...), tentative: bool = Fo
 		return _flash_redirect("/auctionmanager", "Error: import an .mps file and choose period length first")
 
 	try:
-		auction = AuctionController.SetUpAuction(repository, auction_id=existing_auction_id.strip() or None, closed_date=close_dt.isoformat(timespec="minutes"),
-			first_water_take_date=first_take_dt.isoformat(timespec="minutes"), last_water_take_date=last_take_dt.isoformat(timespec="minutes"), period_length_hours=int(period_length_hours), clear_existing_bids=True, auction_type=auction_type,)
-		# Auto-apply the latest head-constraint bounds to the new auction.
-		try: db_setup.apply_default_bounds(DATA_DIR / "foreverfair.db", auction.id)
-		except Exception: pass  # No default bounds yet; bounds can be set after importing hedcon/mps.
+		AuctionController.SetUpAuction(repository, closed_date=close_dt.isoformat(timespec="minutes"),
+			first_water_take_date=first_take_dt.isoformat(timespec="minutes"), last_water_take_date=last_take_dt.isoformat(timespec="minutes"), period_length_hours=int(period_length_hours), auction_type=auction_type,)
 	except ValueError as e:
 		return _flash_redirect("/auctionmanager", f"Error: {e}")
 	return _flash_redirect("/auctionmanager", "Auction created")
@@ -199,11 +192,24 @@ def manager_run_auction(auction_id: str = Form(...)):
 	if target is None: return _flash_redirect("/auctionmanager", "Error: Auction not found")
 	bid_close = target.get("closed_date") or ""
 	if target.get("status") == "CLOSED" or (bid_close and bid_close < now_iso): return _flash_redirect("/auctionmanager", "Error: Cannot run a closed auction")
-	try: AuctionController.runCurrentAuction(repository, auction_id=auction_id)
+	try:
+		# Apply the latest default head-constraint bounds before running.
+		try: db_setup.apply_default_bounds(DATA_DIR / "foreverfair.db", auction_id)
+		except Exception: pass  # No default bounds yet; continue.
+		AuctionController.runCurrentAuction(repository, auction_id=auction_id)
 	except Exception as e:
 		if str(e) == "The auction cannot run because it has no bids.": return _flash_redirect("/auctionmanager", "The auction cannot run because it has no bids.")
 		return _flash_redirect("/auctionmanager", f"Error: {e}")
 	return _flash_redirect("/auctionmanager", "Auction run completed")
+
+@app.post("/manager/delete-auction")
+def manager_delete_auction(auction_id: str = Form(...)):
+	auctions = repository.list_auctions()
+	target = next((a for a in auctions if str(a.get("auction_id")) == str(auction_id)), None)
+	if target is None: return _flash_redirect("/auctionmanager", "Error: Auction not found")
+	if target.get("status") == "CLOSED": return _flash_redirect("/auctionmanager", "Error: Cannot delete a closed auction")
+	repository.mark_auction_deleted(auction_id)
+	return _flash_redirect("/auctionmanager", f"Auction {auction_id} deleted")
 
 @app.get("/catchment", response_class=HTMLResponse)
 def catchment_page(request: Request, auction_id: str | None = None):

@@ -1,42 +1,37 @@
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!DOCTYPE html><html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Forever Fair 3.0, Auction Manager Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
-</head>
-
+	<title>Forever Fair Auction Manager's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-<p><a href="/researcher">Researcher overview</a> | <a href="/trader">Trader's page</a> | <a href="/auctionmanager">Auction Manager's page</a> | <a href="/database-documentation">Database documentation</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
-<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Auction Manager's page</h1>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 
-<h2>Set up future auction</h2>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Auction Manager's Page</h1>
+
+<h2>Set up an auction</h2>
+
 <form method="post" action="/manager/setup-auction">
-	<label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label><br/>
-	<label>First water take date/time: <input type="datetime-local" id="first-water-take-time" name="first_water_take_time" value="{{ default_first_water_take }}" required></label><br/>
-	<label>Last water take date/time: <input type="datetime-local" id="last-water-take-time" name="last_water_take_time" value="{{ default_last_water_take }}" required></label><br/>
-	<label><input type="checkbox" name="tentative"> Tentative auction</label><br/>
-	<button type="submit">Create auction</button>
+	<p><label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label> Closing date must be in the future.</p>
+	<p><label>First water take date/time: <input type="datetime-local" id="first-water-take-time" name="first_water_take_time" value="{{ default_first_water_take }}" required></label></p>
+	<p><label>Last water take date/time: <input type="datetime-local" id="last-water-take-time" name="last_water_take_time" value="{{ default_last_water_take }}" required></label></p>
+	<p><label><input type="checkbox" name="tentative"> Tentative auction. If tentative is unchecked, the auction is final.</label></p>
+	<p><button type="submit">Create auction</button></p>
 </form>
-<p><em>Closing date must be in the future; auction type is Final unless Tentative is checked.</em></p>
+
 {% if period_length_hours %}
-	{% if period_length_hours == 1 %}
-		<p><strong>Response matrix period length:</strong> 1 hour.</p>
-	{% elif period_length_hours == 24 %}
-		<p><strong>Response matrix period length:</strong> 1 day.</p>
-	{% elif period_length_hours == 168 %}
-		<p><strong>Response matrix period length:</strong> 1 week.</p>
-	{% else %}
-		<p><strong>Response matrix period length:</strong> {{ period_length_hours }} hours.</p>
-	{% endif %}
-	<p><strong>Default last constrained date:</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %} (using {{ response_period_count }} response periods){% endif %}</p>
+	{% if period_length_hours == 1 %}<p><strong>Response matrix period length:</strong> 1 hour.
+	{% elif period_length_hours == 24 %}<p><strong>Response matrix period length:</strong> 1 day.
+	{% elif period_length_hours == 168 %}<p><strong>Response matrix period length:</strong> 1 week.
+	{% else %}<p><strong>Response matrix period length:</strong> {{ period_length_hours }} hours.
+	{% endif %}<strong>Default last constrained date:</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %} (using {{ response_period_count }} response periods){% endif %}.</p>
 {% else %}
 	<p><strong>Response matrix period length:</strong> not set yet. Import an .mps file on Programmer page and choose hour/day/week.</p>
 	<p><strong>Default last constrained date:</strong> n/a</p>
 {% endif %}
+<p>{% if notice %}<strong>{{ notice }}</strong>{% endif %} </p>
+<h2>Run auctions</h2>
+<p><strong>Number of auctions currently scheduled:</strong> {{ auctions|length }}.</p>
 
-<h2>Run or review auctions</h2>
-
-<p>Number of auctions currently scheduled: {{ auctions|length }}. {% if notice %}<strong>{{ notice }}</strong>{% endif %}</p>
-
-<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th></tr></thead>
+<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th><th></th></tr></thead>
 	<tbody>{% for auction in auctions %}
 		{% set is_tentative = auction.auction_type == 'tentative' %}
 		{% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
@@ -48,17 +43,20 @@
 			<td>{{ auction.solve_status or '—' }}</td>
 			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
 			<td>{% if not is_closed %}<form method="post" action="/manager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
+			<td>{% if not is_closed %}<form method="post" action="/manager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td>
 		</tr>
 		{% endfor %}
 	</tbody></table>
 
-<h2>Responsibilities</h2>
-<ul>
-	<li>Confirm legal and policy authority before operation.</li>
-	<li>Confirm rights registry and participant setup are correct.</li>
-	<li>Confirm hydrology constraints are current and defensible.</li>
-	<li>Operate auction setup, clearing, and reporting steps.</li>
-</ul>
+<h2>The Auction Manager's responsibilities</h2>
+<ol>
+	<li>Have your hydrologist load updated head limits for the forecasted inflows. Confirm hydrology constraints are current and defensible.</li>
+	<li>Set up the auction and run it.</li>
+	<li>After the auction closes, run the auction.</li>
+	<li>Check that traders took only the water for which they have quota.</li>
+</ol>
+
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 
 <script>
 (function(){
@@ -76,6 +74,12 @@
 		const hh = String(dt.getHours()).padStart(2, '0');
 		const mi = String(dt.getMinutes()).padStart(2, '0');
 		return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+	}
+	function startOfNextHour(dt){
+		const copy = new Date(dt.getTime());
+		copy.setMinutes(0, 0, 0);
+		copy.setHours(copy.getHours() + 1);
+		return copy;
 	}
 	function nextMonday(dt){
 		const copy = new Date(dt.getTime());
@@ -106,49 +110,13 @@
 	}
 	if (closeInput) closeInput.addEventListener('change', refreshDefaultsFromClose);
 	if (firstInput) firstInput.addEventListener('change', refreshLastConstrained);
+	if (closeInput && !closeInput.value) {
+		closeInput.value = toLocalValue(startOfNextHour(new Date()));
+		refreshDefaultsFromClose();
+	}
 	refreshLastConstrained();
 })();
 </script>
 
-<h2>Current manager actions in the software</h2>
-<table>
-	<thead>
-		<tr><th>Action</th><th>What it does</th><th>Route</th></tr>
-	</thead>
-	<tbody>
-		<tr><td>Create auction</td><td>Creates an auction with period labels and optional bid carry-forward</td><td>/manager/setup-auction</td></tr>
-		<tr><td>Run auction</td><td>Loads data, solves LP, writes accepted bids and prices, closes auction</td><td>/manager/run-auction</td></tr>
-		<tr><td>View catchment outcomes</td><td>Shows well prices and control-point diagnostics from latest run</td><td>/catchment</td></tr>
-		<tr><td>View API state</td><td>Returns current auction and run summary as JSON</td><td>/api/system-state</td></tr>
-	</tbody>
-</table>
-
-<h2>Recommended operating cycle</h2>
-<ol>
-	<li>Load or refresh hydrology data for the case.</li>
-	<li>Set up the next auction and periods.</li>
-	<li>Open trader participation window.</li>
-	<li>Run clearing when bidding closes.</li>
-	<li>Publish results and archive diagnostics.</li>
-	<li>Prepare updates for the next period using observed inflows and new data.</li>
-</ol>
-
-<h2>Economic configuration principle</h2>
-<p>The target configuration is trader-trades, not government-profit. Under proportional rights adjustment, payments by buyers are offset by receipts to sellers, with only explicit operating fees retained for market administration.</p>
-
-<h2>Risk controls to add soon</h2>
-<ul>
-	<li>Draft or tentative status before opening an auction.</li>
-	<li>Formal validation framework for all setup and import operations.</li>
-	<li>Cash transaction ledger and participant balances.</li>
-	<li>Clear role separation between manager and trader permissions.</li>
-</ul>
-
-<h2>References</h2>
-<ul>
-	<li><a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a></li>
-	<li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
-	<li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
-</ul>
 </body>
 </html>

@@ -1,20 +1,23 @@
-﻿<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hydrologist's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
+﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-<p><a href="/researcher">Researcher page</a></p>
 
-<h1>Hydrologist's page</h1>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 
-<p>The Forever Fair market is centered on a groundwater model. The groundwater model is the source of the response matrix, well locations, and head constraints at control points.
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Hydrologist's Page</h1>
+
+<p>The Forever Fair market is centered on a groundwater model. The hydrologist has a key role!
+	The groundwater model is the source of the response matrix, well locations, and head constraints at control points.
 	The response matrix is a linearized representation of the hydrology; its values describe the effect of pumping from wells and head at various control points. 
 Through the response factors, each accepted bid affects the control point constraints. 
 Since hydrologic effects propagate over time, the market clearing optimization must support lagged responses, so pumping does not injure control points in future periods.
-Therefore, to set up the market, you need a groundwater model that can produce this response matrix.
-You must also define environmental limits as control points with head limits.
-	GWM2K can produce the files needed: decvar, hedcon, and mps.
-	Reference: <a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a>.</p>
+Therefore, to set up the market, the programmer needs a groundwater model that can produce this response matrix.
+The hydrologist must define environmental limits as control points with head limits. This is best done with code like 
+	USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a>. 
+	GWM can produce important files needed: decvar, hedcon, and mps. But the hydrologist must set this up!</p>
 
-<p>To set up the market clearing database, you should prepare these groundwater files for the Programmer:</p>
+<p>To set up the market clearing database, the hydrologist should prepare these groundwater files for the programmer:</p>
 <ul>
 <li>your_file_name.decvar listing the wells with MODFLOW layer, row, and column,</li>
 <li>your_file_name.hedcon listing the control points,</li>
@@ -23,26 +26,43 @@ You must also define environmental limits as control points with head limits.
 
 <p>This software version assumes that the physics of the aquifer do not change with the auction schedule.
 Therefore, this version treats the response matrix timing as relative, i.e., the effects in a relative number of periods after pumping occurs. 
-This allows one response matrix to be used for multiple auctions. You should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has response coefficients for each required control point and period.
+This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has response coefficients for each required control point and period.
 Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>
 
 <table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
-	<tr><td>Wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
-	<tr><td>Response factors</td><td>Measures of how pumping at a well in a given time period affects head on control points in later time periods. 
+	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
+	<tr><td>mps file: response factors</td><td>Measures of how pumping at a well in a given time period affects head on control points in later time periods. 
 	Periods are <em>relative</em> offsets from the pumping event, not calendar dates.</td><td>Coefficients in LP constraints.</td></tr>
-	<tr><td>Control points</td><td>Locations where head limits apply. For example, you could specify control points at wells, wetlands, and points near saltwater coasts (to prevent saltwater intrusion).</td><td>Optimization constraints.</td></tr>
-	<tr><td>Control point bounds</td><td>Maximum allowable change in head per period. Head limits are currently set only for maximum drawdown, but you could also implement minimum drawdown and head difference constraints.</td><td>Right-hand side bounds in constraints.</td></tr>
-	<tr><td>Auction periods</td><td>Time blocks as defined by your response matrix. If you want the market to run only weekly, the response matrix periods must be set to weekly or shorter periods.</td><td>Timing of water use and environmental effects.</td></tr>
+	<tr><td>hedcon file: control points</td><td>Locations where head limits apply. For example, the hydrologist could specify control points at wells, wetlands, and points near saltwater coasts (to prevent saltwater intrusion).</td><td>Optimization constraints.</td></tr>
+	<tr><td>hedcon and mps files: control point bounds</td><td>Maximum allowable change in head per period. Head limits are currently set only for maximum drawdown, but the hydrologist could also implement minimum drawdown and head difference constraints.</td><td>Right-hand side bounds in constraints.</td></tr>
+	<tr><td>mps file: auction periods</td><td>Time blocks as defined by the groundwater response matrix. If the auction manager wants the market to run only weekly, the response matrix periods must be set to weekly or shorter periods.</td><td>Timing of water use and environmental effects.</td></tr>
+	<tr><td>mps file: initial rights for each well and pumping period</td><td>This is the upgraded per-period licensed quantities.</td><td>Initial quota</td></tr>
 </tbody></table>
+
+<h2>Loading initial rights for the first auction</h2>
+
+<p>The GWM your_file_name.mps file has a BOUNDS feature for wells. The programmers of GWM themselves probably think of these well upper bounds as pump capacities. 
+	In the auction, the trader is responsible for making sure their bid quantities don't exceed their own capacity. 
+	Capacity is the trader's problem, not the auction manager's problem. The auction manager does have to pay attention to license.</p>
+
+<p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, 
+	the hydrologist can use the GWM BOUNDS to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. 
+	When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html. 
+	The import code will save those values to the trader_license table in the database, one BOUND value for each well and each bid period.</p>
+
+<p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
+
+<p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
 <h2>Managing drawdown for each auction</h2>
 
 <p>The head-constraint bounds come from the your_file_name.hedcon and your_file_name.mps files uploaded via the <a href="/programmer">Programmer page</a>.
-Each time you upload new hedcon and mps files, the code saves them with a timestamp.
-When the Auction Manager creates a new auction, the software uses the most recently imported bounds to that auction. 
-This allows you to re-run your groundwater with updated inflow forecast, and then import the resulting new head constraints into the auction.</p>
+	Each time the programmer uploads hedcon and mps files, the code saves them with a timestamp.
+	When the Auction Manager creates a new auction, the software uses the most recently imported bounds to that auction. 
+	This allows the hydrologist to re-run the groundwater simulation with an updated inflow forecast. The programmer can then import the resulting new head constraints into the auction.</p>
 
-<p>Managing groundwater with real weather requires updating the head constraints in every auction. For a real auction, you should re-load head limits that match the forecasted limits based on forecasted inflows.
+<p>Managing groundwater with real weather requires updating the head constraints in every auction. 
+	For a real auction, the hydrologist should re-load head limits that match the forecasted limits based on forecasted inflows.
 To update the bounds, just upload revised .hedcon and .mps files via the Programmer page. The new bounds take effect for any auction created after that upload.
  Auctions that were already created keep the bounds that were current when they were scheduled.</p>
 
@@ -80,20 +100,21 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <h3>Model</h3>
 <p>1. Objective. This is a gross-pool model with buy bids only; each accepted bid quantity yields surplus equal to <i>P</i><sub><i>itb</i></sub> per unit. Maximise consumer surplus (gross-pool; buy bids only):
-	max  &sum;<sub><i>i,t,b</i></sub>  <i>P</i><sub><i>itb</i></sub> &middot; <i>bid</i><sub><i>itb</i></sub>.</p>
+	maximize&nbsp;&sum;<sub><i>i,t,b</i></sub>&nbsp;<i>P</i><sub><i>itb</i></sub>&middot;<i>bid</i><sub><i>itb</i></sub>.</p>
 
-<p>2. Bid bounds. All bids are buy bids. Each accepted bid quantity is nonnegative and bounded above by the step quantity <i>Q</i><sub><i>itb</i></sub>. For all <i>b</i>, <i>i</i>, <i>t</i>:
-	0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub>. Dual variables <i>&alpha;</i><sub><i>itb</i></sub> &ge; 0.</p>
+<p>2. Bid bounds. Each accepted bid quantity is nonnegative and bounded above by the step quantity <i>Q</i><sub><i>itb</i></sub>. 
+	For&nbsp;all&nbsp;<i>b</i>,&nbsp;<i>i</i>,&nbsp;<i>t</i>:&nbsp;0&nbsp;&le;&nbsp;<i>bid</i><sub><i>itb</i></sub>&nbsp;&le;&nbsp;<i>Q</i><sub><i>itb</i></sub>. Dual variables <i>&alpha;</i><sub><i>itb</i></sub> &ge; 0.</p>
 
-<p>3. Quantity equality. Aggregate pumping equals the sum of accepted bids. 
+<p>3. Pumping equals the sum of bids. 
 	The dual price <i>p</i><sub><i>it</i></sub> is the market clearing price at well <i>i</i>, period <i>t</i>.
 	The code extracts this value from the solver via PuLP&rsquo;s constraint.pi attribute and stores it as the well-period price.
 	For all <i>i</i>, <i>t</i>: <i>q</i><sub><i>it</i></sub> = &sum;<sub><i>b</i>=1..5</sub> <i>bid</i><sub><i>itb</i></sub>. Dual variables <i>p</i><sub><i>it</i></sub> (free).</p>
 
 <p>4. Control-point drawdown constraint. 
 	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
-	The dual variable <i>&lambda;</i><sub><i>cp,e</i></sub> is the shadow price on the drawdown limit (stored in control_point_event.dual_price); the slack is slack.
-	&sum;<sub><i>i,t</i></sub> <i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
+	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_event.dual_price).
+	For each control point <i>cp</i> and effect period <i>e</i>: 
+	&sum;<sub><i>i,t</i></sub>&nbsp;<i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
 
 <p>5. Variable bounds. 0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub> (constraint 2). <i>q</i><sub><i>it</i></sub> is free (unconstrained in sign).</p>
 
@@ -106,9 +127,9 @@ After the auction runs, the code returns the dual price dual_price and slack sla
 This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
 for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
 
-<p>You may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
+<p>The hydrologist may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
 A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
-The database schema already has the necessary column control_point_event.constraint_lower_bound. To implement minimum drawdown constraints, you would have to make the following changes:</p>
+The database schema already has the necessary column control_point_event.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
 <ul>
 <li>Import pipeline (src/setup.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
@@ -116,20 +137,20 @@ The database schema already has the necessary column control_point_event.constra
 <li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
 </ul>
 
-<p>You may want to implement <strong>head difference constraints</strong>. 
+<h2>Adding head difference constraints</h2>
 A head-difference constraint bounds the drawdown difference between two locations <i>i</i> and <i>j</i> (constraint 6 in the model above): 
 	<i>LHD</i><sub><i>ijt</i></sub>  &le;  <i>s</i><sub><i>it</i></sub> &minus; <i>s</i><sub><i>jt</i></sub>  &le;  <i>UHD</i><sub><i>ijt</i></sub>. 
 	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,
 	or to maintain a minimum gradient between an irrigation area and a river. The database schema already stores two grid locations per control point (CP_layer1/row1/col1 and CP_layer2/row2/col2,
 	with corresponding lat/lon pairs), which is the physical basis for a two-point difference constraint.
 	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_event. 
-	To implement head-difference constraints, you would have to make the following changes:</p>
+	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
 <ul>
 <li>Schema (src/setup.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
 <li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>
 </ul>
-
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>

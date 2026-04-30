@@ -1,4 +1,5 @@
 ﻿# setup.py. JFR / Claude, 2026-04-24.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.
 

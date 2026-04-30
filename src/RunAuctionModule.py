@@ -1,4 +1,5 @@
 # RunAuctionModule.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Solve the auction optimization model and compute result tables.
 
 from __future__ import annotations

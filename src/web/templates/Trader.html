@@ -1,12 +1,13 @@
-<!DOCTYPE html><html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Forever Fair 3.0, Trader Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
-</head>
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Trader's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-	<p><a href="/login">Switch participant</a> | <a href="/trader">Trader's page</a> | <a href="/auctionmanager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
-	<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Trader page</h1>
 
-	{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader's Page</h1>
+
+{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 
 <p>Welcome, <strong>{{ current_participant.name }}</strong>.
 {% if current_well %}
@@ -129,6 +130,6 @@
   <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
   <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
 </ul>
-
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>

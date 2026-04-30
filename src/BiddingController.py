@@ -1,4 +1,5 @@
 # BiddingController.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Validate, submit, and manage participant bids.
 
 from __future__ import annotations

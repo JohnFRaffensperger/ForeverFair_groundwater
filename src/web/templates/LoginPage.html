@@ -1,11 +1,13 @@
-<!DOCTYPE html><html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Forever Fair 3.0 — Select Participant</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
-</head>
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Login Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-<p><a href="/manager">Auction Manager's page</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
-<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair 3.0. Select participant</h1>
-<p>This is demonstration software. Select your name to continue — no password required.</p>
+
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader Login</h1>
+
+<p>Select your name to log in, no password required for demonstration.</p>
 
 {% if next_final or next_tentative %}
   {% if next_final and next_tentative %}
@@ -31,5 +33,6 @@
 	</select></label>
 	<button type="submit">Continue</button>
 </form>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>

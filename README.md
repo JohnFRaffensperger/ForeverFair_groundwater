@@ -27,6 +27,10 @@ The initial scaffold includes:
 pip install -e .[dev]
 ```
 
+## License
+
+Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+
 3. Start the app:
 
 ```bash

@@ -1,4 +1,5 @@
 ﻿# tests/test_market.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
 from datetime import datetime, timedelta

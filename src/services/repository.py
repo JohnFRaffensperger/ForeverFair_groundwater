@@ -1,4 +1,5 @@
 ﻿# services/repository.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Persist auction data and run results in SQLite.
 
 from __future__ import annotations
@@ -122,8 +123,11 @@ class AuctionRepository:
 		row = conn.execute("SELECT meta_value FROM metadata WHERE meta_key=?", (key,)).fetchone()
 		return "" if row is None else row["meta_value"]
 
-	def _default_auction_id(self, conn: sqlite3.Connection) -> str | None:
-		row = conn.execute("SELECT auction_id FROM auctions ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_date DESC LIMIT 1" ).fetchone()
+	def _default_auction_id(self, conn: sqlite3.Connection, exclude_auction_id: str | None = None) -> str | None:
+		if exclude_auction_id is not None:
+			row = conn.execute("SELECT auction_id FROM auctions WHERE auction_id != ? AND status != 'DELETED' ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_date DESC LIMIT 1", (exclude_auction_id,)).fetchone()
+		else:
+			row = conn.execute("SELECT auction_id FROM auctions WHERE status != 'DELETED' ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_date DESC LIMIT 1").fetchone()
 		if row is None: return None
 		return row["auction_id"]
 
@@ -235,24 +239,29 @@ class AuctionRepository:
 			self._seed_from_json(conn)
 		return self.load()
 
-	def setup_auction(self, auction_id: str | None, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, clear_existing_bids: bool = True, auction_type: str | None = None) -> Auction:
+	def setup_auction(self, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, auction_type: str | None = None) -> Auction:
 		now = datetime.now(timezone.utc).isoformat()
 		period_keys = self._period_keys(first_water_take_date, last_water_take_date, int(period_length_hours))
 		if not period_keys: raise ValueError("No auction periods generated from first/last water take dates and period length")
-		source_period_keys: list[str] = []
 		with self._connect() as conn:
-			existing_id = str(auction_id).strip() if auction_id is not None else ""
-			source_auction_id = self._default_auction_id(conn)
+			cursor = conn.execute("INSERT INTO auctions(status, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, auction_type) VALUES ('OPEN', ?, ?, ?, ?, ?, ?)", (now, closed_date, first_water_take_date, last_water_take_date, int(period_length_hours), auction_type),)
+			auction_id_str = str(int(cursor.lastrowid))
+		return Auction(id=auction_id_str, status="OPEN", periods=[AuctionPeriod(id=pk, label=pk) for pk in period_keys], closed_date=closed_date, first_water_take_date=first_water_take_date, last_water_take_date=last_water_take_date, period_length_hours=int(period_length_hours), auction_type=auction_type,)
+
+	def prepare_auction_for_run(self, auction_id: str) -> None:
+		"""Populate trader_allocations, control_point_bounds, and carry-forward standing bids.
+		Called just before running the auction so that creation remains fast."""
+		now = datetime.now(timezone.utc).isoformat()
+		with self._connect() as conn:
+			auction_row = conn.execute("SELECT firstWaterTakeDate, lastWaterTakeDate, period_length_hours FROM auctions WHERE auction_id=?", (auction_id,)).fetchone()
+			if auction_row is None: raise ValueError(f"Auction {auction_id} not found")
+			period_keys = self._period_keys(str(auction_row["firstWaterTakeDate"]), str(auction_row["lastWaterTakeDate"]), int(auction_row["period_length_hours"]))
+
+			source_auction_id = self._default_auction_id(conn, exclude_auction_id=auction_id)
+			source_period_keys: list[str] = []
 			if source_auction_id is not None:
 				try: source_period_keys = [p.id for p in self.load(str(source_auction_id)).auction.periods]
 				except Exception: source_period_keys = []
-
-			if existing_id:
-				conn.execute("UPDATE auctions SET closed_date=?, firstWaterTakeDate=?, lastWaterTakeDate=?, period_length_hours=?, auction_type=? WHERE auction_id=?", (closed_date, first_water_take_date, last_water_take_date, int(period_length_hours), auction_type, existing_id),)
-				auction_id_str = existing_id
-			else:
-				cursor = conn.execute("INSERT INTO auctions(status, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, auction_type) VALUES ('OPEN', ?, ?, ?, ?, ?, ?)", (now, closed_date, first_water_take_date, last_water_take_date, int(period_length_hours), auction_type),)
-				auction_id_str = str(int(cursor.lastrowid))
 
 			traders = conn.execute("SELECT trader_id FROM traders").fetchall()
 			for trader_row in traders:
@@ -260,9 +269,9 @@ class AuctionRepository:
 					allocation = 0.0
 					if source_auction_id is not None:
 						source_key = source_period_keys[idx] if idx < len(source_period_keys) else period_id
-						row = conn.execute("SELECT allocation FROM trader_allocations WHERE auction_id=? AND trader_id=? AND period_id=?", (source_auction_id, trader_row["trader_id"], source_key), ).fetchone()
+						row = conn.execute("SELECT allocation FROM trader_allocations WHERE auction_id=? AND trader_id=? AND period_id=?", (source_auction_id, trader_row["trader_id"], source_key)).fetchone()
 						allocation = float(row["allocation"]) if row else 0.0
-					conn.execute("INSERT INTO trader_allocations(auction_id, trader_id, period_id, allocation) VALUES (?, ?, ?, ?)", (auction_id_str, trader_row["trader_id"], period_id, allocation),)
+					conn.execute("INSERT OR IGNORE INTO trader_allocations(auction_id, trader_id, period_id, allocation) VALUES (?, ?, ?, ?)", (auction_id, trader_row["trader_id"], period_id, allocation),)
 
 			cps = conn.execute("SELECT control_point_id FROM control_points").fetchall()
 			for cp_row in cps:
@@ -270,29 +279,24 @@ class AuctionRepository:
 					bound = 0.0
 					if source_auction_id is not None:
 						source_key = source_period_keys[idx] if idx < len(source_period_keys) else period_id
-						row = conn.execute("SELECT bound FROM control_point_bounds WHERE auction_id=? AND control_point_id=? AND period_id=?", (source_auction_id, cp_row["control_point_id"], source_key), ).fetchone()
+						row = conn.execute("SELECT bound FROM control_point_bounds WHERE auction_id=? AND control_point_id=? AND period_id=?", (source_auction_id, cp_row["control_point_id"], source_key)).fetchone()
 						bound = float(row["bound"]) if row else 0.0
-					conn.execute("INSERT INTO control_point_bounds(auction_id, control_point_id, period_id, bound) VALUES (?, ?, ?, ?)", (auction_id_str, cp_row["control_point_id"], period_id, bound),)
+					conn.execute("INSERT OR IGNORE INTO control_point_bounds(auction_id, control_point_id, period_id, bound) VALUES (?, ?, ?, ?)", (auction_id, cp_row["control_point_id"], period_id, bound),)
 
-			for idx, period_id in enumerate(period_keys):
-				period_num = idx + 1
-				rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_matrix WHERE pumping_period=? AND effect_period=?", (period_num, period_num), ).fetchall()
-				for row in rows:
-					conn.execute("INSERT OR REPLACE INTO response_matrix(well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?, ?, ?, ?, ?)", (row["well_id"], row["control_point_id"], row["pumping_period"], row["effect_period"], float(row["factor_value"]),),)
-
-			# C.7: Always carry forward standing bids (isBidAutomatic=1) from most recent previous auction.
+			# C.7: Carry forward standing bids (is_bid_automatic=1) from the most recent previous auction.
 			if source_auction_id is not None:
-				standing = conn.execute("SELECT trader_id, well_id, effect_date, qty1, price1 FROM trader_bids " "WHERE auction_id=? AND is_bid_automatic=1 AND deleted=0", (source_auction_id,), ).fetchall()
+				standing = conn.execute("SELECT trader_id, well_id, effect_date, qty1, price1 FROM trader_bids WHERE auction_id=? AND is_bid_automatic=1 AND deleted=0", (source_auction_id,)).fetchall()
 				for s in standing:
-					# Soft-delete any existing bid for same (trader, period) in the new auction first.
-					conn.execute("UPDATE trader_bids SET deleted=1 WHERE auction_id=? AND trader_id=? AND effect_date=? AND deleted=0", (auction_id_str, s["trader_id"], s["effect_date"]),)
-					conn.execute("INSERT INTO trader_bids(auction_id, trader_id, well_id, bid_date, effect_date, qty1, price1, is_bid_automatic, deleted) " "VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)", (auction_id_str, s["trader_id"], s["well_id"], now, s["effect_date"], s["qty1"], s["price1"]),)
+					conn.execute("UPDATE trader_bids SET deleted=1 WHERE auction_id=? AND trader_id=? AND effect_date=? AND deleted=0", (auction_id, s["trader_id"], s["effect_date"]),)
+					conn.execute("INSERT OR IGNORE INTO trader_bids(auction_id, trader_id, well_id, bid_date, effect_date, qty1, price1, is_bid_automatic, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)", (auction_id, s["trader_id"], s["well_id"], now, s["effect_date"], s["qty1"], s["price1"]),)
 
-		return Auction(id=auction_id_str, status="OPEN", periods=[AuctionPeriod(id=pk, label=pk) for pk in period_keys], closed_date=closed_date, first_water_take_date=first_water_take_date, last_water_take_date=last_water_take_date, period_length_hours=int(period_length_hours), auction_type=auction_type,)
+	def mark_auction_deleted(self, auction_id: str) -> None:
+		with self._connect() as conn:
+			conn.execute("UPDATE auctions SET status='DELETED' WHERE auction_id=?", (auction_id,))
 
 	def list_auctions(self) -> list[dict]:
 		with self._connect() as conn:
-			rows = conn.execute("SELECT auction_id, status, auction_type, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, solve_status, objective_value FROM auctions ORDER BY created_date DESC").fetchall()
+			rows = conn.execute("SELECT auction_id, status, auction_type, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, solve_status, objective_value FROM auctions WHERE status != 'DELETED' ORDER BY CAST(auction_id AS INTEGER) ASC").fetchall()
 			return [dict(row) for row in rows]
 
 	def save_run_results(self, auction_id: str, market_result: MarketResult, clearing_start_time: str | None = None) -> str:

@@ -1,8 +1,11 @@
-﻿<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
-<body><p><a href="/researcher">Researcher page</a> | <a href="/database-documentation">Database documentation</a></p>
+﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
+<body>
+	
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 
-<h1>Programmer's page</h1>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
 <p>The software architecture for web routes and pages is the FastAPI app in src/web/app.py. An SQLite repository provides data persistence in src/services/repository.py.
 The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt anything.
@@ -12,9 +15,10 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
 <p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.app:app --reload</pre>
 <p>3. Open your browser to <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.</p>
-<p>4. Your hydrologist should run the hydrology model through GWM2K or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.
+<p>4. Your hydrologist should run the hydrology model through USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> 
+	or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.
 	This code here reads those files to get the response matrix, the number of wells, the number of control points, and the number of time periods.
-	In principle, then, this code will work with any groundwater model that works with GWM2K. Buttons below allow you to import these files.</p>
+	In principle, then, this code will work with any groundwater model that works with GWM. Buttons below allow you to import these files.</p>
 
 <h2>Database status</h2>
 {% if notice %}<p id="flash-notice"><strong>{{ notice }}</strong></p>{% endif %}
@@ -36,13 +40,13 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <form id="delete-db-form" method="post" action="/setup/delete-db" style="display:inline-block;" onsubmit="return confirm('Are you sure you want to delete the whole Forever Fair database?')">
 <button type="submit">Delete database</button></form>
 
-<h1>Setting up the database: 7 files</h1>
+<h1>Set up the database: 7 files</h1>
 <p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
 
 <h2>1. Import .decvar file</h2>
-<p>Forever Fair uses this data for the list of wells. A GWM2K .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
+<p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
 	The layer, row, and col fields are the MODFLOW grid coordinates. Module import_decvar.py stores this data in table wells with one well row per unique well number.
-	(Confusingly, GWM2K writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
+	(Confusingly, GWM writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
 	The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
 <div id="decvar-result" style="display:none"></div>
 <form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
@@ -51,12 +55,12 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <h2>2. Import .hedcon file</h2>
 <p>Forever Fair uses this information for the list of control points and head constraints by time periods.
-	A GWM2K .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
+	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
 	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
 	Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
 	The module also stores per-period bounds from RHS_head in table default_control_point_bounds. 
 	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
-(Like the wellNNNN convention in the GWM2K .decvar file, GWM2k formats control-point tokens in HEDCON as bonNNNN.)</p>
+(Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
 
 <div id="hedcon-result" style="display:none"></div>
 <form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
@@ -64,48 +68,42 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 </form>
 
 <h2>3. Import trader names</h2>
-<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. A template file is at data/Tianqiao/Trader_names.csv.</p>
-<p>The import derives trader_id, name, and trader_loginid from the last name. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Li</em>, <em>Li1</em>, <em>Li2</em>).</p>
+<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. The import derives trader_id, name, and trader_loginid from the last name. 
+	A trader name can appear only once. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Chunmiao</em>, <em>Chunmiao1</em>, <em>Chunmiao2</em>).
+	Note that a trader can have more than one well.</p>
 <div id="trader-names-result" style="display:none"></div>
 <form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
 <p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
 </form>
 
 <h2>4. Import trader-well assignments</h2>
-<p>Upload a tab-delimited file with columns name and well_id. A template file is at data/Tianqiao/Trader_wells.csv.</p>
-<p>Requirements:</p>
-<ul><li>name must exactly match a value in the traders.name_tag column (case-sensitive).</li>
-<li>well_id must exactly match a value in the wells.well_id column.</li>
-<li>A trader may have more than one well; each well can be assigned to only one trader.</li>
+<p>Upload a tab-delimited file with columns name and well_id. Requirements:</p>
+<ul><li>Check 1: name must exactly match a value in the traders.name_tag column (case-sensitive).  A trader may have more than one well; each well can be assigned to only one trader.</li>
+<li>Check 2: well_id must exactly match a value in the wells.well_id column.</li>
 </ul>
-<p>The import updates wells.trader_id for each matched row. Rows that fail either check are skipped and listed in the notice.</p>
+<p>Rows that fail either check are skipped and listed in the notice. For each matched row, the import updates wells.trader_id.</p>
 <div id="trader-wells-result" style="display:none"></div>
 <form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
 <p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
 </form>
 
 <h2>5. Import well latitude and longitude</h2>
-<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. Updates the wells table with spatial coordinates.</p>
+<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. The latitude and longitude are used only for the catchment visualizations.</p>
 <div id="well-lat-lon-result" style="display:none"></div>
 <form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
 <p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
 </form>
 
-<h2>6. Import .mps file</h2>
+<h2>6. Import mps file</h2>
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
-	A GWM2K .mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well capacities/licenses (BOUNDS section).
-	The COLUMNS section is the core response-matrix data. RHS repeats head limits from the hedcon file.
-	The BOUNDS section is imported as one trader_license row per well and bid period (UP bounds only), so run this after section 5 where wells are assigned to traders.
+	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
+	This code writes to tables response_matrix, default_control_point_bounds, and trader_license.
+	Table control_point_bounds is left empty, but gets automatically loaded for a specific auction.
+	(Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
+	So one index NNNN encodes control point number and time period. The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number.)
+	<i>Caution, import may be slow because these can be big files.</i></p>
 
-	Module import_mps.py writes to response_matrix, default_control_point_bounds, and trader_license.
-	Import populates response_matrix and default_control_point_bounds (RHS bounds, no auction,
-	used as optimizer fallback). control_point_bounds is left empty; apply defaults for a specific auction from the Hydrologist maintenance page.
-	Requires an existing manager-created auction for response factors.
-	Default dimensions are from the Tianqiao example. Caution, import may be slow because these can be big files.
-Control-point token format in MPS rows: numeric row name.</p>
-<pre>control_point = 1 + floor((row_index - 1) / number_control_periods)
-effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
-<div id="mps-result" style="display:none"></div>
+	<div id="mps-result" style="display:none"></div>
 <form id="mps-form" method="post" action="/setup/import-mps" enctype="multipart/form-data">
 <input type="hidden" id="period-unit-hidden" name="period_unit" value="day">
 <p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
@@ -118,6 +116,13 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
   </select>
   <span id="period-unit-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span>
 </p>
+
+<h2>7. Import control point latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="control-point-lat-lon-result" style="display:none"></div>
+<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
+<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
 
 <script>
   (function () {
@@ -147,15 +152,11 @@ effect_period = 1 + (row_index - 1) mod number_control_periods</pre>
   })();
 </script>
 
-<h2>7. Import control point latitude and longitude</h2>
-<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude. Updates the control_points table with spatial coordinates.</p>
-<div id="control-point-lat-lon-result" style="display:none"></div>
-<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
-<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>Deferred feature: auction cash ledger (E.1)</h2>
-<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in trader_quota, but no explicit transaction journal is written for each trader. A robust implementation would add a dedicated table such as cash_transactions with fields for trader, auction, period, transaction type, quantity, unit price, signed cash value, timestamp, and source run id. During save_run_results(), insert one ledger row per trader-period result so balances are auditable and reproducible. Add repository helpers to return running balances and transaction history, and expose these on Trader and Researcher pages. Keep writes idempotent per run id.</p>
+<!-- h2>Deferred feature: auction cash ledger</h2>
+<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in trader_quota, but no explicit transaction journal is written for each trader. 
+	A robust implementation would add a dedicated table such as cash_transactions with fields for trader, auction, period, transaction type, quantity, unit price, signed cash value, timestamp,
+	and source run id. During save_run_results(), insert one ledger row per trader-period result so balances are auditable and reproducible. Add repository helpers to return running balances 
+	and transaction history, and expose these on Trader and Researcher pages. Keep writes idempotent per run id.</p -->
 
   <script>
     (function () {

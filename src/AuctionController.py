@@ -1,4 +1,5 @@
 # AuctionController.py. Claude guided by JFR, 2026 04 21.
+# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Coordinate setup, execution, and view state for auctions.
 
 from __future__ import annotations
@@ -6,27 +7,22 @@ from datetime import datetime, timezone
 from RunAuctionModule import runAuction
 from services.repository import AuctionRepository
 
-def SetUpAuction( repository: AuctionRepository, auction_id: str | None, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, clear_existing_bids: bool = True, auction_type: str | None = None, ):
-	# A.5: forbid editing a closed auction.
-	if auction_id:
-		existing = next((a for a in repository.list_auctions() if str(a.get("auction_id")) == str(auction_id)), None)
-		if existing is not None:
-			now_iso = datetime.now().isoformat(timespec="minutes")
-			bid_close = existing.get("closed_date") or ""
-			if existing.get("status") == "CLOSED" or (bid_close and bid_close < now_iso): raise ValueError("Cannot edit a closed auction.")
+def SetUpAuction( repository: AuctionRepository, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, auction_type: str | None = None, ):
 	try:
 		close_dt = datetime.fromisoformat(closed_date)
 		if close_dt < datetime.now(): raise ValueError("Auction closing date/time must be in the future.")
 	except ValueError as e:
-		if "must be in the future" in str(e) or "Cannot edit" in str(e): raise  # re-raise our own validation errors only
+		if "must be in the future" in str(e): raise  # re-raise our own validation errors only
 		# unparseable closed_date (freeform string) — allow through
 	if datetime.fromisoformat(last_water_take_date) < datetime.fromisoformat(first_water_take_date): raise ValueError("lastWaterTakeDate must be on or after firstWaterTakeDate")
 	if int(period_length_hours) <= 0: raise ValueError("period_length_hours must be positive")
-	return repository.setup_auction(auction_id=auction_id, closed_date=closed_date, first_water_take_date=first_water_take_date, last_water_take_date=last_water_take_date, period_length_hours=int(period_length_hours), clear_existing_bids=clear_existing_bids, auction_type=auction_type,)
+	return repository.setup_auction(closed_date=closed_date, first_water_take_date=first_water_take_date, last_water_take_date=last_water_take_date, period_length_hours=int(period_length_hours), auction_type=auction_type,)
 
 def ResetAuctionData(repository: AuctionRepository): return repository.reset_runtime_to_seed()
 
 def runCurrentAuction(repository: AuctionRepository, auction_id: str):
+	# Finish populating auction data (allocations, bounds, standing bids) deferred from creation.
+	repository.prepare_auction_for_run(auction_id)
 	if not repository.has_active_bids(auction_id): raise ValueError("The auction cannot run because it has no bids.")
 	clearing_start_time = datetime.now(timezone.utc).isoformat()
 	auction_case = repository.load(auction_id)

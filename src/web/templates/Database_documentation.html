@@ -1,15 +1,12 @@
-﻿<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Forever Fair Database Documentation</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}">
-</head>
+﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forever Fair Database Documentation</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-<p><a href="/researcher">Researcher overview</a> | <a href="/programmer">Programmer page</a> | <a href="/auctionmanager">Auction manager page</a></p>
 
-<h1>Forever Fair Database Documentation</h1>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Database Documentation</h1>
+
 <p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/setup.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and setup import helpers.</p>
 
 <h2>Table: metadata</h2>
@@ -163,5 +160,6 @@
 <h2>Notes</h2>
 <p>SQLite type affinity is flexible; declared field types indicate intended use but SQLite may store compatible values across affinities.</p>
 <p>Several legacy columns are reserved for future/compatibility behavior and may not be populated in current workflows.</p>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>
