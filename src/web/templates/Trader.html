@@ -49,6 +49,15 @@
 	<label><input type="checkbox" name="is_automatic" value="true"> Standing bid — carry forward automatically to future auctions</label>
 	<button type="submit">Submit bid</button>
 </form>
+<script>
+document.querySelector('form[action="/bids/new"]').addEventListener('submit', function(e) {
+	for (var i = 2; i <= 5; i++) {
+		var q = (document.querySelector('[name="quantity' + i + '"]').value || '').trim();
+		var p = (document.querySelector('[name="price' + i + '"]').value || '').trim();
+		if ((q && !p) || (!q && p)) { e.preventDefault(); alert('Step ' + i + ': quantity and price must both be provided.'); return; }
+	}
+});
+</script>
 {% else %}
 <p><em>Bidding is closed for this auction.</em></p>
 {% endif %}

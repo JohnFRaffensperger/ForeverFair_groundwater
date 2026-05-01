@@ -1,6 +1,5 @@
 <!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
-<!DOCTYPE html><html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Auction Manager's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
 <p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
@@ -9,7 +8,7 @@
 
 <h2>Set up an auction</h2>
 
-<form method="post" action="/manager/setup-auction">
+<form id="setup-auction-form" method="post" action="/auctionmanager/setup-auction">
 	<p><label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label> Closing date must be in the future.</p>
 	<p><label>First water take date/time: <input type="datetime-local" id="first-water-take-time" name="first_water_take_time" value="{{ default_first_water_take }}" required></label></p>
 	<p><label>Last water take date/time: <input type="datetime-local" id="last-water-take-time" name="last_water_take_time" value="{{ default_last_water_take }}" required></label></p>
@@ -42,8 +41,8 @@
 			<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
 			<td>{{ auction.solve_status or '—' }}</td>
 			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
-			<td>{% if not is_closed %}<form method="post" action="/manager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
-			<td>{% if not is_closed %}<form method="post" action="/manager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td>
+			<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
+			<td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td>
 		</tr>
 		{% endfor %}
 	</tbody></table>
@@ -110,6 +109,21 @@
 	}
 	if (closeInput) closeInput.addEventListener('change', refreshDefaultsFromClose);
 	if (firstInput) firstInput.addEventListener('change', refreshLastConstrained);
+
+	const setupForm = document.getElementById('setup-auction-form');
+	if (setupForm) setupForm.addEventListener('submit', function(e){
+		const now = new Date();
+		if (closeInput && closeInput.value && new Date(closeInput.value) <= now){
+			e.preventDefault();
+			alert('Closing date/time must be in the future.');
+			return;
+		}
+		if (firstInput && lastInput && firstInput.value && lastInput.value && new Date(lastInput.value) < new Date(firstInput.value)){
+			e.preventDefault();
+			alert('Last water take date must be on or after first water take date.');
+			return;
+		}
+	});
 	if (closeInput && !closeInput.value) {
 		closeInput.value = toLocalValue(startOfNextHour(new Date()));
 		refreshDefaultsFromClose();

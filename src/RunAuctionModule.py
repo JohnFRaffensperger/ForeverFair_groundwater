@@ -5,7 +5,7 @@
 from __future__ import annotations
 from collections import defaultdict
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
-from models import AcceptedBid, ConstraintResult, AuctionCase, MarketResult, TraderPeriodResult
+from AuctionObjects import AcceptedBid, ConstraintResult, AuctionCase, MarketResult, TraderPeriodResult
 
 def _constraint_name(control_point_id: str, period_id: str) -> str: return f"cp_{control_point_id}_{period_id}".replace("-", "_")
 

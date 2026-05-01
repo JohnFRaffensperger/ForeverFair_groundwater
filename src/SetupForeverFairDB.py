@@ -1,4 +1,4 @@
-﻿# SetupForeverFairDB.py. JFR / Claude, 2026-04-24.
+﻿# SetupForeverFairDB.py. JFR with Claude's help, 2026-05-01.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.
@@ -10,8 +10,10 @@ import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
+from typing import Any
 from pathlib import Path
 
+# Database creation, status, deletion. -----------------------------------------------
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS metadata (meta_key TEXT PRIMARY KEY, meta_value TEXT NOT NULL );
 CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT );
@@ -31,11 +33,14 @@ CREATE TABLE IF NOT EXISTS control_point_event (cpe_id INTEGER PRIMARY KEY AUTOI
 CREATE TABLE IF NOT EXISTS trader_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, effect_date TEXT, expiry_date TEXT, is_bid_automatic INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0 );
 """
 
-_WELL_RE = re.compile(r'[Ww][Ee][Ll][Ll](\d+)', re.ASCII)
-_BON_RE  = re.compile(r'[Bb][Oo][Nn](\d+)', re.ASCII)
-_NUM_RE  = re.compile(r'^(\d+)$')
+def create_empty_db(db_path: Path) -> None:
+	"""Create all tables without inserting any data."""
+	db_path.parent.mkdir(parents=True, exist_ok=True)
+	conn = sqlite3.connect(db_path)
+	conn.executescript(SCHEMA_DDL)
+	conn.close()
 
-def db_status(db_path: Path) -> dict:
+def db_status(db_path: Path) -> dict[str, Any]:
 	"""Return dict with exists flag, path, and per-table row counts."""
 	if not db_path.exists(): return {"exists": False, "db_path": str(db_path)}
 	try:
@@ -50,13 +55,6 @@ def db_status(db_path: Path) -> dict:
 		return {"exists": True, "db_path": str(db_path), "tables": counts}
 	except Exception as exc:
 		return {"exists": True, "db_path": str(db_path), "error": str(exc), "tables": {}}
-
-def create_empty_db(db_path: Path) -> None:
-	"""Create all tables without inserting any data."""
-	db_path.parent.mkdir(parents=True, exist_ok=True)
-	conn = sqlite3.connect(db_path)
-	conn.executescript(SCHEMA_DDL)
-	conn.close()
 
 def delete_db(db_path: Path) -> None:
 	"""Delete the database file and any WAL/SHM sidecar files if they exist."""
@@ -81,7 +79,18 @@ def delete_db(db_path: Path) -> None:
 			failed.append(f"{p}: {last_exc}")
 	if failed: raise OSError("Failed to delete one or more database files: " + "; ".join(failed))
 
-def _decode_well(token: str, num_pump_periods: int) -> tuple[int, int]:
+# Meta data. -------------------------
+def get_meta_data(conn: sqlite3.Connection, key: str) -> int | None:
+	row = conn.execute("SELECT meta_value FROM metadata WHERE meta_key=?", (key,)).fetchone()
+	if row is None: return None
+	try: return int(row[0])
+	except Exception: return None
+
+def save_meta_data(conn: sqlite3.Connection, key: str, value: str) -> None: conn.execute("INSERT OR REPLACE INTO metadata(meta_key, meta_value) VALUES (?,?)", (key, value),)
+
+# Reading the MPS file ----------------------------------------------------------------
+_WELL_RE = re.compile(r'[Ww][Ee][Ll][Ll](\d+)', re.ASCII)
+def mps_well_decoding(token: str, num_pump_periods: int) -> tuple[int, int]:
 	"""wellNNNN → (well_number, pump_period), both 1-based."""
 	m = _WELL_RE.match(token)
 	if not m: raise ValueError(f"Cannot decode well token: {token!r}")
@@ -90,7 +99,9 @@ def _decode_well(token: str, num_pump_periods: int) -> tuple[int, int]:
 	pump_period = 1 + (idx - 1) %  num_pump_periods
 	return well_num, pump_period
 
-def _decode_cp(token: str, num_control_periods: int) -> tuple[int, int]:
+_BON_RE  = re.compile(r'[Bb][Oo][Nn](\d+)', re.ASCII)
+_NUM_RE  = re.compile(r'^(\d+)$')
+def mps_controlpt_decoding(token: str, num_control_periods: int) -> tuple[int, int]:
 	"""Numeric row index or bonNNNN → (cp_number, effect_period), both 1-based."""
 	m_num = _NUM_RE.match(token.strip())
 	m_bon = _BON_RE.match(token)
@@ -101,19 +112,18 @@ def _decode_cp(token: str, num_control_periods: int) -> tuple[int, int]:
 	effect_period = 1 + (idx - 1) %  num_control_periods
 	return cp_num, effect_period
 
-def _auction_period_keys(first_water_take_date: str, last_water_take_date: str, period_length_hours: int) -> list[str]:
-	if period_length_hours <= 0: raise ValueError("period_length_hours must be > 0")
-	start_dt = datetime.fromisoformat(first_water_take_date)
-	end_dt = datetime.fromisoformat(last_water_take_date)
-	if end_dt < start_dt: return []
-	step_seconds = int(period_length_hours) * 3600
-	period_seconds = int((end_dt - start_dt).total_seconds())
-	count = (period_seconds // step_seconds) + 1
-	return [(start_dt + timedelta(hours=int(period_length_hours) * idx)).isoformat(timespec="minutes") for idx in range(int(count))]
+# def _auction_period_keys(first_water_take_date: str, last_water_take_date: str, period_length_hours: int) -> list[str]:
+# 	if period_length_hours <= 0: raise ValueError("period_length_hours must be > 0")
+# 	start_dt = datetime.fromisoformat(first_water_take_date)
+# 	end_dt = datetime.fromisoformat(last_water_take_date)
+# 	if end_dt < start_dt: return []
+# 	step_seconds = int(period_length_hours) * 3600
+# 	period_seconds = int((end_dt - start_dt).total_seconds())
+# 	count = (period_seconds // step_seconds) + 1
+# 	return [(start_dt + timedelta(hours=int(period_length_hours) * idx)).isoformat(timespec="minutes") for idx in range(int(count))]
 
-def _set_meta(conn: sqlite3.Connection, key: str, value: str) -> None: conn.execute("INSERT OR REPLACE INTO metadata(meta_key, meta_value) VALUES (?,?)", (key, value),)
-
-def _infer_decvar_dimensions(text: str) -> tuple[int, int]:
+# MPS file decoding. -------------------------
+def mps_decvar_decoding(text: str) -> tuple[int, int]:
 	max_idx = 0
 	max_stress_period = 0
 	for line in text.splitlines():
@@ -132,7 +142,7 @@ def _infer_decvar_dimensions(text: str) -> tuple[int, int]:
 	num_wells = int(math.ceil(max_idx / float(num_pump_periods)))
 	return num_wells, num_pump_periods
 
-def _infer_hedcon_dimensions(text: str) -> tuple[int, int]:
+def mps_hedcon_decoding(text: str) -> tuple[int, int]:
 	max_idx = 0
 	max_stress_period = 0
 	for line in text.splitlines():
@@ -151,24 +161,18 @@ def _infer_hedcon_dimensions(text: str) -> tuple[int, int]:
 	num_control_points = int(math.ceil(max_idx / float(num_control_periods)))
 	return num_control_points, num_control_periods
 
-def _load_int_meta(conn: sqlite3.Connection, key: str) -> int | None:
-	row = conn.execute("SELECT meta_value FROM metadata WHERE meta_key=?", (key,)).fetchone()
-	if row is None: return None
-	try: return int(row[0])
-	except Exception: return None
+# def _resolve_existing_auction_id(conn: sqlite3.Connection, auction_id: str | None = None) -> str:
+# 	"""Return an existing auction_id, or raise if no manager-created auction exists."""
+# 	if auction_id:
+# 		row = conn.execute("SELECT auction_id FROM auctions WHERE auction_id=?", (auction_id,)).fetchone()
+# 		if row is None: raise ValueError(f"Auction ID {auction_id!r} does not exist. Create the auction from AuctionManager first.")
+# 		return auction_id
 
-def _resolve_existing_auction_id(conn: sqlite3.Connection, auction_id: str | None = None) -> str:
-	"""Return an existing auction_id, or raise if no manager-created auction exists."""
-	if auction_id:
-		row = conn.execute("SELECT auction_id FROM auctions WHERE auction_id=?", (auction_id,)).fetchone()
-		if row is None: raise ValueError(f"Auction ID {auction_id!r} does not exist. Create the auction from AuctionManager first.")
-		return auction_id
+# 	row = conn.execute("SELECT auction_id FROM auctions " "ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" ).fetchone()
+# 	if row is None: raise ValueError("No auctions are defined. Create an auction from AuctionManager first.")
+# 	return str(row[0])
 
-	row = conn.execute("SELECT auction_id FROM auctions " "ORDER BY CASE status WHEN 'OPEN' THEN 0 ELSE 1 END, created_at DESC LIMIT 1" ).fetchone()
-	if row is None: raise ValueError("No auctions are defined. Create an auction from AuctionManager first.")
-	return str(row[0])
-
-def _infer_mps_indexes(text: str) -> tuple[int, int]:
+def get_mps_indices(text: str) -> tuple[int, int]:
 	section = None
 	max_well_idx = 0
 	max_row_idx = 0
@@ -201,7 +205,7 @@ def _infer_mps_indexes(text: str) -> tuple[int, int]:
 
 	return max_well_idx, max_row_idx
 
-def import_decvar(db_path: Path, text: str) -> dict:
+def import_decvar(db_path: Path, text: str) -> dict[str, Any]:
 	"""Parse a GWM2K .decvar file; insert one well row per unique well number.
 
 	DECVAR line format:  wellNNNN  NC  LAYER  ROW  COL  FTYPE  FSTAT  stress_period
@@ -216,7 +220,7 @@ def import_decvar(db_path: Path, text: str) -> dict:
 	gw_model_layer, gw_model_row, and gw_model_column are populated from the first pump-period entry.
 	latitude and longitude remain NULL until georeferenced data is supplied.
 	"""
-	num_wells, num_pump_periods = _infer_decvar_dimensions(text)
+	num_wells, num_pump_periods = mps_decvar_decoding(text)
 
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA foreign_keys = OFF")
@@ -228,7 +232,7 @@ def import_decvar(db_path: Path, text: str) -> dict:
 		if not m: continue
 		try:
 			tokens = line.split()
-			well_num, pump_period = _decode_well(tokens[0], num_pump_periods)
+			well_num, pump_period = mps_well_decoding(tokens[0], num_pump_periods)
 			if well_num in seen: continue
 			seen.add(well_num)
 			# tokens[2]=LAYER, tokens[3]=ROW, tokens[4]=COL give the grid location of this physical well
@@ -242,13 +246,13 @@ def import_decvar(db_path: Path, text: str) -> dict:
 		except Exception as exc:
 			errors.append(str(exc))
 	conn.commit()
-	_set_meta(conn, "gwm_num_wells", str(num_wells))
-	_set_meta(conn, "gwm_num_pump_periods", str(num_pump_periods))
+	save_meta_data(conn, "gwm_num_wells", str(num_wells))
+	save_meta_data(conn, "gwm_num_pump_periods", str(num_pump_periods))
 	conn.commit()
 	conn.close()
 	return {"wells_inserted": inserted, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "errors": errors[:20],}
 
-def import_hedcon(db_path: Path, text: str, num_control_points: int | None = None, num_control_periods: int | None = None) -> dict:
+def import_hedcon(db_path: Path, text: str, num_control_points: int | None = None, num_control_periods: int | None = None) -> dict[str, Any]:
 	"""Parse a GWM2K .hedcon file; insert control points and default bounds.
 
 	HEDCON line format:  bonNNNN  LAYER  ROW  COL  SENSE  RHS_head  stress_period
@@ -261,7 +265,7 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 		cp_number     = 1 + (NNNN - 1) // num_control_periods
 		effect_period = 1 + (NNNN - 1) %  num_control_periods
 	"""
-	if num_control_points is None or num_control_periods is None: num_control_points, num_control_periods = _infer_hedcon_dimensions(text)
+	if num_control_points is None or num_control_periods is None: num_control_points, num_control_periods = mps_hedcon_decoding(text)
 
 	conn = sqlite3.connect(db_path)
 	imported_at = datetime.now().isoformat()
@@ -275,7 +279,7 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 		try:
 			tokens = line.split()
 			idx = int(m.group(1))
-			cp_num, effect_period = _decode_cp(str(idx), num_control_periods)
+			cp_num, effect_period = mps_controlpt_decoding(str(idx), num_control_periods)
 			if cp_num in seen: pass
 			else:
 				seen.add(cp_num)
@@ -293,13 +297,13 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 				bounds_inserted += 1
 		except Exception as exc: errors.append(str(exc))
 	conn.commit()
-	_set_meta(conn, "gwm_num_control_points", str(num_control_points))
-	_set_meta(conn, "gwm_num_control_periods", str(num_control_periods))
+	save_meta_data(conn, "gwm_num_control_points", str(num_control_points))
+	save_meta_data(conn, "gwm_num_control_periods", str(num_control_periods))
 	conn.commit()
 	conn.close()
 	return {"control_points_inserted": cp_inserted, "control_point_bounds_inserted": bounds_inserted, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "errors": errors[:20],}
 
-def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
+def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, Any]:
 	"""Parse a GWM2K .mps file; insert response_matrix, control_point_bounds, and wells.
 
 	GWM2K MPS section formats (4-token per line):
@@ -317,11 +321,11 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 	conn.execute("DELETE FROM trader_license")
 	conn.execute("DELETE FROM trader_quota WHERE auction_id=0")
 
-	max_well_idx, max_row_idx = _infer_mps_indexes(text)
-	num_wells = _load_int_meta(conn, "gwm_num_wells")
-	num_pump_periods = _load_int_meta(conn, "gwm_num_pump_periods")
-	num_control_points = _load_int_meta(conn, "gwm_num_control_points")
-	num_control_periods = _load_int_meta(conn, "gwm_num_control_periods")
+	max_well_idx, max_row_idx = get_mps_indices(text)
+	num_wells = get_meta_data(conn, "gwm_num_wells")
+	num_pump_periods = get_meta_data(conn, "gwm_num_pump_periods")
+	num_control_points = get_meta_data(conn, "gwm_num_control_points")
+	num_control_periods = get_meta_data(conn, "gwm_num_control_periods")
 
 	if num_wells is None:
 		row = conn.execute("SELECT COUNT(*) FROM wells").fetchone()
@@ -378,8 +382,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 			try: coef = float(tokens[3])
 			except ValueError: continue
 			try:
-				well_num, pump_period = _decode_well(col_token, num_pump_periods)
-				cp_num, effect_period = _decode_cp(row_token, num_control_periods)
+				well_num, pump_period = mps_well_decoding(col_token, num_pump_periods)
+				cp_num, effect_period = mps_controlpt_decoding(row_token, num_control_periods)
 				well_id = int(well_num)
 				cp_id   = f"gwm-cp-{cp_num}"
 				conn.execute("INSERT OR REPLACE INTO response_matrix" "(well_id, control_point_id," " pumping_period, effect_period, factor_value)" " VALUES (?,?,?,?,?)", (well_id, cp_id, pump_period, effect_period, coef))
@@ -395,7 +399,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 			try: val = float(tokens[3])
 			except ValueError: continue
 			try:
-				cp_num, effect_period = _decode_cp(row_token, num_control_periods)
+				cp_num, effect_period = mps_controlpt_decoding(row_token, num_control_periods)
 				cp_id = f"gwm-cp-{cp_num}"
 				conn.execute("INSERT OR REPLACE INTO default_control_point_bounds" "(control_point_id, period_id, bound, imported_at) VALUES (?,?,?,?)", (cp_id, effect_period, val, imported_at))
 				bound_count += 1
@@ -411,7 +415,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 			try: val = float(tokens[3])
 			except ValueError: continue
 			try:
-				well_num, pump_period = _decode_well(col_token, num_pump_periods)
+				well_num, pump_period = mps_well_decoding(col_token, num_pump_periods)
 				well_id = int(well_num)
 				before_changes = conn.total_changes
 				conn.execute("INSERT OR IGNORE INTO wells" "(well_id, name, trader_id, gw_model_layer, gw_model_row, gw_model_column, latitude, longitude)" " VALUES (?,?,?,?,?,?,?,?)", (well_id, f"gwm-well-{well_num}", None, None, None, None, None, None))
@@ -433,30 +437,18 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict:
 				errors.append(f"BOUNDS {col_token}: {exc}")
 
 	conn.commit()
-	if num_wells: _set_meta(conn, "gwm_num_wells", str(num_wells))
-	if num_pump_periods: _set_meta(conn, "gwm_num_pump_periods", str(num_pump_periods))
-	if num_control_points: _set_meta(conn, "gwm_num_control_points", str(num_control_points))
-	if num_control_periods: _set_meta(conn, "gwm_num_control_periods", str(num_control_periods))
+	if num_wells: save_meta_data(conn, "gwm_num_wells", str(num_wells))
+	if num_pump_periods: save_meta_data(conn, "gwm_num_pump_periods", str(num_pump_periods))
+	if num_control_points: save_meta_data(conn, "gwm_num_control_points", str(num_control_points))
+	if num_control_periods: save_meta_data(conn, "gwm_num_control_periods", str(num_control_periods))
 	conn.commit()
 	conn.execute("INSERT INTO response_matrix_info(period_length_hours, rmi_loaded_date, notes) VALUES (?, ?, ?)", (float(period_length_hours), imported_at, "Imported from .mps via Programmer page",),)
 	conn.commit()
 	conn.close()
 	return {"response_matrix_inserted": rf_count, "control_point_bounds_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": int(period_length_hours), "errors": errors[:20],}
 
-def missing_import_data_report(db_path: Path) -> dict:
-	"""Report missing gw model coordinates and lat/lon for wells and control points."""
-	if not db_path.exists(): return {"db_exists": False, "wells": {}, "control_points": {},}
-	conn = sqlite3.connect(db_path)
-	conn.row_factory = sqlite3.Row
-
-	well_counts = conn.execute("SELECT " "COUNT(*) AS total," "SUM(CASE WHEN gw_model_row IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_row," "SUM(CASE WHEN gw_model_column IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_column," "SUM(CASE WHEN latitude IS NULL THEN 1 ELSE 0 END) AS missing_latitude," "SUM(CASE WHEN longitude IS NULL THEN 1 ELSE 0 END) AS missing_longitude " "FROM wells" ).fetchone()
-	cp_counts = conn.execute("SELECT " "COUNT(*) AS total," "SUM(CASE WHEN gw_model_row IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_row," "SUM(CASE WHEN gw_model_column IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_column," "SUM(CASE WHEN latitude IS NULL THEN 1 ELSE 0 END) AS missing_latitude," "SUM(CASE WHEN longitude IS NULL THEN 1 ELSE 0 END) AS missing_longitude " "FROM control_points" ).fetchone()
-	sample_wells = [r[0] for r in conn.execute("SELECT well_id FROM wells WHERE " "gw_model_row IS NULL OR gw_model_column IS NULL OR latitude IS NULL OR longitude IS NULL " "ORDER BY well_id LIMIT 8" ).fetchall()]
-	sample_cps = [r[0] for r in conn.execute("SELECT control_point_id FROM control_points WHERE " "gw_model_row IS NULL OR gw_model_column IS NULL OR latitude IS NULL OR longitude IS NULL " "ORDER BY control_point_id LIMIT 8" ).fetchall()]
-	conn.close()
-	return {"db_exists": True, "wells": {k: int(well_counts[k] or 0) for k in well_counts.keys()}, "control_points": {k: int(cp_counts[k] or 0) for k in cp_counts.keys()}, "sample_missing_well_ids": sample_wells, "sample_missing_control_point_ids": sample_cps,}
-
-def import_trader_names(db_path: Path, text: str) -> dict:
+# Importing trader names, trader-well pairs, well lat/long, control point lat/long.  -------------------------------------------------------------------------------
+def import_trader_names(db_path: Path, text: str) -> dict[str, Any]:
 	"""Import traders from a tab-delimited file.
 
 	Expected columns: full_name, trader_first_name, trader_last_name.
@@ -508,7 +500,7 @@ def import_trader_names(db_path: Path, text: str) -> dict:
 	conn.close()
 	return {"traders_inserted": inserted, "traders_skipped": skipped, "errors": errors[:20]}
 
-def import_trader_wells(db_path: Path, text: str) -> dict:
+def import_trader_wells(db_path: Path, text: str) -> dict[str, Any]:
 	"""Import trader-well assignments from a tab-delimited file.
 
 	Expected columns: name (must match traders.name_tag), well_id (must match wells.well_id).
@@ -551,7 +543,7 @@ def import_trader_wells(db_path: Path, text: str) -> dict:
 	conn.close()
 	return {"wells_assigned": assigned, "errors": errors[:20]}
 
-def import_well_lat_lon(db_path: Path, text: str) -> dict:
+def import_well_lat_lon(db_path: Path, text: str) -> dict[str, Any]:
 	"""Import well latitude/longitude from a tab-delimited file.
 
 	Expected columns: well_id, latitude, longitude.
@@ -610,7 +602,7 @@ def import_well_lat_lon(db_path: Path, text: str) -> dict:
 	conn.close()
 	return {"wells_updated": updated, "rows_skipped": skipped, "errors": errors[:20]}
 
-def import_control_point_lat_lon(db_path: Path, text: str) -> dict:
+def import_control_point_lat_lon(db_path: Path, text: str) -> dict[str, Any]:
 	"""Import control-point latitude/longitude from a tab-delimited file.
 
 	Expected columns: control_point_id, latitude, longitude.
@@ -668,3 +660,18 @@ def import_control_point_lat_lon(db_path: Path, text: str) -> dict:
 	conn.commit()
 	conn.close()
 	return {"control_points_updated": updated, "rows_skipped": skipped, "errors": errors[:20],}
+
+# What did I miss? -----------------------------------------------
+def missing_import_data_report(db_path: Path) -> dict[str, Any]:
+	"""Report missing gw model coordinates and lat/lon for wells and control points."""
+	if not db_path.exists(): return {"db_exists": False, "wells": {}, "control_points": {},}
+	conn = sqlite3.connect(db_path)
+	conn.row_factory = sqlite3.Row
+
+	well_counts = conn.execute("SELECT " "COUNT(*) AS total," "SUM(CASE WHEN gw_model_row IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_row," "SUM(CASE WHEN gw_model_column IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_column," "SUM(CASE WHEN latitude IS NULL THEN 1 ELSE 0 END) AS missing_latitude," "SUM(CASE WHEN longitude IS NULL THEN 1 ELSE 0 END) AS missing_longitude " "FROM wells" ).fetchone()
+	cp_counts = conn.execute("SELECT " "COUNT(*) AS total," "SUM(CASE WHEN gw_model_row IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_row," "SUM(CASE WHEN gw_model_column IS NULL THEN 1 ELSE 0 END) AS missing_gw_model_column," "SUM(CASE WHEN latitude IS NULL THEN 1 ELSE 0 END) AS missing_latitude," "SUM(CASE WHEN longitude IS NULL THEN 1 ELSE 0 END) AS missing_longitude " "FROM control_points" ).fetchone()
+	sample_wells = [r[0] for r in conn.execute("SELECT well_id FROM wells WHERE " "gw_model_row IS NULL OR gw_model_column IS NULL OR latitude IS NULL OR longitude IS NULL " "ORDER BY well_id LIMIT 8" ).fetchall()]
+	sample_cps = [r[0] for r in conn.execute("SELECT control_point_id FROM control_points WHERE " "gw_model_row IS NULL OR gw_model_column IS NULL OR latitude IS NULL OR longitude IS NULL " "ORDER BY control_point_id LIMIT 8" ).fetchall()]
+	conn.close()
+	return {"db_exists": True, "wells": {k: int(well_counts[k] or 0) for k in well_counts.keys()}, "control_points": {k: int(cp_counts[k] or 0) for k in cp_counts.keys()}, "sample_missing_well_ids": sample_wells, "sample_missing_control_point_ids": sample_cps,}
+

@@ -1,4 +1,4 @@
-# models.py. Claude guided by JFR, 2026 04 21.
+# AuctionObjects.py. Claude guided by JFR, 2026 04 21.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Define Pydantic models for market inputs and outputs.
 
@@ -22,7 +22,7 @@ class Auction(BaseModel):
 	solve_status: str | None = None
 	objective_value: float | None = None
 
-class Participant(BaseModel):
+class Trader(BaseModel):
 	id: str
 	name: str
 	allocation_by_period: dict[str, float]
@@ -71,7 +71,7 @@ class AuctionCase(BaseModel):
 	source_note: str
 	current_participant_id: str
 	auction: Auction
-	participants: list[Participant]
+	participants: list[Trader]
 	wells: list[Well]
 	control_points: list[ControlPoint]
 	response_factors: list[ResponseFactor]
@@ -102,4 +102,3 @@ class MarketResult(BaseModel):
 	trader_period_results: list[TraderPeriodResult]
 	constraint_results: list[ConstraintResult]
 	well_period_prices: dict[str, float]  # key: "{well_id}_{period_id}", value: dual of quantity equality constraint
-

@@ -1,15 +1,14 @@
 # BiddingController.py. Claude guided by JFR, 2026 04 21.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
-# Purpose: Validate, submit, and manage participant bids.
+# Purpose: Validate, submit, and manage trader bids.
 
 from __future__ import annotations
 from datetime import datetime
-from models import BidSegment, AuctionCase
-from services.repository import AuctionRepository
+from AuctionObjects import BidSegment
+from services.ForeverFairData import ForeverFairData, MAX_BID_STEPS
 
-MAX_BID_STEPS = 5
-
-def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, well_id: str, period_id: str, quantity: float, price: float,) -> None:
+def submitBid(foreverFairData_instance: ForeverFairData, auction_id: str, participant_id: str, well_id: str, period_id: str, quantity: float, price: float, is_automatic: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
+	auction_case = foreverFairData_instance.load(auction_id)
 	period_id = str(period_id).strip()
 	if auction_case.auction.status != "OPEN": raise ValueError("Auction is not open for bids.")
 	# F.3/C.11: Reject bids after the closing datetime even if status is still OPEN.
@@ -20,7 +19,7 @@ def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, wel
 			if close_dt < datetime.now(): raise ValueError("Auction bidding period has closed.")
 	except ValueError as e:
 		if "bidding period has closed" in str(e):
-			raise  # re-raise our own validation error only
+			raise
 		# unparseable label (freeform string) — allow through
 	participant = next((item for item in auction_case.participants if item.id == participant_id), None)
 	if participant is None: raise ValueError("Unknown participant.")
@@ -33,22 +32,16 @@ def _validate_bid_submission(auction_case: AuctionCase, participant_id: str, wel
 	if not any(str(period.id) == period_id for period in auction_case.auction.periods): raise ValueError("Unknown auction period.")
 	if quantity <= 0: raise ValueError("Bid quantity must be positive.")
 	if price <= 0: raise ValueError("Bid price must be positive.")
-
-def _validate_bid_steps(bid_steps: list[tuple[float, float]]) -> None:
-	if not bid_steps: raise ValueError("At least one bid step is required.")
-	if len(bid_steps) > MAX_BID_STEPS: raise ValueError(f"At most {MAX_BID_STEPS} bid steps are supported.")
-	for quantity, price in bid_steps:
-		if quantity <= 0: raise ValueError("Bid quantity must be positive.")
-		if price <= 0: raise ValueError("Bid price must be positive.")
-
-def submitBid(repository: AuctionRepository, auction_id: str, participant_id: str, well_id: str, period_id: str, quantity: float, price: float, is_automatic: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
-	auction_case = repository.load(auction_id)
-	_validate_bid_submission(auction_case, participant_id, well_id, period_id, quantity, price)
 	steps = bid_steps if bid_steps is not None else [(quantity, price)]
-	_validate_bid_steps(steps)
-	return repository.add_bid(
+	if not steps: raise ValueError("At least one bid step is required.")
+	if len(steps) > MAX_BID_STEPS: raise ValueError(f"At most {MAX_BID_STEPS} bid steps are supported.")
+	if bid_steps is not None:  # validate step values only if explicitly provided
+		for step_qty, step_price in steps:
+			if step_qty <= 0: raise ValueError("Bid quantity must be positive.")
+			if step_price <= 0: raise ValueError("Bid price must be positive.")
+	return foreverFairData_instance.add_bid(
 		auction_id=auction_case.auction.id,
-		participant_id=participant_id,
+		trader_id=participant_id,
 		well_id=well_id,
 		period_id=period_id,
 		quantity=steps[0][0],
@@ -57,4 +50,4 @@ def submitBid(repository: AuctionRepository, auction_id: str, participant_id: st
 		bid_steps=steps,
 	)
 
-def deleteBid(repository: AuctionRepository, bid_id: str, participant_id: str) -> bool: return repository.delete_bid(bid_id=bid_id, current_participant_id=participant_id)
+def deleteBid(foreverFairData_instance: ForeverFairData, bid_id: str, participant_id: str) -> bool: return foreverFairData_instance.delete_bid(bid_id=bid_id, current_trader_id=participant_id)
