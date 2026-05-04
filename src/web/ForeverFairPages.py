@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
+from typing import Any
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import AuctionController
@@ -34,23 +35,23 @@ def _flash_redirect(url: str, msg: str, status_code: int = 303) -> RedirectRespo
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-	participants = foreverFairData_instance.list_of_traders()
-	now_iso = datetime.now().isoformat()
+	traders = foreverFairData_instance.list_of_traders()
+	now_iso = foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")
 	upcoming = foreverFairData_instance.list_auctions()
 	next_final = next((a for a in reversed(upcoming) if a.get("status") == "OPEN" and a.get("auction_type") != "tentative" and (a.get("closed_date") or "") > now_iso), None)
 	next_tentative = next((a for a in reversed(upcoming) if a.get("status") == "OPEN" and a.get("auction_type") == "tentative" and (a.get("closed_date") or "") > now_iso), None)
-	return templates.TemplateResponse(request, "LoginPage.html", {"participants": participants, "next_final": next_final, "next_tentative": next_tentative, })
+	return templates.TemplateResponse(request, "LoginPage.html", {"traders": traders, "next_final": next_final, "next_tentative": next_tentative, })
 
 @app.post("/login")
-def do_login(participant_id: str = Form(...)):
+def do_login(trader_id: int = Form(...)):
 	response = RedirectResponse(url="/trader", status_code=303)
-	response.set_cookie("participant_id", participant_id, max_age=86400, httponly=True)
+	response.set_cookie("trader_id", str(trader_id), max_age=86400, httponly=True)
 	return response
 
 @app.get("/researcher", response_class=HTMLResponse)
 def researcher_page(request: Request):
-	participants = foreverFairData_instance.list_of_traders()
-	return templates.TemplateResponse(request, "Researcher.html", {"participants": participants})
+	traders = foreverFairData_instance.list_of_traders()
+	return templates.TemplateResponse(request, "Researcher.html", {"traders": traders})
 
 @app.get("/database-documentation", response_class=HTMLResponse)
 def database_documentation_page(request: Request):
@@ -73,22 +74,29 @@ def doc_programmer(request: Request):
 
 @app.get("/auctionmanager", response_class=HTMLResponse)
 def doc_auctionmanager(request: Request):
+	next_auction = foreverFairData_instance.get_next_auction_info()
+	if next_auction is None: next_auction = foreverFairData_instance.add_auction()
+	next_real_bid_count, next_default_bid_count = foreverFairData_instance.get_bid_count(next_auction["auction_id"])
 	period_length_hours = foreverFairData_instance.latest_period_length_hours()
+	bidding_periods = foreverFairData_instance.number_of_bidding_periods()
+	# period_length_hours = period_length_hours or 168
+	now_dt = foreverFairData_instance.the_time_at_the_tone_is()
+	close_dt, default_first, default_last = foreverFairData_instance.get_auction_close_first_last_dates(now_dt, int(period_length_hours or 168), int(bidding_periods or 4))
 	response_period_count = foreverFairData_instance.response_matrix_period_count()
-	context = {"auctions": foreverFairData_instance.list_auctions(), "period_length_hours": period_length_hours, "response_period_count": response_period_count,}
+	context: dict[str, Any] = {"auctions": foreverFairData_instance.list_auctions(), "period_length_hours": period_length_hours, "response_period_count": response_period_count, "bidding_periods": bidding_periods, "next_auction_id": next_auction_id, "next_real_bid_count": next_real_bid_count, "next_default_bid_count": next_default_bid_count,}
 	notice = request.cookies.get("flash")
 	context["notice"] = notice
-	context["now"] = datetime.now().isoformat(timespec="minutes")
-	base = datetime.now()
-	days_ahead = (7 - base.weekday()) % 7
-	if days_ahead == 0: days_ahead = 7
-	default_first = (base + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
-	default_last = default_first + timedelta(days=28)
+	context["now"] = now_dt.isoformat(timespec="minutes")
+	context["today_display"] = now_dt.strftime("%d %b %Y")
+	context["today_weekday"] = now_dt.strftime("%A")
+	context["scheduled_close_display"] = close_dt.strftime("%d %b %Y %H:%M")
+	context["default_first_display"] = default_first.strftime("%d %b %Y")
+	context["default_last_display"] = default_last.strftime("%d %b %Y")
+	context["default_close_time"] = close_dt.isoformat(timespec="minutes")
 	context["default_first_water_take"] = default_first.isoformat(timespec="minutes")
 	context["default_last_water_take"] = default_last.isoformat(timespec="minutes")
-	period_len = context.get("period_length_hours")
-	resp_n = context.get("response_period_count")
-	if period_len and resp_n: context["default_last_constrained"] = (default_first + timedelta(hours=int(period_len) * int(resp_n))).isoformat(timespec="minutes")
+	if period_length_hours is not None and response_period_count:
+		context["default_last_constrained"] = (default_first + timedelta(hours=period_length_hours * response_period_count)).strftime("%d %b %Y")
 	else: context["default_last_constrained"] = ""
 	resp = templates.TemplateResponse(request, "AuctionManager.html", context)
 	resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -101,20 +109,24 @@ def doc_auctionmanager(request: Request):
 def home(): return RedirectResponse(url="/researcher", status_code=303)
 
 @app.get("/trader", response_class=HTMLResponse)
-def trader_page(request: Request, auction_id: str | None = None):
-	participant_id = request.cookies.get("participant_id")
-	if not participant_id: return RedirectResponse(url="/login", status_code=303)
-	auction_case = foreverFairData_instance.load(auction_id, participant_id=participant_id)
-	current_participant = next((p for p in auction_case.participants if p.id == auction_case.current_participant_id), auction_case.participants[0])
-	current_wells = foreverFairData_instance.wells_for_trader(auction_case, current_participant)
-	current_well = current_wells[0] if current_wells else None
-	bid_history = foreverFairData_instance.bid_history(auction_case.auction.id, current_participant.id)
-	period_rows = []
+def trader_page(request: Request, auction_id: int | None = None):
+
+	trader_cookie = request.cookies.get("trader_id")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
+
+	auction_id = foreverFairData_instance.get_next_auction_info()
+	# this_trader_id = next((p for p in auction_case.traders if p.id == auction_case.current_trader_id), auction_case.traders[0])
+	current_wells = foreverFairData_instance.get_trader_wells(trader_id)
+	current_well = current_wells[0] # if current_wells else None
+	bid_history = foreverFairData_instance.bid_history(auction_id, trader_id)
+	quota_by_period = foreverFairData_instance.get_quota_auction_start(trader_id=this_trader_id.id, auction_id=auction_case.auction.id)
+	period_rows: list[dict[str, Any]] = []
 	for period in auction_case.auction.periods:
-		period_key = str(period.id)
-		quota = foreverFairData_instance.get_quota(trader_id=current_participant.id, period_start=period_key, auction_id=auction_case.auction.id,).get(period_key, [0.0, 0.0])
-		period_rows.append({"period_id": period.id, "period_key": period_key, "period_label": period.label, "allocation": quota[1],})
-	context = {"auction_case": auction_case, "current_participant": current_participant, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_case.auction.id,}
+		period_key = int(period.id)
+		period_rows.append({"period_id": period.id, "period_key": period_key, "period_label": period.label, "allocation": quota_by_period.get(period_key, 0.0),})
+	context: dict[str, Any] = {"auction_case": auction_case, "current_trader": this_trader_id, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_case.auction.id,}
 	notice = request.cookies.get("flash")
 	context["notice"] = notice
 	resp = templates.TemplateResponse(request, "Trader.html", context)
@@ -122,7 +134,7 @@ def trader_page(request: Request, auction_id: str | None = None):
 	return resp
 
 @app.post("/bids/new")
-def create_bid(request: Request, auction_id: str = Form(...), well_id: str = Form(...), period_id: str = Form(...),  
+def create_bid(request: Request, auction_id: int = Form(...), well_id: int = Form(...), period_id: int = Form(...),  
 	quantity: float = Form(...), price: float = Form(...),
 	quantity2: str = Form(default=""), price2: str = Form(default=""),
 	quantity3: str = Form(default=""), price3: str = Form(default=""),
@@ -130,51 +142,37 @@ def create_bid(request: Request, auction_id: str = Form(...), well_id: str = For
 	quantity5: str = Form(default=""), price5: str = Form(default=""),
 	is_automatic: bool = Form(default=False),):
 
-	participant_id = request.cookies.get("participant_id")
-	if not participant_id: return RedirectResponse(url="/login", status_code=303)
+	trader_cookie = request.cookies.get("trader_id")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
 
 	bid_steps: list[tuple[float, float]] = [(quantity, price)] + [(float(q), float(p)) for q, p in [(quantity2, price2), (quantity3, price3), (quantity4, price4), (quantity5, price5)] if str(q or "").strip() and str(p or "").strip()]
-	try: BiddingController.submitBid(foreverFairData_instance, auction_id=auction_id, participant_id=participant_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_automatic=is_automatic, bid_steps=bid_steps,)
+	try: BiddingController.submitBid(foreverFairData_instance, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_automatic, bid_steps=bid_steps,)
 	except ValueError as e:
 		return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: {e}")
 	return _flash_redirect(f"/trader?auction_id={auction_id}", "Bid saved")
 
 @app.post("/bids/{bid_id}/delete")
-def delete_bid(request: Request, bid_id: str):
-	participant_id = request.cookies.get("participant_id") or ""
-	deleted = BiddingController.deleteBid(foreverFairData_instance, bid_id, participant_id)
+def delete_bid(request: Request, bid_id: int):
+	trader_cookie = request.cookies.get("trader_id")
+	trader_id = int(trader_cookie) if trader_cookie and trader_cookie.isdigit() else 0
+	deleted = BiddingController.deleteBid(foreverFairData_instance, bid_id, trader_id)
 	return _flash_redirect("/trader", "Bid deleted" if deleted else "Bid not found")
 
-@app.post("/auctionmanager/setup-auction")
-def manager_setup_auction (bid_close_time: str = Form(...), tentative: bool = Form(default=False), first_water_take_time: str = Form(...), last_water_take_time: str = Form(...), ):
-	close_dt = datetime.fromisoformat(bid_close_time)
-	first_take_dt = datetime.fromisoformat(first_water_take_time)
-	last_take_dt = datetime.fromisoformat(last_water_take_time)
-	auction_type = "tentative" if tentative else "final"
-	period_length_hours = foreverFairData_instance.latest_period_length_hours()
-	if period_length_hours is None:
-		return _flash_redirect("/auctionmanager", "Error: import an .mps file and choose period length first")
-
-	try:
-		AuctionController.SetUpAuction(foreverFairData_instance, closed_date=close_dt.isoformat(timespec="minutes"),
-			first_water_take_date=first_take_dt.isoformat(timespec="minutes"), last_water_take_date=last_take_dt.isoformat(timespec="minutes"), period_length_hours=int(period_length_hours), auction_type=auction_type,)
-	except ValueError as e:
-		return _flash_redirect("/auctionmanager", f"Error: {e}")
-	return _flash_redirect("/auctionmanager", "Auction created")
-
 @app.post("/auctionmanager/run-auction")
-def manager_run_auction(auction_id: str = Form(...)):
+def manager_run_auction(auction_id: int = Form(...)):
 	# Guard: do not run an auction that has already closed by time.
-	now_iso = datetime.now().isoformat(timespec="minutes")
+	now_iso = foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")
 	auctions = foreverFairData_instance.list_auctions()
-	target = next((a for a in auctions if str(a.get("auction_id")) == str(auction_id)), None)
+	target = next((a for a in auctions if int(a.get("auction_id") or 0) == int(auction_id)), None)
 	if target is None: return _flash_redirect("/auctionmanager", "Error: Auction not found")
 	bid_close = target.get("closed_date") or ""
 	if target.get("status") == "CLOSED" or (bid_close and bid_close < now_iso): return _flash_redirect("/auctionmanager", "Error: Cannot run a closed auction")
 	try:
 		# Apply the latest default head-constraint bounds before running.
-		try: AuctionController.apply_default_bounds(foreverFairData_instance, auction_id)
-		except Exception: pass  # No default bounds yet; continue.
+		# try: AuctionController.apply_default_bounds(foreverFairData_instance, auction_id)
+		# except Exception: pass  # No default bounds yet; continue.
 		AuctionController.runCurrentAuction(foreverFairData_instance, auction_id=auction_id)
 	except Exception as e:
 		if str(e) == "The auction cannot run because it has no bids.": return _flash_redirect("/auctionmanager", "The auction cannot run because it has no bids.")
@@ -182,19 +180,19 @@ def manager_run_auction(auction_id: str = Form(...)):
 	return _flash_redirect("/auctionmanager", "Auction run completed")
 
 @app.post("/auctionmanager/delete-auction")
-def manager_delete_auction(auction_id: str = Form(...)):
-	auctions = foreverFairData_instance.list_auctions()
-	target = next((a for a in auctions if str(a.get("auction_id")) == str(auction_id)), None)
-	if target is None: return _flash_redirect("/auctionmanager", "Error: Auction not found")
-	if target.get("status") == "CLOSED": return _flash_redirect("/auctionmanager", "Error: Cannot delete a closed auction")
-	foreverFairData_instance.mark_auction_deleted(auction_id)
-	return _flash_redirect("/auctionmanager", f"Auction {auction_id} deleted")
+# def manager_delete_auction(auction_id: int = Form(...)):
+# 	auctions = foreverFairData_instance.list_auctions()
+# 	target = next((a for a in auctions if int(a.get("auction_id") or 0) == int(auction_id)), None)
+# 	if target is None: return _flash_redirect("/auctionmanager", "Error: Auction not found")
+# 	if target.get("status") == "CLOSED": return _flash_redirect("/auctionmanager", "Error: Cannot delete a closed auction")
+# 	foreverFairData_instance.mark_auction_deleted(auction_id)
+# 	return _flash_redirect("/auctionmanager", f"Auction {auction_id} deleted")
 
 @app.get("/catchment", response_class=HTMLResponse)
-def catchment_page(request: Request, auction_id: str | None = None):
-	auction_case = foreverFairData_instance.load(auction_id)
+def catchment_page(request: Request, auction_id: int | None = None):
+	# auction_case = foreverFairData_instance.load(auction_id)
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_case.auction.id)
-	context = {"catchment_name": auction_case.catchment_name, "auction": auction_case.auction.model_dump(), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	context: dict[str, Any] = {"catchment_name": auction_case.catchment_name, "auction": auction_case.auction.model_dump(), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 	notice = request.cookies.get("flash")
 	context["notice"] = notice
 	resp = templates.TemplateResponse(request, "CatchmentPage.html", context)
@@ -202,8 +200,8 @@ def catchment_page(request: Request, auction_id: str | None = None):
 	return resp
 
 @app.get("/api/system-state")
-def system_state_api(auction_id: str | None = None):
-	auction_case = foreverFairData_instance.load(auction_id)
+def system_state_api(auction_id: int | None = None) -> dict[str, Any]:
+	# auction_case = foreverFairData_instance.load(auction_id)
 	latest_run = foreverFairData_instance.latest_run_summary(auction_case.auction.id)
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_case.auction.id)
 	return {"catchment_name": auction_case.catchment_name, "auction": auction_case.auction.model_dump(), "rights_conversion": auction_case.rights_conversion.model_dump(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
@@ -258,7 +256,7 @@ async def setup_import_hedcon(file: UploadFile = File(...),):
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing HEDCON: {e}")
 	notice = (f"HEDCON import complete: {result['control_points_inserted']} control points,"
-	          f" {result['control_point_bounds_inserted']} bounds inserted"
+	          f" {result['control_point_rows_inserted']} minimum-head rows inserted"
 	          f" (inferred: {result['num_control_points']} control points, {result['num_control_periods']} control periods)")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
@@ -273,7 +271,7 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing MPS: {e}")
 	notice = (f"MPS import complete: {result['response_matrix_inserted']} response factors,"
-		      f" {result['control_point_bounds_inserted']} bounds,"
+		      f" {result['control_point_rows_inserted']} control-point rows,"
 		      f" {result['license_rows_inserted']} trader-license rows"
 		      f" ({result['wells_ensured']} wells ensured)"
 		      f" (using: {result['num_wells']} wells, {result['num_pump_periods']} pump periods,"
@@ -283,17 +281,19 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 	return _flash_redirect("/programmer", notice)
 
 @app.get("/setup/current-period-unit")
-def setup_current_period_unit():
+def setup_current_period_unit() -> dict[str, Any]:
+	db_path = DATA_DIR / "foreverfair.db"
 	if not db_path.exists(): return {"period_unit": None, "period_length_hours": None}
 	hours = foreverFairData_instance.latest_period_length_hours()
 	if hours is None: return {"period_unit": None, "period_length_hours": None}
 	if hours == 1: unit = "hour"
+	elif hours == 24: unit = "day"
 	elif hours == 168: unit = "week"
 	else: unit = "day"
 	return {"period_unit": unit, "period_length_hours": hours}
 
 @app.post("/setup/set-period-unit")
-async def setup_set_period_unit(request: Request):
+async def setup_set_period_unit(request: Request) -> dict[str, Any]:
 	body = await request.json()
 	unit = str(body.get("period_unit", "")).strip().lower()
 	unit_hours = {"hour": 1, "day": 24, "week": 168}.get(unit)
@@ -303,14 +303,34 @@ async def setup_set_period_unit(request: Request):
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		row = conn.execute("SELECT rmi_id FROM response_matrix_info ORDER BY rmi_id DESC LIMIT 1").fetchone()
-		if row is None:
-			return {"ok": False, "error": "no response_matrix_info row; import MPS first"}
-		conn.execute("UPDATE response_matrix_info SET period_length_hours=? WHERE rmi_id=?", (float(unit_hours), row[0]))
+		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('period_length_hours', ?)", (str(unit_hours),))
 		conn.commit()
 	finally:
 		conn.close()
 	return {"ok": True, "period_length_hours": unit_hours}
+
+@app.get("/setup/current-bidding-periods")
+def setup_current_bidding_periods():
+	return {"num_bidding_periods": foreverFairData_instance.number_of_bidding_periods()}
+
+@app.post("/setup/set-bidding-periods")
+async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
+	body = await request.json()
+	try:
+		value = int(body.get("num_bidding_periods", 4))
+	except Exception:
+		return {"ok": False, "error": "invalid number of bidding periods"}
+	if value < 1 or value > 52: return {"ok": False, "error": "number of bidding periods must be 1..52"}
+	db_path = DATA_DIR / "foreverfair.db"
+	if not db_path.exists(): return {"ok": False, "error": "database does not exist"}
+	import sqlite3
+	conn = sqlite3.connect(db_path)
+	try:
+		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('num_bidding_periods', ?)", (str(value),))
+		conn.commit()
+	finally:
+		conn.close()
+	return {"ok": True, "num_bidding_periods": value}
 
 @app.post("/setup/import-trader-names")
 async def setup_import_trader_names(file: UploadFile = File(...)):

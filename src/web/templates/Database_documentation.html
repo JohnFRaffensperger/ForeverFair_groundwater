@@ -1,4 +1,4 @@
-﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Forever Fair Database Documentation</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
@@ -8,10 +8,12 @@
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Database Documentation</h1>
 
 <p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/SetupForeverFairDB.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and SetupForeverFairDB import helpers.</p>
+<p><strong>Initialization convention:</strong> Setup imports use <strong>auction_id = 0</strong> for initial rows in both well_quota (initial quota via quota_auction_start) and control_point_event (initial head values: minimum_head from HEDCON, actual_start_head computed from HEDCON and MPS together). The optimization computes the LP right-hand side as <strong>minimum_head &minus; actual_start_head</strong> at runtime.</p>
 
-<h2>Table: metadata</h2>
-<p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global metadata entry. Used for keys such as inferred GWM dimensions and other import metadata.</p>
-<p><strong>meta_value (TEXT, NOT NULL):</strong> Value for the metadata key, stored as text and interpreted by caller logic.</p>
+<h2>Table: Catchment_info</h2>
+<p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global catchment setting. Used for keys such as inferred GWM dimensions, synthetic time, period length, and bidding-period count.</p>
+<p><strong>meta_value (TEXT, NOT NULL):</strong> Value for the setting key, stored as text and interpreted by caller logic.</p>
+<p><strong>Common keys:</strong> synthetic_current_date, num_bidding_periods, period_length_hours, mps_loaded_date, mps_notes, gwm_num_wells, gwm_num_pump_periods, gwm_num_control_points, gwm_num_control_periods.</p>
 
 <h2>Table: traders</h2>
 <p><strong>trader_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal numeric trader identifier used throughout joins and foreign keys.</p>
@@ -55,63 +57,24 @@
 <p><strong>solve_status (TEXT):</strong> LP solver status from latest run.</p>
 <p><strong>objective_value (REAL):</strong> Objective value from latest solved run.</p>
 
-<h2>Table: trader_allocations</h2>
-<p><strong>auction_id (TEXT, NOT NULL):</strong> Auction key for allocation row scope.</p>
-<p><strong>trader_id (INTEGER, NOT NULL, FOREIGN KEY to traders.trader_id):</strong> Trader receiving initial allocation.</p>
-<p><strong>period_id (TEXT, NOT NULL):</strong> Period key label for allocation.</p>
-<p><strong>allocation (REAL, NOT NULL):</strong> Initial/assigned allocation quantity for that trader-period.</p>
-<p><strong>Primary key:</strong> (auction_id, trader_id, period_id) enforces one allocation row per trader-period per auction.</p>
-
-<h2>Table: default_control_point_bounds</h2>
-<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
-<p><strong>period_id (INTEGER, NOT NULL):</strong> Effect period index (1-based period from import decoding).</p>
-<p><strong>bound (REAL, NOT NULL):</strong> Default head bound for that control point and period.</p>
-<p><strong>imported_at (TEXT, NOT NULL, default ''):</strong> Import timestamp for provenance.</p>
-<p><strong>Primary key:</strong> (control_point_id, period_id).</p>
-
-<h2>Table: control_point_bounds</h2>
-<p><strong>auction_id (TEXT, NOT NULL):</strong> Auction key where bounds are applied.</p>
-<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
-<p><strong>period_id (TEXT, NOT NULL):</strong> Auction period key string.</p>
-<p><strong>bound (REAL, NOT NULL):</strong> Auction-specific bound used by solver calculations.</p>
-<p><strong>alpha (REAL):</strong> Derived scaling factor per control point and period.</p>
-<p><strong>Primary key:</strong> (auction_id, control_point_id, period_id).</p>
-
 <h2>Table: response_matrix</h2>
 <p><strong>well_id (INTEGER, NOT NULL, FOREIGN KEY to wells.well_id):</strong> Source well for response coefficient.</p>
 <p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Affected control point.</p>
 <p><strong>pumping_period (INTEGER, NOT NULL):</strong> Pumping period index in response matrix dimension.</p>
 <p><strong>effect_period (INTEGER, NOT NULL):</strong> Effect period index in response matrix dimension.</p>
-<p><strong>factor_value (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect.</p>
+<p><strong>factor_value (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect. 
+	A NULL value is treated as zero when read. The hydrologist may choose to omit rows with very small coefficients to keep the database compact; 
+	however, the rounding threshold must be chosen very carefully, because omitting small-but-numerous coefficients can systematically undercount 
+	the total hydrological effect at a control point and cause the market to accept more pumping than the aquifer can safely sustain. 
+	They hydrologist should also inspect response matrix coefficients (also called factors) that are positive,
+	which implies injection rather than withdrawal. The Tianqiao data (tiansqiao.decvar) has only withdrawals,
+	but the response matrix does have some positive values.</p>
 <p><strong>Primary key:</strong> (well_id, control_point_id, pumping_period, effect_period).</p>
 
-<h2>Table: constraint_results</h2>
-<p><strong>auction_id (INTEGER, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope for solved constraint row.</p>
-<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point for the constraint result.</p>
-<p><strong>period_id (TEXT, NOT NULL):</strong> Period key where the result applies.</p>
-<p><strong>used_capacity (REAL, NOT NULL):</strong> Computed usage level at the control point-period.</p>
-<p><strong>bound_capacity (REAL, NOT NULL):</strong> Constraint bound/capacity in effect for that row.</p>
-<p><strong>dual_value (REAL, NOT NULL):</strong> LP dual/shadow price for that constraint row.</p>
-<p><strong>Primary key:</strong> (auction_id, control_point_id, period_id).</p>
-
-<h2>Table: constraint_quota</h2>
-<p><strong>auction_id (TEXT, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
-<p><strong>well_id (INTEGER, NOT NULL, FOREIGN KEY to wells.well_id):</strong> Well key for quota decomposition.</p>
-<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Control point key.</p>
-<p><strong>period_id (TEXT, NOT NULL):</strong> Bid/effect period key.</p>
-<p><strong>alpha (REAL, NOT NULL):</strong> Alpha used in quota decomposition.</p>
-<p><strong>quota_value (REAL, NOT NULL):</strong> Well quota in that period before control-point weighting.</p>
-<p><strong>constraint_quota_value (REAL, NOT NULL):</strong> Product alpha * quota_value per well/control-point/period.</p>
-<p><strong>Primary key:</strong> (auction_id, well_id, control_point_id, period_id).</p>
-
 <h2>Table: response_matrix_info</h2>
-<p><strong>rmi_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Row identifier for a response-matrix metadata snapshot.</p>
-<p><strong>period_length_hours (NUMERIC):</strong> Declared period length in hours for imported matrix.</p>
-<p><strong>rmi_loaded_date (TEXT):</strong> Timestamp of matrix metadata import.</p>
-<p><strong>cubic_meters_per_impulse_unit (INTEGER):</strong> Reserved conversion field for legacy/model unit handling.</p>
-<p><strong>notes (TEXT):</strong> Free-text note describing import source/context.</p>
+<p><strong>Removed:</strong> This table was retired. Its settings were moved into Catchment_info key/value rows.</p>
 
-<h2>Table: trader_license</h2>
+<h2>Table: well_license</h2>
 <p><strong>license_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> License row identifier.</p>
 <p><strong>trader_id (INTEGER):</strong> Trader for this license row.</p>
 <p><strong>well_id (INTEGER):</strong> Well associated with this license row.</p>
@@ -119,7 +82,7 @@
 <p><strong>license_date (TEXT):</strong> Optional source/license date-time for this row.</p>
 <p><strong>bid_period (INTEGER):</strong> Integer bid period index (for example 1..26).</p>
 
-<h2>Table: trader_quota</h2>
+<h2>Table: well_quota</h2>
 <p><strong>quota_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Trader quota event row identifier.</p>
 <p><strong>trader_id (INTEGER):</strong> Trader associated with this quota result.</p>
 <p><strong>auction_id (INTEGER):</strong> Auction that produced this quota row.</p>
@@ -135,16 +98,26 @@
 <p><strong>control_point_id (TEXT):</strong> Control point associated with event/result row.</p>
 <p><strong>auction_id (INTEGER, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
 <p><strong>effect_date (TEXT):</strong> Effect period/date key for the row.</p>
-<p><strong>head (REAL):</strong> Reserved head value field.</p>
-<p><strong>constraint_lower_bound (REAL):</strong> Reserved lower-bound field for two-sided constraints.</p>
-<p><strong>head_constraint_upper_bound (REAL):</strong> Upper head bound used in reporting.</p>
+<p><strong>actual_start_head (REAL):</strong> Base-run head h&#x2080; at this control point and period (metres). Computed during MPS import as minimum_head minus LP_RHS, where LP_RHS is the GWM MPS RHS value (= h&#x2097; minus h&#x2080;, e.g. &minus;4.756 m). Corresponds to GWM Fortran variable HDCSTATE0. Only stored in the binary GWM response matrix file; not present in the MPS or GLOBAL output files; back-calculated here from the HEDCON BND and the MPS RHS.</p>
+<p><strong>minimum_head (REAL):</strong> Physical minimum allowed head h&#x2097; at this control point and period (metres). Sourced from the HEDCON BND field (e.g. 829 m). Can be adjusted by the hydrologist per auction. The optimization LP constraint is: &sum;(F &times; q) &le; minimum_head &minus; actual_start_head.</p>
+<p><strong>allowable_head_change (REAL):</strong> Allowed head change used in LP RHS form. During HEDCON import this column temporarily stages minimum head values (auction_id=0, effect_date='stg:{period}'). During MPS import it is rewritten as the final RHS value h&#x2097;&minus;h&#x2080; for each real effect_date row.</p>
+<p><strong>Hydrologist maintenance rule:</strong> If you manually change <em>actual_start_head</em> for a control-point row, you must also recalculate and update <em>allowable_head_change</em> for that same row so the identity <strong>allowable_head_change = minimum_head &minus; actual_start_head</strong> remains true. If this is not updated, optimization bounds and reported values will be inconsistent.</p>
+<p><strong>head_constraint_upper_bound (REAL):</strong> The LP bound value actually used in a completed solve run (= minimum_head &minus; actual_start_head at solve time). Written by save_run_results; read by catchment_price_rows for post-run reporting.</p>
 <p><strong>range_lower (REAL):</strong> Reserved lower range statistic.</p>
 <p><strong>range_upper (REAL):</strong> Reserved upper range statistic.</p>
 <p><strong>slack (REAL):</strong> Constraint slack in solved run for control-point period.</p>
 <p><strong>dual_price (REAL):</strong> Constraint dual price for control-point period.</p>
 <p><strong>alpha (REAL):</strong> Alpha value copied for this event row.</p>
+<h3>GWM input data sources and how they map to control_point_event</h3>
+<p>The GWM2K Groundwater Management process for MODFLOW-2000 produces three input files relevant to control-point bounds:</p>
+<ul>
+  <li><strong>HEDCON file (.hedcon):</strong> Defines head constraints. The BND field (token index 5) is the physical minimum head h&#x2097; (e.g. 829 m for a GE-type constraint meaning head must be &ge; 829 m). import_hedcon stages this inside control_point_event.allowable_head_change using auction_id=0 and effect_date='stg:{period}'.</li>
+  <li><strong>MPS file (.mps):</strong> LP problem in standard MPS format. The RHS section contains values equal to h&#x2097; minus h&#x2080; (e.g. 829 minus 833.756 = &minus;4.756 m). The base head h&#x2080; (GWM HDCSTATE0) is never written to the MPS file; it lives only in the binary GWM response matrix file (not distributed with Tianqiao data). import_mps reads staged minimum_head from control_point_event.allowable_head_change, computes actual_start_head = minimum_head minus LP_RHS, and writes final rows to control_point_event with allowable_head_change set to LP_RHS.</li>
+  <li><strong>Response matrix file (binary):</strong> Written by GWM when IRM=1. Contains HDCSTATE0 per constraint. Not available in the Tianqiao data directory; actual_start_head is back-calculated from HEDCON and MPS as described above.</li>
+</ul>
+<p><strong>How the optimization uses these values:</strong> get_control_point_rhs and load() both compute the LP right-hand side as minimum_head minus actual_start_head for each control-point &times; period. This value drives the LP constraint: &sum;(F &times; q) &le; minimum_head &minus; actual_start_head, where F is the response matrix coefficient. The hydrologist can adjust minimum_head per auction without changing actual_start_head.</p>
 
-<h2>Table: trader_bids</h2>
+<h2>Table: well_bids</h2>
 <p><strong>bid_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Bid row identifier.</p>
 <p><strong>well_id (INTEGER):</strong> Well where bid applies.</p>
 <p><strong>trader_id (INTEGER):</strong> Trader placing the bid.</p>
@@ -152,14 +125,14 @@
 <p><strong>bid_date (TEXT):</strong> Bid submission timestamp.</p>
 <p><strong>effect_date (TEXT):</strong> Period key/date where bid quantity-price steps apply.</p>
 <p><strong>expiry_date (TEXT):</strong> Optional expiry timestamp/date for bid validity.</p>
-<p><strong>is_bid_automatic (INTEGER, default 0):</strong> Flag for system-generated/automatic bid handling.</p>
+<p><strong>is_bid_default (INTEGER, default 0):</strong> Flag for system-generated/default bid handling.</p>
 <p><strong>qty1..qty5 (REAL):</strong> Up to five quantity breakpoints for stepwise bid curve.</p>
 <p><strong>price1..price5 (REAL):</strong> Up to five prices aligned with qty1..qty5.</p>
 <p><strong>deleted (INTEGER, NOT NULL, default 0):</strong> Soft-delete flag used to hide/cancel bids without hard delete.</p>
 
 <h2>Notes</h2>
 <p>SQLite type affinity is flexible; declared field types indicate intended use but SQLite may store compatible values across affinities.</p>
-<p>Several legacy columns are reserved for future/compatibility behavior and may not be populated in current workflows.</p>
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-05-04.</p>
 </body>
 </html>
+

@@ -38,7 +38,7 @@ Major missing features
 
 5. Richer bid structure
 - Allow the programmer or auction manager to specify the number of bid steps.
-- Add support for automatic bids via an isBidAutomatic-style flag.
+- Add support for default bids via an is_bid_default-style flag.
 - Update UI, models, repository, and solver accordingly.
 - Create environmental trader page to buy water at each assessment point. Extra names: Shi Lian'ou, Gan Qincai, Zang Húluobo, Jing Ludou, Kuaile Lajiao, Xingyun Huayecai, Hong Dama
 

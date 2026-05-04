@@ -130,7 +130,7 @@ The market distinguishes those different periods by different rights and differe
 If the user doesn't have enough water, they can try to buy more in the auction. In fact, a user with Q_bid = 0 could participate in the auction as a buyer. This is a huge upgrade!</p>
 
 
-<p><b>Getting upgraded initial rights into Forever Fair.</b> Now the hydrologist and programmer must get these Q_bids into the Forever Fair database in table trader_license. </p>
+<p><b>Getting upgraded initial rights into Forever Fair.</b> Now the hydrologist and programmer must get these Q_bids into the Forever Fair database in table well_license. </p>
 
 <p>The GWM your_file_name.mps file has a BOUNDS feature for wells. The programmers of GWM themselves probably think of these well upper bounds as pump capacities. 
 	In the auction, the trader is responsible for making sure their bid quantities don't exceed their own capacity. Capacity is the trader's problem, not the auction manager's problem.
@@ -138,7 +138,7 @@ If the user doesn't have enough water, they can try to buy more in the auction. 
 
 <p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, the hydrologist can use the GWM BOUNDS 
 	to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html.
-	The import code will save those values to the trader_license table in the database, one BOUND value for each well and each bid period.</p>
+	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
 <p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
 
@@ -156,7 +156,8 @@ If the user doesn't have enough water, they can try to buy more in the auction. 
 	 Each auction trades water for one or more periods, days or weeks, which the hydrologist can choose. 
 A period is the time denominator for traded water, e.g., ML/day or ML/week. For example, an auction cleared today might allow trading of water for the next four weeks.
 As actual and forecasted inflows change, the hydrologist should update the head constraints appropriately.
-This requirement gives the hydrologist a critical role!</p>
+This requirement gives the hydrologist a critical role! The auction should run close to the first pumping period, to reduce forecast error as much as possible. 
+For example, the auction manager runs each auction with four week-long bidding periods, the manager should probably run the auction the day before the first week.</p>
 
 <p><b>Enforcement.</b> Users must not take more water than the auction manager allocates to them. Users' wells must have real time meters that the auction manager can see.
 	 The auction manager must be sure that users can and will pay. Users have to learn to use the website and learn to make bids.</p>
@@ -168,3 +169,4 @@ This requirement gives the hydrologist a critical role!</p>
 <p><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger's bibliography on smart markets for water resources</a>.</p>
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body></html>
+

@@ -1,102 +1,105 @@
-# AuctionController.py. Claude guided by JFR, 2026 04 21.
+# AuctionController.py. Claude guided by JFR, 2026 05 04.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Coordinate setup, execution, and view state for auctions.
 
 from __future__ import annotations
-from datetime import datetime, timezone
-from AuctionObjects import Auction, AuctionCase, ResponseFactor
-from RunAuctionModule import runAuction
+from collections import defaultdict
+from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
+from ForeverFairClasses import Auction, AuctionCase
+from ForeverFairClasses import AcceptedBid, ControlPointResult, MarketResult, TraderPeriodResult
 from services.ForeverFairData import ForeverFairData
 
-def SetUpAuction( foreverFairData_instance: ForeverFairData, closed_date: str, first_water_take_date: str, last_water_take_date: str, period_length_hours: int, auction_type: str | None = None, ) -> Auction:
-	if int(period_length_hours) <= 0: raise ValueError("period_length_hours must be positive")
-	auction_id_str, period_keys = foreverFairData_instance.add_auction(closed_date, first_water_take_date, last_water_take_date, int(period_length_hours), auction_type)
-	return foreverFairData_instance.get_auction(auction_id_str)
+def _constraint_name(control_point_id: int, period_id: int) -> str: return f"cp_{control_point_id}_{period_id}".replace("-", "_")
 
-def ResetAuctionData(foreverFairData_instance: ForeverFairData): return foreverFairData_instance.reset_runtime_to_seed()
+def runCurrentAuction(foreverFairData_instance: ForeverFairData, auction_id: int) -> MarketResult:
+	clearing_start_time = foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")
+	# auction_case = foreverFairData_instance.load(auction_id)
+	auction_model = LpProblem("groundwater_smart_market", LpMaximize)
 
-def prepare_auction_for_run(foreverFairData_instance: ForeverFairData, auction_id: str) -> None:
-	now = datetime.now(timezone.utc).isoformat()
-	period_keys = [p.id for p in foreverFairData_instance.get_auction(auction_id).periods]
-	source_auction_id = foreverFairData_instance.get_next_auction(exclude_auction_id=auction_id)
-	sourceget_water_take_date_list: list[str] = []
-	if source_auction_id is not None:
-		try: sourceget_water_take_date_list = [p.id for p in foreverFairData_instance.load(str(source_auction_id)).auction.periods]
-		except Exception: sourceget_water_take_date_list = []
-	foreverFairData_instance.update_trader_allocations(auction_id, period_keys, source_auction_id, sourceget_water_take_date_list)
-	foreverFairData_instance.load_automatic_cp_bounds(auction_id, period_keys, source_auction_id, sourceget_water_take_date_list)
-	if source_auction_id is not None:
-		foreverFairData_instance.load_automatic_bids(auction_id, source_auction_id, now)
+	# 1. Scale quota. 
+	# alphas = _compute_alphas(auction_case)
+	# foreverFairData_instance.set_cp_alphas(auction_id, alphas)
 
-def runCurrentAuction(foreverFairData_instance: ForeverFairData, auction_id: str):
-	prepare_auction_for_run(foreverFairData_instance, auction_id)
-	if not foreverFairData_instance.has_active_bids(auction_id): raise ValueError("The auction cannot run because it has no bids.")
-	clearing_start_time = datetime.now(timezone.utc).isoformat()
-	auction_case = foreverFairData_instance.load(auction_id)
-	market_result = runAuction(auction_case)
+	# 1. To do: If foreverfair.db has custom head bounds, use them. Otherwise uses default bounds.
+	# Maybe: default_bounds = foreverFairData_instance.get_default_cp_bounds()
+	# Define bid variables with their upper bounds. Bid decision variables exist only for bid periods.
+	# Accepted bids are constrained by allowed drawdown in later periods.
+	bid_variables = {bid.id: LpVariable(f"accept_{bid.id}", lowBound=0, upBound=bid.quantity) for bid in auction_case.bids}
+	
+	# Define quantity variables: aggregate pumping per (well_id, bid_period).
+	# Equality constraint q[w,p] = sum(bids[w,p,step]) yields dual = clearing price for (well, period).
+	def _qty_var_name(well_id, period_id): return f"qty_{well_id}_{period_id}".replace("-", "_").replace(" ", "_")
+	well_periods = {(bid.well_id, bid.period_id) for bid in auction_case.bids}
+	quantity_vars = {(w, p): LpVariable(_qty_var_name(w, p), lowBound=None) for w, p in well_periods}
+	
+	# Objective function. All bid variables positive, so this is a gross pool model.
+	auction_model += lpSum(bid.price * bid_variables[bid.id] for bid in auction_case.bids)
+
+	# Quantity is the sum of the bids. The dual variable on each constraint is the clearing price for that well_id and bid period.
+	def _qty_eq_name(well_id, period_id): return f"qty_eq_{well_id}_{period_id}".replace("-", "_").replace(" ", "_")
+	for (w, p), qvar in quantity_vars.items():
+		bids_wp = [bid for bid in auction_case.bids if bid.well_id == w and bid.period_id == p]
+		auction_model += qvar == lpSum(bid_variables[bid.id] for bid in bids_wp), _qty_eq_name(w, p)
+
+	# Get the response matrix.
+	response_lookup = defaultdict(list)
+	for factor in auction_case.response_factors: response_lookup[(factor.control_point_id, factor.effect_period)].append(factor)
+
+	# Constrain all effect periods in the response matrix.
+	for control_point in auction_case.control_points:
+		for effect_period_id in control_point.bound_by_period.keys():
+			auction_model += lpSum(factor.value * quantity_vars[(factor.well_id, factor.pumping_period)] for factor in response_lookup.get((control_point.id, effect_period_id), []) if (factor.well_id, factor.pumping_period) in quantity_vars) <= control_point.bound_by_period[effect_period_id], _constraint_name(control_point.id, effect_period_id)
+
+	auction_model.writeLP(f"auctionClearingModel_{auction_case.auction.id}.lpt")
+	solve_status = LpStatus[auction_model.solve(PULP_CBC_CMD(msg=0))]
+	accepted_bids = [AcceptedBid(bid_id=bid.id, accepted_quantity = bid_variables[bid.id].value()) for bid in auction_case.bids]
+	accepted_lookup = {item.bid_id: item.accepted_quantity for item in accepted_bids}
+
+	trader_period_totals = defaultdict(float)
+	for bid in auction_case.bids: trader_period_totals[(bid.participant_id, bid.period_id)] += accepted_lookup[bid.id]
+
+	trader_period_results = []
+	for participant in auction_case.participants:
+		for period in auction_case.auction.periods:
+			trader_period_results.append(TraderPeriodResult(participant_id=participant.id, period_id=period.id, accepted_quantity=trader_period_totals[(participant.id, period.id)], initial_allocation=participant.allocation_by_period.get(period.id, 0.0),))
+
+	# Clearing prices: dual of quantity equality constraints, one per [well, bid_period].
+	well_period_prices: dict[tuple[int, int], float] = {}
+	for (w, p) in well_periods: well_period_prices[(w, p)] = float(getattr(auction_model.constraints[_qty_eq_name(w, p)], "pi", 0.0) or 0.0)
+
+	control_point_results = []
+	for control_point in auction_case.control_points:
+		for effect_period_id in control_point.bound_by_period.keys():
+			bound = control_point.bound_by_period[effect_period_id]
+			used = sum(factor.value * float(quantity_vars[(factor.well_id, factor.pumping_period)].value() or 0.0) for factor in response_lookup.get((control_point.id, effect_period_id), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
+			dual_value = float(getattr(auction_model.constraints[_constraint_name(control_point.id, effect_period_id)], "pi", 0.0) or 0.0)
+			control_point_results.append(ControlPointResult(control_point_id=control_point.id, period_id=effect_period_id, used_capacity=used, bound_capacity=bound, dual_value=dual_value,))
+
+	market_result = MarketResult(solve_status=solve_status, objective_value=float(value(auction_model.objective) or 0.0), accepted_bids=accepted_bids, trader_period_results=trader_period_results, control_point_results=control_point_results, well_period_prices=well_period_prices,)
 	foreverFairData_instance.save_run_results(auction_id, market_result, clearing_start_time=clearing_start_time)
 	return market_result
 
-def _compute_alphas(auction_case: AuctionCase) -> dict[tuple[str, str], float]:
-	period_keys = [p.id for p in auction_case.auction.periods]
-	period_index = {key: idx + 1 for idx, key in enumerate(period_keys)}
-	quota: dict[tuple[str, str], float] = {}
-	for trader in auction_case.participants:
-		for well in auction_case.wells:
-			if well.participant_id != trader.id: continue
-			for period_id, alloc in trader.allocation_by_period.items():
-				key = (well.id, period_id)
-				quota[key] = quota.get(key, 0.0) + alloc
-	bounds: dict[tuple[str, str], float] = {}
-	for cp in auction_case.control_points:
-		for period_id, bound in cp.bound_by_period.items():
-			bounds[(cp.id, period_id)] = bound
-	rf_by_cp_effect: dict[tuple[str, str], list[ResponseFactor]] = {}
-	for rf in auction_case.response_factors:
-		rf_by_cp_effect.setdefault((rf.control_point_id, rf.effect_period), []).append(rf)
-	alphas: dict[tuple[str, str], float] = {}
-	for (cp_id, period_key), upper_bound in bounds.items():
-		t = period_index.get(period_key)
-		if t is None: continue
-		factors = [rf for rf in rf_by_cp_effect.get((cp_id, period_key), []) if period_index.get(rf.pumping_period, 0) <= t]
-		sum_Fq = sum(rf.value * quota.get((rf.well_id, rf.pumping_period), 0.0) for rf in factors)
-		alphas[(cp_id, period_key)] = min(1.0, upper_bound / sum_Fq) if sum_Fq > 0.0 else 1.0
+def SetDebugAuctionData(foreverFairData_instance: ForeverFairData): return foreverFairData_instance.use_debug_database()
+
+def compute_alphas(foreverFairData_instance: ForeverFairData, auction_id: int) -> dict[tuple[int, str], float]:
+	"""Compute scaling factors alpha for each (control_point, effect_date) to enforce bounds."""
+	quota = foreverFairData_instance.get_quota_by_well_pumping_period(auction_id)
+	allowable_head_change, effect_date_to_idx = foreverFairData_instance.get_allowable_head_change_by_cp_effect_date(auction_id)
+
+	alphas: dict[tuple[int, str], float] = {}
+	for (cp_id, effect_date), allowed_change in allowable_head_change.items():
+		factors = foreverFairData_instance.get_response_factors_for_cp_period(cp_id, effect_date_to_idx[effect_date])
+		drawdown_with_all_quota = sum(rf.value * quota[(rf.well_id, rf.pumping_period)] for rf in factors)
+
+		# Most, but not all, factors are < 0. A few are > 0. quota >= 0. So usually drawdown_with_all_quota < 0. 
+		# Typically allowed_change < 0. So usally drawdown_with_all_quota/allowed_change > 0, but not always.
+		# If it is negative, either the data has response factors > 0, or allowed_change > 0.
+		# Case: factors > 0, allowed_change > 0, so drawdown_with_all_quota/allowed_change > 0. So pumping raises head and allowed change is positive? Not in Tianqiao.
+		# Case: factors < 0, allowed_change > 0, so drawdown_with_all_quota/allowed_change < 0. So pumping lowers head but allowed change is positive? Not in Tianqiao.
+		
+		# Case: factors > 0, allowed_change < 0, so drawdown_with_all_quota/allowed_change < 0. So pumping raises head and allowed change is negative? Tianqiao has this. Set alpha = 1.
+		if drawdown_with_all_quota > 0.0: alphas[(cp_id, effect_date)] = 1.0
+		# Case: factors < 0, allowed_change < 0, so drawdown_with_all_quota/allowed_change > 0. So pumping lowers head and allowed change is negative. Most typical.
+		else: alphas[(cp_id, effect_date)] = min(1.0, drawdown_with_all_quota/allowed_change)
+	foreverFairData_instance.set_control_point_alphas(auction_id, alphas)
 	return alphas
-
-def _compute_constraint_quotas(auction_case: AuctionCase, alphas: dict[tuple[str, str], float]) -> list[tuple[str, str, str, float, float, float]]:
-	quota: dict[tuple[str, str], float] = {}
-	for trader in auction_case.participants:
-		for well in auction_case.wells:
-			if well.participant_id != trader.id: continue
-			for period_id, alloc in trader.allocation_by_period.items():
-				key = (well.id, period_id)
-				quota[key] = quota.get(key, 0.0) + alloc
-	well_ids = [w.id for w in auction_case.wells]
-	cp_ids = [cp.id for cp in auction_case.control_points]
-	bid_periods = sorted({period_id for trader in auction_case.participants for period_id in trader.allocation_by_period})
-	rows: list[tuple[str, str, str, float, float, float]] = []
-	for well_id in well_ids:
-		for period_id in bid_periods:
-			q = quota.get((well_id, period_id), 0.0)
-			for cp_id in cp_ids:
-				alpha = alphas.get((cp_id, period_id), 1.0)
-				rows.append((well_id, cp_id, period_id, alpha, q, alpha * q))
-	return rows
-
-def apply_default_bounds(foreverFairData_instance: ForeverFairData, auction_id: str) -> dict:
-	auction = foreverFairData_instance.get_auction(auction_id)
-	period_keys = [p.id for p in auction.periods]
-	default_bounds = foreverFairData_instance.get_default_cp_bounds()
-	bounds_to_write: list[tuple[str, str, float]] = []
-	for cp_id, period_idx_str, bound in default_bounds:
-		idx = int(period_idx_str)
-		if idx < 1 or idx > len(period_keys): continue
-		bounds_to_write.append((cp_id, period_keys[idx - 1], bound))
-	foreverFairData_instance.set_cp_bounds_for_auction(auction_id, bounds_to_write)
-	auction_case = foreverFairData_instance.load(auction_id)
-	alphas = _compute_alphas(auction_case)
-	foreverFairData_instance.set_cp_alphas(auction_id, alphas)
-	auction_case = foreverFairData_instance.load(auction_id)
-	cq_rows = _compute_constraint_quotas(auction_case, alphas)
-	foreverFairData_instance.replace_constraint_quotas(auction_id, cq_rows)
-	return {"bounds_applied": len(bounds_to_write), "alphas_computed": len(alphas), "constraint_quotas_computed": len(cq_rows), "auction_id": auction_id}

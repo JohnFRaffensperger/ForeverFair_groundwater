@@ -1,4 +1,4 @@
-﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
@@ -10,6 +10,10 @@
 <p>The software architecture for web routes and pages is the FastAPI app in src/web/ForeverFairPages.py. An SQLite repository provides data persistence in src/services/repository.py.
 The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt anything.
 The linear programming optimization solver is PuLP model in src/RunAuctionModule.py. Auction orchestration is done in src/AuctionController.py and src/BiddingController.py.</p>
+
+<p><b style="color: red;">This is not designed to be a secure website!</b> It is designed for ease of use by a researcher or experienced hydrologist.
+	For example, the website tracks logged-in traders, but not the auction manager or other administrators. 
+	To make this demo code a secure website, a programmer would have to do more work.</p>
 
 <h2>Installing the necessary Python libraries</h2>
 <p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
@@ -57,8 +61,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p>Forever Fair uses this information for the list of control points and head constraints by time periods.
 	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
 	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
-	Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
-	The module also stores per-period bounds from RHS_head in table default_control_point_bounds. 
+  Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
+  The module also stages per-period minimum heads from RHS_head in table control_point_event (auction_id=0 with temporary period keys). 
 	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
 (Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
 
@@ -94,11 +98,34 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
 </form>
 
-<h2>6. Import mps file</h2>
+<h2>6. Import control point latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="control-point-lat-lon-result" style="display:none"></div>
+<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
+<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>7. Auction calendar settings</h2>
+<p><label for="period-unit">MODFLOW period length:</label>
+  <select id="period-unit">
+    <option value="hour">hour</option>
+    <option value="day" selected>day</option>
+    <option value="week">week</option>
+  </select>
+  <span id="period-unit-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This value configures "period length" through the auction calendar.
+</p>
+
+<p>
+  <label for="bidding-period-count">Number of bidding periods in an auction:</label>
+  <select id="bidding-period-count"></select>
+  <button type="button" id="save-bidding-periods">Save</button>
+  <span id="bidding-period-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This configures the number of periods for bidding in each auction.
+</p>
+
+<h2>8. Import mps file</h2>
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
 	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
-	This code writes to tables response_matrix, default_control_point_bounds, and trader_license.
-	Table control_point_bounds is left empty, but gets automatically loaded for a specific auction.
+  This code writes to tables response_matrix, control_point_event, and well_license.
 	(Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
 	So one index NNNN encodes control point number and time period. The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number.)
 	<i>Caution, import may be slow because these can be big files.</i></p>
@@ -108,21 +135,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <input type="hidden" id="period-unit-hidden" name="period_unit" value="day">
 <p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
 </form>
-<p><label for="period-unit">MODFLOW period length:</label>
-  <select id="period-unit">
-    <option value="hour">hour</option>
-    <option value="day" selected>day</option>
-    <option value="week">week</option>
-  </select>
-  <span id="period-unit-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span>
-</p>
 
-<h2>7. Import control point latitude and longitude</h2>
-<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
-<div id="control-point-lat-lon-result" style="display:none"></div>
-<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
-<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-</form>
+
 
 <script>
   (function () {
@@ -153,7 +167,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 </script>
 
 <!-- h2>Deferred feature: auction cash ledger</h2>
-<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in trader_quota, but no explicit transaction journal is written for each trader. 
+<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in well_quota, but no explicit transaction journal is written for each trader. 
 	A robust implementation would add a dedicated table such as cash_transactions with fields for trader, auction, period, transaction type, quantity, unit price, signed cash value, timestamp,
 	and source run id. During save_run_results(), insert one ledger row per trader-period result so balances are auditable and reproducible. Add repository helpers to return running balances 
 	and transaction history, and expose these on Trader and Researcher pages. Keep writes idempotent per run id.</p -->
@@ -269,8 +283,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
                       paramClass:'hedcon-param', storageKey:'hedcon_params',
                       paramNames:[], noticeKeyword:'hedcon',
                       resultId:'hedcon-result',
-                      isImported: function (t) { return (t.control_points || 0) > 0 && (t.default_control_point_bounds || 0) > 0; },
-                      statusText: function (t) { return 'HEDCON import is present. control_points has ' + (t.control_points || 0) + ' rows and default_control_point_bounds has ' + (t.default_control_point_bounds || 0) + ' rows.'; } });
+                      isImported: function (t) { return (t.control_points || 0) > 0 && (t.control_point_event || 0) > 0; },
+                      statusText: function (t) { return 'HEDCON import is present. control_points has ' + (t.control_points || 0) + ' rows and control_point_event has ' + (t.control_point_event || 0) + ' rows.'; } });
 
         setupImport({ formId:'mps-form', fileId:'mps-file', submitId:'mps-submit',
                       paramClass:'mps-param', storageKey:'mps_params',
@@ -353,5 +367,43 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
       });
   </script>
 
+<script>
+  (function () {
+    var sel = document.getElementById('bidding-period-count');
+    var btn = document.getElementById('save-bidding-periods');
+    var status = document.getElementById('bidding-period-status');
+    for (var i = 1; i <= 52; i += 1) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = String(i);
+      if (i === 4) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    fetch('/setup/current-bidding-periods')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.num_bidding_periods) sel.value = String(d.num_bidding_periods);
+      })
+      .catch(function () { status.textContent = 'Load failed'; });
+
+    btn.addEventListener('click', function () {
+      var value = Number(sel.value || '4');
+      status.textContent = 'Saving...';
+      fetch('/setup/set-bidding-periods', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({num_bidding_periods: value})
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        status.textContent = d.ok ? 'Saved (' + d.num_bidding_periods + ')' : 'Error: ' + d.error;
+      })
+      .catch(function () { status.textContent = 'Save failed'; });
+    });
+  })();
+</script>
+
 </body>
 </html>
+

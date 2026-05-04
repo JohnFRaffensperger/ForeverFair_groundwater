@@ -1,4 +1,4 @@
-﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
@@ -48,7 +48,7 @@ Validate that bound values and units match bid quantities. Run a small known cas
 <p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, 
 	the hydrologist can use the GWM BOUNDS to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. 
 	When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html. 
-	The import code will save those values to the trader_license table in the database, one BOUND value for each well and each bid period.</p>
+	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
 <p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
 
@@ -95,7 +95,7 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <h3>Variables</h3>
 <p><i>bid</i><sub><i>itb</i></sub> = quantity of bid step <i>b</i> accepted at well <i>i</i>, bid period <i>t</i>. Bounded [0, <i>Q</i><sub><i>itb</i></sub>].</p>
-<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in trader_quota.price.</p>
+<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in well_quota.price.</p>
 <p><i>q</i><sub><i>it</i></sub> = aggregate pumping at well <i>i</i>, bid period <i>t</i>. Free auxiliary variable; equals the sum of accepted bids by constraint 3.</p>
 
 <h3>Model</h3>
@@ -154,3 +154,4 @@ A head-difference constraint bounds the drawdown difference between two location
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>
+

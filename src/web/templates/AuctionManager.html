@@ -6,46 +6,43 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Auction Manager's Page</h1>
 
-<h2>Set up an auction</h2>
+<h2>Auction schedule</h2>
+<p>Dates are synthetic in this demo code. The system automatically creates an open auction for Friday 4 pm whenever none exists.
+	If the auction manager runs a final auction, the synthetic date jumps to the next Friday at 4 pm and the "Today" display updates to the next week.</p>
 
-<form id="setup-auction-form" method="post" action="/auctionmanager/setup-auction">
-	<p><label>Auction closing date/time: <input type="datetime-local" name="bid_close_time" required></label> Closing date must be in the future.</p>
-	<p><label>First water take date/time: <input type="datetime-local" id="first-water-take-time" name="first_water_take_time" value="{{ default_first_water_take }}" required></label></p>
-	<p><label>Last water take date/time: <input type="datetime-local" id="last-water-take-time" name="last_water_take_time" value="{{ default_last_water_take }}" required></label></p>
-	<p><label><input type="checkbox" name="tentative"> Tentative auction. If tentative is unchecked, the auction is final.</label></p>
-	<p><button type="submit">Create auction</button></p>
-</form>
-
+<p><strong>Today is</strong> {{ today_display }} ({{ today_weekday }}). <strong>Period length is </strong>
 {% if period_length_hours %}
-	{% if period_length_hours == 1 %}<p><strong>Response matrix period length:</strong> 1 hour.
-	{% elif period_length_hours == 24 %}<p><strong>Response matrix period length:</strong> 1 day.
-	{% elif period_length_hours == 168 %}<p><strong>Response matrix period length:</strong> 1 week.
-	{% else %}<p><strong>Response matrix period length:</strong> {{ period_length_hours }} hours.
-	{% endif %}<strong>Default last constrained date:</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %} (using {{ response_period_count }} response periods){% endif %}.</p>
-{% else %}
-	<p><strong>Response matrix period length:</strong> not set yet. Import an .mps file on Programmer page and choose hour/day/week.</p>
-	<p><strong>Default last constrained date:</strong> n/a</p>
+	{% if period_length_hours == 1 %}1 hour.{% elif period_length_hours == 24 %} 1 day.{% elif period_length_hours == 168 %} 1 week.{% else %} {{ period_length_hours }} hours.{% endif %}
+{% else %} not set yet. Import an .mps file on Programmer page and choose a period length of hour, day, or week.</p>
+	<p><strong>Default last constrained date:</strong> not set.</p>
 {% endif %}
+<strong>Bidding periods in this auction:</strong> {{ bidding_periods }}.</p>
+
+<p><strong>First water take:</strong> {{ default_first_display }}. <strong>Last water take:</strong> {{ default_last_display }}.
+<strong>Last constrained date is</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %}, {{ response_period_count }} constrained periods{% endif %}.
+<strong>Default close time:</strong> {{ scheduled_close_display }} (Friday 4 pm).</p>
+
 <p>{% if notice %}<strong>{{ notice }}</strong>{% endif %} </p>
-<h2>Run auctions</h2>
-<p><strong>Number of auctions currently scheduled:</strong> {{ auctions|length }}.</p>
+
+<h2>Run the auction</h2>
+<p><strong>Next auction {{ next_auction_id }} bids:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} automatic bids.</p>
 
 <table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th><th></th></tr></thead>
-	<tbody>{% for auction in auctions %}
-		{% set is_tentative = auction.auction_type == 'tentative' %}
-		{% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
-		<tr{% if is_tentative %} class="tentative"{% endif %}>
-			<td>{{ auction.auction_id }}</td>
-			<td>{{ auction.closed_date }}</td>
-			<td>{% if is_tentative %}Tentative{% else %}Final{% endif %}</td>
-			<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
-			<td>{{ auction.solve_status or '—' }}</td>
-			<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
-			<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
-			<td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td>
-		</tr>
-		{% endfor %}
-	</tbody></table>
+<tbody>{% for auction in auctions %}
+{% set is_tentative = auction.auction_type == 'tentative' %}
+{% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
+<tr{% if is_tentative %} class="tentative"{% endif %}>
+	<td>{{ auction.auction_id }}</td>
+	<td>{{ auction.closed_date }}</td>
+	<td>{% if is_tentative %}Tentative{% else %}Final{% endif %}</td>
+	<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
+	<td>{{ auction.solve_status or '—' }}</td>
+	<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
+	<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
+	<!-- Unnecessarily complicated. td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td-->
+</tr>
+{% endfor %}
+</tbody></table>
 
 <h2>The Auction Manager's responsibilities</h2>
 <ol>
@@ -56,81 +53,6 @@
 </ol>
 
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
-
-<script>
-(function(){
-	const closeInput = document.querySelector('input[name="bid_close_time"]');
-	const firstInput = document.getElementById('first-water-take-time');
-	const lastInput = document.getElementById('last-water-take-time');
-	const constrained = document.getElementById('last-constrained-date');
-	const periodLenHours = Number("{{ period_length_hours or 0 }}");
-	const responsePeriods = Number("{{ response_period_count or 0 }}");
-
-	function toLocalValue(dt){
-		const yyyy = dt.getFullYear();
-		const mm = String(dt.getMonth() + 1).padStart(2, '0');
-		const dd = String(dt.getDate()).padStart(2, '0');
-		const hh = String(dt.getHours()).padStart(2, '0');
-		const mi = String(dt.getMinutes()).padStart(2, '0');
-		return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-	}
-	function startOfNextHour(dt){
-		const copy = new Date(dt.getTime());
-		copy.setMinutes(0, 0, 0);
-		copy.setHours(copy.getHours() + 1);
-		return copy;
-	}
-	function nextMonday(dt){
-		const copy = new Date(dt.getTime());
-		const day = copy.getDay();
-		let add = (8 - day) % 7;
-		if (add === 0) add = 7;
-		copy.setDate(copy.getDate() + add);
-		copy.setHours(0, 0, 0, 0);
-		return copy;
-	}
-	function refreshDefaultsFromClose(){
-		if (!closeInput || !closeInput.value) return;
-		const closeDt = new Date(closeInput.value);
-		if (Number.isNaN(closeDt.getTime())) return;
-		const first = nextMonday(closeDt);
-		firstInput.value = toLocalValue(first);
-		const last = new Date(first.getTime());
-		last.setDate(last.getDate() + 28);
-		lastInput.value = toLocalValue(last);
-		refreshLastConstrained();
-	}
-	function refreshLastConstrained(){
-		if (!constrained || !firstInput || !firstInput.value || !periodLenHours || !responsePeriods) return;
-		const first = new Date(firstInput.value);
-		if (Number.isNaN(first.getTime())) return;
-		const lc = new Date(first.getTime() + periodLenHours * responsePeriods * 3600 * 1000);
-		constrained.textContent = toLocalValue(lc);
-	}
-	if (closeInput) closeInput.addEventListener('change', refreshDefaultsFromClose);
-	if (firstInput) firstInput.addEventListener('change', refreshLastConstrained);
-
-	const setupForm = document.getElementById('setup-auction-form');
-	if (setupForm) setupForm.addEventListener('submit', function(e){
-		const now = new Date();
-		if (closeInput && closeInput.value && new Date(closeInput.value) <= now){
-			e.preventDefault();
-			alert('Closing date/time must be in the future.');
-			return;
-		}
-		if (firstInput && lastInput && firstInput.value && lastInput.value && new Date(lastInput.value) < new Date(firstInput.value)){
-			e.preventDefault();
-			alert('Last water take date must be on or after first water take date.');
-			return;
-		}
-	});
-	if (closeInput && !closeInput.value) {
-		closeInput.value = toLocalValue(startOfNextHour(new Date()));
-		refreshDefaultsFromClose();
-	}
-	refreshLastConstrained();
-})();
-</script>
 
 </body>
 </html>
