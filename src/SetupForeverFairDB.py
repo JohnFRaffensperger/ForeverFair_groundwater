@@ -758,6 +758,7 @@ if __name__ == "__main__":
 	from services.ForeverFairData import ForeverFairData
 	data_dir = Path(__file__).resolve().parents[1] / "data" / "Tianqiao"
 	db_path = data_dir / "foreverfair.db"
+	print("Computing alphas...")
 	compute_alphas(ForeverFairData(db_path), auction_id=0)
 
 	

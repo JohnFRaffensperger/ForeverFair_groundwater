@@ -327,6 +327,7 @@ class ForeverFairData:
 				allowable_head_change[(row["control_point_id"], row["effect_date"])] = row["allowable_head_change"]
 			return allowable_head_change, effect_date_to_idx
 
+	# Returns response matrix coefficients.
 	def get_response_factors_for_cp_period(self, control_point_id: int, effect_period: int) -> list[ResponseFactor]:
 		with self.connect_to_db() as conn:
 			rows = conn.execute("SELECT well_id, pumping_period, factor_value FROM response_matrix WHERE control_point_id=? AND effect_period=?", (control_point_id, effect_period)).fetchall()
