@@ -81,38 +81,34 @@ def runCurrentAuction(foreverFairData_instance: ForeverFairData, auction_id: int
 
 def SetDebugAuctionData(foreverFairData_instance: ForeverFairData): return foreverFairData_instance.use_debug_database()
 
+# This works, but the SQL implementation in ForeverFairData.py is faster.
 def compute_alphas(foreverFairData_instance: ForeverFairData, auction_id: int) -> dict[tuple[int, str], float]:
 	"""Compute scaling factors alpha for each (control_point, effect_date) to enforce bounds."""
 	quota = foreverFairData_instance.get_quota_by_well_pumping_period(auction_id) # well quota at auction start.
 	allowable_head_change, effect_date_to_idx = foreverFairData_instance.get_allowable_head_change_by_cp_effect_date(auction_id)
 
 	alphas_by_constraint: dict[tuple[int, str], float] = {}
-	alpha_by_well_period: dict[tuple[int, int], list[float]] = defaultdict(list)
+	well_constraint_quota: dict[tuple[int, int, str, int], float] = {}
 	for (cp_id, effect_date), allowed_change in allowable_head_change.items():
-		factors = foreverFairData_instance.get_response_factors_for_cp_period(cp_id, effect_date_to_idx[effect_date])
+		effect_period = effect_date_to_idx[effect_date]
+		factors = foreverFairData_instance.get_response_factors_for_cp_period(cp_id, effect_period)
 		drawdown_with_all_quota = sum(rf.value * quota[(rf.well_id, rf.pumping_period)] for rf in factors)
 
 		# Most, but not all, factors are < 0. A few are > 0. quota >= 0. So usually drawdown_with_all_quota < 0. 
 		# Typically allowed_change < 0. So usally drawdown_with_all_quota/allowed_change > 0, but not always.
 		# If it is negative, either the data has response factors > 0, or allowed_change > 0.
-		# Case: factors > 0, allowed_change > 0, so drawdown_with_all_quota/allowed_change > 0. So pumping raises head and allowed change is positive? Not in Tianqiao.
-		# Case: factors < 0, allowed_change > 0, so drawdown_with_all_quota/allowed_change < 0. So pumping lowers head but allowed change is positive? Not in Tianqiao.
+		# Case: factors > 0, allowed_change > 0, so allowed_change/drawdown_with_all_quota > 0. So pumping raises head and allowed change is positive? Not in Tianqiao.
+		# Case: factors < 0, allowed_change > 0, so allowed_change/drawdown_with_all_quota < 0. So pumping lowers head but allowed change is positive? Not in Tianqiao.
 		
-		# Case: factors > 0, allowed_change < 0, so drawdown_with_all_quota/allowed_change < 0. So pumping raises head and allowed change is negative? Tianqiao has this. Set alpha = 1.
+		# Case: factors > 0, allowed_change < 0, so allowed_change/drawdown_with_all_quota < 0. So pumping raises head and allowed change is negative? Tianqiao has this. Set alpha = 1.
 		if drawdown_with_all_quota > 0.0: alphas_by_constraint[(cp_id, effect_date)] = 1.0
-		# Case: factors < 0, allowed_change < 0, so drawdown_with_all_quota/allowed_change > 0. So pumping lowers head and allowed change is negative. Most typical.
+		# Case: factors < 0, allowed_change < 0, so allowed_change/drawdown_with_all_quota > 0. So pumping lowers head and allowed change is negative. Most typical.
 		else: alphas_by_constraint[(cp_id, effect_date)] = allowed_change/drawdown_with_all_quota
-		for rf in factors:
-			if rf.value != 0.0: alpha_by_well_period[(rf.well_id, rf.pumping_period)].append(alphas_by_constraint[(cp_id, effect_date)])
 
-	# for each well w and bid period t:
-	# 	quota_adjusted[w,t] = quota_auction_start[w,t]*min([alphas[(cp_id, effect_date)] for (cp_id, effect_date) in allowable_head_change.items() if factors [cp_id, t, effect_date] != 0.0])
-	# Now calculate adjusted quota for each well and time period.
-	quota_adjusted: dict[tuple[int, int], float] = {}
-			# This is wrong. Can't use min(). Must save quota_adjusted[well, take date, effect date, control point]. REALLY!?? Ugh.
-	for (well_id, pumping_period), quota_auction_start in quota.items():
-		quota_adjusted[(well_id, pumping_period)] = quota_auction_start * min(alpha_by_well_period[(well_id, pumping_period)])
+		factors_for_denominator = [rf for rf in factors if rf.pumping_period <= effect_period and (rf.well_id, rf.pumping_period) in quota]
+		total_head_change_from_all_quota = sum(quota[(rf.well_id, rf.pumping_period)] * rf.value for rf in factors_for_denominator) # This is the denominator.
+		for rf in factors_for_denominator: # well_constraint_quota is the allowable head change at cp_id in effect_date allocated to well_id in pumping_period. Likely negative!
+			well_constraint_quota[(rf.well_id, rf.pumping_period, effect_date, cp_id)] = quota[(rf.well_id, rf.pumping_period)] * rf.value * allowed_change / total_head_change_from_all_quota
 
-	
 	foreverFairData_instance.set_control_point_alphas(auction_id, alphas_by_constraint)
 	return alphas_by_constraint

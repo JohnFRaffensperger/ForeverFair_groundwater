@@ -333,6 +333,46 @@ class ForeverFairData:
 			rows = conn.execute("SELECT well_id, pumping_period, factor_value FROM response_matrix WHERE control_point_id=? AND effect_period=?", (control_point_id, effect_period)).fetchall()
 			return [ResponseFactor(well_id=row["well_id"], control_point_id=control_point_id, pumping_period=row["pumping_period"], effect_period=effect_period, value=row["factor_value"] or 0.0) for row in rows]
 
+	# Amazing query by Claude, though I gave it a lot of guidance. The same as AuctionController.compute_alphas, but for just one well. SQL is faster in this case than Python.
+	def get_well_constraint_quota(self, well_id: int, auction_id: int = 0) -> dict[tuple[str, int, int], float]:
+		"""Return {(take_date, effect_period, control_point_id): constraint_quota} for one well.
+		well_constraint_quota is the allowable head change in effect_date at cp_id allocated to well_id in pumping_period. Likely negative!
+
+		The SQL reconstructs pumping_period from ordered well_quota.take_date and effect_period from ordered control_point_event.effect_date,
+		then computes constraint_quota(w,u,t,k) = q(w,u) * F(w,u,t,k) * allowable_head_change(t,k) / denom(k,t)
+		where denom(k,t) = SUM(q(v,r) * F(v,r,t,k)) over all wells v and pumping periods r <= t. 
+		denom(k,t) is the drawdown from all quota_auction_start at control_point_id k in effect_period t.
+		In other places, I define alpha (k,t) = allowable_head_change(t,k) / denom(k,t), which is the fraction of allocated change in head. 
+		So alpha (k,t) > 1 means people can take more, alpha (k,t) > 1 means must take less.
+
+		If the requested auction_id has no well_quota rows, the query falls back to auction_id=0, matching the behavior of other quota accessors.
+		"""
+		with self.connect_to_db() as conn:
+			source_auction_id = auction_id
+			row = conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (auction_id,)).fetchone()
+			if row is None and auction_id != 0: source_auction_id = 0
+
+			rows = conn.execute("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period
+						FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=? AND take_date IS NOT NULL)),
+					effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period
+						FROM (SELECT DISTINCT effect_date FROM control_point_event WHERE auction_id=? AND effect_date IS NOT NULL)),
+					q AS (SELECT wq.well_id, wq.take_date, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq
+						JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=?),
+					cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change FROM control_point_event cp
+						JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=?),
+					denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+						JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period
+						GROUP BY rm.control_point_id, rm.effect_period)
+				SELECT q.take_date, rm.effect_period, rm.control_point_id, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+				FROM response_matrix rm
+				JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
+				JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
+				JOIN denom ON denom.control_point_id=rm.control_point_id AND denom.effect_period=rm.effect_period
+				WHERE rm.well_id=? AND denom.total_load != 0.0
+				ORDER BY q.take_date, rm.effect_period, rm.control_point_id
+			""", (source_auction_id, source_auction_id, source_auction_id, source_auction_id, well_id)).fetchall()
+			return {(str(r["take_date"]), int(r["effect_period"]), int(r["control_point_id"])): float(r["constraint_quota"] or 0.0) for r in rows}
+
 	def set_control_point_alphas(self, auction_id: int, alphas: dict[tuple[int, str], float]) -> int:
 		with self.connect_to_db() as conn:
 			for (cp_id, effect_date), alpha in alphas.items():
