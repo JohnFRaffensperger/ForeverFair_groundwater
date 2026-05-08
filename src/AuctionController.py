@@ -1,4 +1,4 @@
-# AuctionController.py. Claude guided by JFR, 2026 05 04.
+# AuctionController.py. Claude guided by JFR, 2026 05 08.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Call for bids, clear ("run") the auction with optimization, calculate rights and cash exchanges.
 
@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
-from ForeverFairClasses import ResponseFactor, ControlPoint
+from ForeverFairClasses import ResponseFactor
 import BiddingController
 from services.ForeverFairData import ForeverFairData
 
@@ -29,7 +29,8 @@ def compute_alphas (foreverFairData_instance: ForeverFairData, auction_id: int) 
 	for (cp_id, effect_date), allowed_change in allowable_head_change.items ():
 		effect_period = effect_date_to_idx[effect_date]
 		factors = foreverFairData_instance.get_response_factors_for_cp_period (cp_id, effect_period)
-		drawdown_with_all_quota = sum (rf.value * quota [(rf.well_id, rf.pumping_period)] for rf in factors)
+		factors_for_denominator = [rf for rf in factors if rf.pumping_period <= effect_period and (rf.well_id, rf.pumping_period) in quota]
+		drawdown_with_all_quota = sum (rf.value * quota [(rf.well_id, rf.pumping_period)] for rf in factors_for_denominator)
 
 		# Most, but not all, factors are < 0. A few are > 0. quota >= 0. So usually drawdown_with_all_quota < 0. 
 		# Typically allowed_change < 0. So usally drawdown_with_all_quota/allowed_change > 0, but not always.
@@ -43,12 +44,11 @@ def compute_alphas (foreverFairData_instance: ForeverFairData, auction_id: int) 
 		else: alphas_by_constraint [(cp_id, effect_date)] = allowed_change/drawdown_with_all_quota
 
 		# From alphas, calculate well constraint quota. Not saved anywhere yet. Better to use the SQL.
-		factors_for_denominator = [rf for rf in factors if rf.pumping_period <= effect_period and (rf.well_id, rf.pumping_period) in quota]
 		total_head_change_from_all_quota = sum (quota [(rf.well_id, rf.pumping_period)] * rf.value for rf in factors_for_denominator) # This is the denominator.
 		for rf in factors_for_denominator: # well_constraint_quota is the allowable head change at cp_id in effect_date allocated to well_id in pumping_period. Likely negative!
 			well_constraint_quota [(rf.well_id, rf.pumping_period, effect_date, cp_id)] = quota [(rf.well_id, rf.pumping_period)] * rf.value * allowed_change / total_head_change_from_all_quota
 
-	foreverFairData_instance.set_control_point_alphas (auction_id, alphas_by_constraint)
+	foreverFairData_instance.set_constraint_alphas (auction_id, alphas_by_constraint)
 	return alphas_by_constraint
 
 # Solve the market-clearing optimization. The debug_log strings go to the AuctionManager.html message box.
@@ -99,15 +99,18 @@ def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: in
 	response_lookup: defaultdict[tuple[int, int], list[ResponseFactor]] = defaultdict (list)
 	for factor in foreverFairData_instance.get_all_response_factors (): response_lookup [(factor.control_point_id, factor.effect_period)].append (factor)
 
-	# Constrain all effect periods in the response matrix. 
+	# Constrain all effect periods in the response matrix by iterating over all control_point_events. 
 	# CAREFUL WITH SIGNS. Response matrix coefficients are typically negative. Allowable head change is typically negative. qvars are positive.
-	# Want q*F <= headchange, like 100*(-0.03) <= -5, which is false. So we need to change signs to have a "<=" constraints.
-	control_points: list[ControlPoint] = foreverFairData_instance.get_control_points_for_auction (auction_id)
-	for control_point in control_points:
-		for effect_period_id in control_point.bound_by_period.keys ():
-			auction_model += (lpSum (-1.0*factor.value * quantity_vars [(factor.well_id, factor.pumping_period)]
-					for factor in response_lookup.get ((control_point.id, effect_period_id), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
-						<= -1.0*control_point.bound_by_period[effect_period_id], f"cp_{control_point.id}_{effect_period_id}")
+	# Want q*F <= headchange, like 100*(-0.03) <= -5, which is false. So we need to change signs (with -1.0* for emphasis) to have "<=" constraints.
+	cp_events = foreverFairData_instance.get_control_point_events(auction_id)
+	effect_dates = sorted({str(row["effect_date"]) for row in cp_events})
+	effect_date_to_idx = {effect_date: idx + 1 for idx, effect_date in enumerate(effect_dates)}
+	for row in cp_events:
+		cp_id = int(row["control_point_id"])
+		effect_period = effect_date_to_idx[str(row["effect_date"])]
+		auction_model += (lpSum (-1.0*factor.value * quantity_vars [(factor.well_id, factor.pumping_period)]
+				for factor in response_lookup.get ((cp_id, effect_period), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
+					<= -1.0*float(row["allowable_head_change"]), f"cp_{cp_id}_{effect_period}")
 
 	auction_model.writeLP (f"../Auction_lpt_files/Forever_Fair_auction_{auction.id}.lpt")
 	solve_status = LpStatus[auction_model.solve (PULP_CBC_CMD (msg=0))]
@@ -120,11 +123,15 @@ def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: in
 			auction_model.constraints [f"qtywt_{well_id}_{period_id}"].pi)
 
 	# Save control point slack and dual prices.
-	for control_point in control_points:
-		for effect_period_id in control_point.bound_by_period.keys ():
-			foreverFairData_instance.set_control_point_event_results (auction_id, control_point.id, period_labels[effect_period_id - 1], 
-				auction_model.constraints[f"cp_{control_point.id}_{effect_period_id}"].slack, 
-				auction_model.constraints[f"cp_{control_point.id}_{effect_period_id}"].pi)
+	for row in cp_events:
+		cp_id = int(row["control_point_id"])
+		effect_date = str(row["effect_date"])
+		effect_period = effect_date_to_idx[effect_date]
+		constraint_name = f"cp_{cp_id}_{effect_period}"
+		if constraint_name in auction_model.constraints:
+			foreverFairData_instance.set_control_point_event_results (auction_id, cp_id, effect_date, 
+				auction_model.constraints[constraint_name].slack, 
+				auction_model.constraints[constraint_name].pi)
 
 	foreverFairData_instance.close_auction (auction_id, solve_status=solve_status, objective_value = float (value (auction_model.objective)), auction_close_time=foreverFairData_instance.the_time_at_the_tone_is ().isoformat (timespec="minutes"))
 	log("Auction results saved")

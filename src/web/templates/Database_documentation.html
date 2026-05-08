@@ -8,7 +8,7 @@
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Database Documentation</h1>
 
 <p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/SetupForeverFairDB.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and SetupForeverFairDB import helpers.</p>
-<p><strong>Initialization convention:</strong> Setup imports use <strong>auction_id = 0</strong> for initial rows in both well_quota (initial quota via quota_auction_start) and control_point_event (initial head values: minimum_head from HEDCON, actual_start_head computed from HEDCON and MPS together). The optimization computes the LP right-hand side as <strong>minimum_head &minus; actual_start_head</strong> at runtime.</p>
+<p><strong>Initialization convention:</strong> Setup imports use <strong>auction_id = 0</strong> for initial rows in both well_quota (initial quota via quota_auction_start) and control_point_events (initial head values: minimum_head from HEDCON, actual_start_head computed from HEDCON and MPS together). The optimization computes the LP right-hand side as <strong>minimum_head &minus; actual_start_head</strong> at runtime.</p>
 
 <h2>Table: Catchment_info</h2>
 <p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global catchment setting. Used for keys such as inferred GWM dimensions, synthetic time, period length, and bidding-period count.</p>
@@ -93,7 +93,7 @@
 <p><strong>price (REAL):</strong> Price associated with the row's auction-period settlement.</p>
 <p><strong>take_date (TEXT):</strong> Period/date key for the quota row.</p>
 
-<h2>Table: control_point_event</h2>
+<h2>Table: control_point_events</h2>
 <p><strong>cpe_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Control-point event row identifier.</p>
 <p><strong>control_point_id (TEXT):</strong> Control point associated with event/result row.</p>
 <p><strong>auction_id (INTEGER, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
@@ -108,11 +108,11 @@
 <p><strong>slack (REAL):</strong> Constraint slack in solved run for control-point period.</p>
 <p><strong>dual_price (REAL):</strong> Constraint dual price for control-point period.</p>
 <p><strong>alpha (REAL):</strong> Alpha value copied for this event row.</p>
-<h3>GWM input data sources and how they map to control_point_event</h3>
+<h3>GWM input data sources and how they map to control_point_events</h3>
 <p>The GWM2K Groundwater Management process for MODFLOW-2000 produces three input files relevant to control-point bounds:</p>
 <ul>
-  <li><strong>HEDCON file (.hedcon):</strong> Defines head constraints. The BND field (token index 5) is the physical minimum head h&#x2097; (e.g. 829 m for a GE-type constraint meaning head must be &ge; 829 m). import_hedcon stages this inside control_point_event.allowable_head_change using auction_id=0 and effect_date='stg:{period}'.</li>
-  <li><strong>MPS file (.mps):</strong> LP problem in standard MPS format. The RHS section contains values equal to h&#x2097; minus h&#x2080; (e.g. 829 minus 833.756 = &minus;4.756 m). The base head h&#x2080; (GWM HDCSTATE0) is never written to the MPS file; it lives only in the binary GWM response matrix file (not distributed with Tianqiao data). import_mps reads staged minimum_head from control_point_event.allowable_head_change, computes actual_start_head = minimum_head minus LP_RHS, and writes final rows to control_point_event with allowable_head_change set to LP_RHS.</li>
+  <li><strong>HEDCON file (.hedcon):</strong> Defines head constraints. The BND field (token index 5) is the physical minimum head h&#x2097; (e.g. 829 m for a GE-type constraint meaning head must be &ge; 829 m). import_hedcon stages this inside control_point_events.allowable_head_change using auction_id=0 and effect_date='stg:{period}'.</li>
+  <li><strong>MPS file (.mps):</strong> LP problem in standard MPS format. The RHS section contains values equal to h&#x2097; minus h&#x2080; (e.g. 829 minus 833.756 = &minus;4.756 m). The base head h&#x2080; (GWM HDCSTATE0) is never written to the MPS file; it lives only in the binary GWM response matrix file (not distributed with Tianqiao data). import_mps reads staged minimum_head from control_point_events.allowable_head_change, computes actual_start_head = minimum_head minus LP_RHS, and writes final rows to control_point_events with allowable_head_change set to LP_RHS.</li>
   <li><strong>Response matrix file (binary):</strong> Written by GWM when IRM=1. Contains HDCSTATE0 per constraint. Not available in the Tianqiao data directory; actual_start_head is back-calculated from HEDCON and MPS as described above.</li>
 </ul>
 <p><strong>How the optimization uses these values:</strong> get_control_point_rhs and load() both compute the LP right-hand side as minimum_head minus actual_start_head for each control-point &times; period. This value drives the LP constraint: &sum;(F &times; q) &le; minimum_head &minus; actual_start_head, where F is the response matrix coefficient. The hydrologist can adjust minimum_head per auction without changing actual_start_head.</p>

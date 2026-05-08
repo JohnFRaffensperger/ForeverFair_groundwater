@@ -20,7 +20,7 @@ def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: in
 	return None 
 
 def submitBid(foreverFairData_instance: ForeverFairData, well_id: int, this_trader_id: int, auction_id: int, period_id: int,
-			  quantity: float, price: float, is_bid_default: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
+			quantity: float, price: float, is_bid_default: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
 	foreverFairData_instance.set_quota_for_auction(auction_id)
 	# auction_case = foreverFairData_instance.load(auction_id)
 	# if auction_case.auction.status != "OPEN": raise ValueError("Auction is not open for bids.")

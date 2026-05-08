@@ -33,8 +33,8 @@ res_hedcon = import_hedcon(
 print("import_hedcon:", res_hedcon)
 
 with sqlite3.connect(db_path) as conn:
-    hedcon_bounds_count = conn.execute("SELECT COUNT(*) FROM control_point_event WHERE auction_id=0 AND effect_date LIKE 'stg:%'").fetchone()[0]
-print("staged_control_point_event_rows_after_hedcon:", hedcon_bounds_count)
+    hedcon_bounds_count = conn.execute("SELECT COUNT(*) FROM control_point_events WHERE auction_id=0 AND effect_date LIKE 'stg:%'").fetchone()[0]
+print("staged_control_point_events_rows_after_hedcon:", hedcon_bounds_count)
 
 res_mps = import_mps(
     db_path,
@@ -44,5 +44,5 @@ res_mps = import_mps(
 print("import_mps:", res_mps)
 
 with sqlite3.connect(db_path) as conn:
-    cpb_count = conn.execute("SELECT COUNT(*) FROM control_point_event WHERE auction_id=0 AND effect_date NOT LIKE 'stg:%'").fetchone()[0]
-print("final_control_point_event_rows:", cpb_count)
+    cpb_count = conn.execute("SELECT COUNT(*) FROM control_point_events WHERE auction_id=0 AND effect_date NOT LIKE 'stg:%'").fetchone()[0]
+print("final_control_point_events_rows:", cpb_count)

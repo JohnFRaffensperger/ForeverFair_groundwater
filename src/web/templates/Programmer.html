@@ -28,15 +28,6 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 {% if notice %}<p id="flash-notice"><strong>{{ notice }}</strong></p>{% endif %}
 
 <p><strong>Active catchment:</strong> {{ active_catchment_name }}. <strong>MAX_BID_STEPS:</strong> {{ max_bid_steps }}.</p>
-<form method="post" action="/setup/select-catchment" style="display:inline-block; margin-bottom:1em;">
-<label for="catchment-name">Catchment dataset:</label>
-<select id="catchment-name" name="catchment_name">
-  {% for catchment_name in available_catchments %}
-  <option value="{{ catchment_name }}" {% if catchment_name == active_catchment_name %}selected{% endif %}>{{ catchment_name }}</option>
-  {% endfor %}
-</select>
-<button type="submit">Switch catchment</button>
-</form>
 
 {% if missing_report and missing_report.db_exists %}
 <table><thead><tr><th>Table</th>
@@ -51,7 +42,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <div id="db-status-panel"><em>Loading&hellip;</em></div>
 
-<form id="create-db-form" method="post" action="/setup/create-db" style="display:inline-block; margin-right:1em;"><button type="submit">Create empty database</button></form>
+<form id="create-db-form" method="post" action="/setup/create-db" style="display:inline-block; margin-right:1em;"><button type="submit">Create new database</button></form>
 <form id="delete-db-form" method="post" action="/setup/delete-db" style="display:inline-block;" onsubmit="return confirm('Are you sure you want to delete the whole Forever Fair database?')">
 <button type="submit">Delete database</button></form>
 
@@ -74,7 +65,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
 	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
   Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
-  The module also stages per-period minimum heads from RHS_head in table control_point_event (auction_id=0 with temporary period keys). 
+  The module also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
 	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
 (Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
 
@@ -144,7 +135,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <h2>8. Import mps file</h2>
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
 	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
-  This code writes to tables response_matrix, control_point_event, and well_license.
+  This code writes to tables response_matrix, control_point_events, and well_license.
 	(Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
 	So one index NNNN encodes control point number and time period. The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number.)
 	<i>Caution, import may be slow because these can be big files.</i></p>
@@ -226,12 +217,12 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
       .then(r => r.json())
       .then(data => {const panel = document.getElementById('db-status-panel'); const createForm = document.getElementById('create-db-form'); const deleteForm = document.getElementById('delete-db-form');
         
-        if (!data.exists) {panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path; createForm.style.display = 'inline-block'; deleteForm.style.display = 'none'; return;}
+        if (!data.exists) {panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path; createForm.style.display = 'inline-block'; deleteForm.style.display = 'inline-block'; return;}
         const tables = data.tables || {};
         const names = Object.keys(tables).sort();
         let rows = names.map(t => `<tr><td>${t}</td><td>${tables[t]}</td></tr>`).join('');
         panel.innerHTML = `<p>Database exists: ${data.db_path} &mdash; ${names.length} tables.</p>` + `<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${rows}</tbody></table>`;
-        createForm.style.display = 'none';
+        createForm.style.display = 'inline-block';
         deleteForm.style.display = 'inline-block';})
       .catch(err => {document.getElementById('db-status-panel').textContent = 'Error fetching status: ' + err;});
   </script>
@@ -294,6 +285,22 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
         resultDiv.innerHTML = '<p>' + urlNotice + '</p>';
         resultDiv.style.display = '';
       }
+
+      if (cfg.requireExistingDb) {
+        form.addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          fetch('/setup/db-status')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (!data.exists || !data.tables || typeof data.tables.wells === 'undefined') {
+                alert('Create new dataase first');
+                return;
+              }
+              form.submit();
+            })
+            .catch(function () { alert('Create new dataase first'); });
+        });
+      }
     }
 
     fetch('/setup/db-status')
@@ -305,6 +312,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
                       paramClass:'decvar-param', storageKey:'decvar_params',
                       paramNames:[], noticeKeyword:'decvar',
                       resultId:'decvar-result',
+                      requireExistingDb: true,
                       isImported: function (t) { return (t.wells || 0) > 0; },
                       statusText: function (t) { return 'DECVAR import is present. wells has ' + (t.wells || 0) + ' rows.'; } });
 
@@ -312,8 +320,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
                       paramClass:'hedcon-param', storageKey:'hedcon_params',
                       paramNames:[], noticeKeyword:'hedcon',
                       resultId:'hedcon-result',
-                      isImported: function (t) { return (t.control_points || 0) > 0 && (t.control_point_event || 0) > 0; },
-                      statusText: function (t) { return 'HEDCON import is present. control_points has ' + (t.control_points || 0) + ' rows and control_point_event has ' + (t.control_point_event || 0) + ' rows.'; } });
+                      isImported: function (t) { return (t.control_points || 0) > 0 && (t.control_point_events || 0) > 0; },
+                      statusText: function (t) { return 'HEDCON import is present. control_points has ' + (t.control_points || 0) + ' rows and control_point_events has ' + (t.control_point_events || 0) + ' rows.'; } });
 
         setupImport({ formId:'mps-form', fileId:'mps-file', submitId:'mps-submit',
                       paramClass:'mps-param', storageKey:'mps_params',
@@ -355,6 +363,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
                       paramClass:'decvar-param', storageKey:'decvar_params',
                       paramNames:[], noticeKeyword:'decvar',
                       resultId:'decvar-result',
+                      requireExistingDb: true,
                       isImported: function () { return false; },
                       statusText: function () { return ''; } });
         setupImport({ formId:'hedcon-form', fileId:'hedcon-file', submitId:'hedcon-submit',

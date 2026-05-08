@@ -34,7 +34,7 @@ def _resolve_initial_catchment_name() -> str:
 	available = _available_catchment_dirs()
 	if configured and any(path.name == configured for path in available): return configured
 	if available: return available[0].name
-	return "Tianqiao"
+	return "Undefined"
 
 def _build_repository(catchment_name: str) -> tuple[Path, ForeverFairData]:
 	data_dir = CATCHMENT_ROOT / catchment_name
@@ -346,6 +346,10 @@ def setup_delete_db():
 
 @app.post("/setup/import-decvar")
 async def setup_import_decvar(file: UploadFile = File(...),):
+	status = SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db")
+	tables = status.get("tables", {}) if isinstance(status, dict) else {}
+	if not status.get("exists") or "wells" not in tables:
+		return _flash_redirect("/programmer", "Create new dataase first")
 	text = (await file.read()).decode("utf-8", errors="replace")
 	result = SetupForeverFairDB.import_decvar(DATA_DIR / "foreverfair.db", text)
 	notice = (f"DECVAR import complete: {result['wells_inserted']} wells inserted"

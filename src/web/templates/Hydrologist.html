@@ -100,7 +100,7 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 <p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i>. Units: meters per (cubic meter per period).</p>
 <p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
 <p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase. Units: cubic meters per period.</p>
-<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_event.head_constraint_upper_bound.</p>
+<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_events.head_constraint_upper_bound.</p>
 <p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
 
 <h3>Variables</h3>
@@ -122,7 +122,7 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <p>4. Control-point drawdown constraint. 
 	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
-	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_event.dual_price).
+	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_events.dual_price).
 	For each control point <i>cp</i> and effect period <i>e</i>: 
 	&sum;<sub><i>i,t</i></sub>&nbsp;<i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
 
@@ -132,14 +132,14 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <p>The current version enforces only <strong>upper-bound drawdown constraints only</strong>, corresponding to constraint 4 above.
 Each control point has a single bound per period: <i>s</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>it</i></sub>. 
-The database stores these bounds in control_point_event.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
+The database stores these bounds in control_point_events.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
 After the auction runs, the code returns the dual price dual_price and slack slack for each row.
 This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
 for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
 
 <p>The hydrologist may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
 A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
-The database schema already has the necessary column control_point_event.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
+The database schema already has the necessary column control_point_events.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
 <ul>
 <li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
@@ -153,10 +153,10 @@ A head-difference constraint bounds the drawdown difference between two location
 	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,
 	or to maintain a minimum gradient between an irrigation area and a river. The database schema already stores two grid locations per control point (CP_layer1/row1/col1 and CP_layer2/row2/col2,
 	with corresponding lat/lon pairs), which is the physical basis for a two-point difference constraint.
-	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_event. 
+	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_events. 
 	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
 <ul>
-<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_event, or add a separate control_point_difference_event table that references two control point rows.</li>
+<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
 <li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>
