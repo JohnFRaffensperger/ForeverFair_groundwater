@@ -30,7 +30,7 @@ class Trader(BaseModel):
 class Well(BaseModel):
 	id: int
 	name: str
-	participant_id: int
+	trader_id: int
 	gw_model_layer: int | None = None
 	gw_model_row: int | None = None
 	gw_model_column: int | None = None
@@ -55,7 +55,6 @@ class ResponseFactor(BaseModel):
 
 class BidSegment(BaseModel):
 	id: str
-	participant_id: int
 	well_id: int
 	period_id: int
 	quantity: float = Field(gt=0)
@@ -69,9 +68,9 @@ class RightsConversion(BaseModel):
 class AuctionCase(BaseModel):
 	catchment_name: str
 	source_note: str
-	current_participant_id: int
+	current_trader_id: int
 	auction: Auction
-	participants: list[Trader]
+	traders: list[Trader]
 	wells: list[Well]
 	control_points: list[ControlPoint]
 	response_factors: list[ResponseFactor]
@@ -82,8 +81,8 @@ class AcceptedBid(BaseModel):
 	bid_id: str
 	accepted_quantity: float
 
-class TraderPeriodResult(BaseModel):
-	participant_id: int
+class WellPeriodResult(BaseModel):
+	well_id: int
 	period_id: int
 	accepted_quantity: float
 	initial_allocation: float
@@ -99,6 +98,6 @@ class MarketResult(BaseModel):
 	solve_status: str
 	objective_value: float
 	accepted_bids: list[AcceptedBid]
-	trader_period_results: list[TraderPeriodResult]
+	well_period_results: list[WellPeriodResult]
 	control_point_results: list[ControlPointResult]
 	well_period_prices: dict[tuple[int, int], float]  # key: (well_id, period_id), value: dual of quantity equality constraint

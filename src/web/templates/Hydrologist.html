@@ -7,6 +7,12 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Hydrologist's Page</h1>
 
+{% if bounds_imported_at %}
+<p>Head-constraint bounds were last imported: <strong>{{ bounds_imported_at[:19] | replace("T", " ") }}</strong>. New auctions will use these bounds.</p>
+{% else %}
+<p>{% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %} <em>No head-constraint bounds are loaded yet. Upload a .hedcon or .mps file on the <a href="/programmer">Programmer page</a> first.</em></p>
+{% endif %}
+
 <p>The Forever Fair market is centered on a groundwater model. The hydrologist has a key role!
 	The groundwater model is the source of the response matrix, well locations, and head constraints at control points.
 	The response matrix is a linearized representation of the hydrology; its values describe the effect of pumping from wells and head at various control points. 
@@ -29,14 +35,22 @@ Therefore, this version treats the response matrix timing as relative, i.e., the
 This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has response coefficients for each required control point and period.
 Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>
 
+<h2>Units convention</h2>
+
+<p>From now on, Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
+
+<p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>.</p>
+
+<p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
+
 <table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
 	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
 	<tr><td>mps file: response factors</td><td>Measures of how pumping at a well in a given time period affects head on control points in later time periods. 
-	Periods are <em>relative</em> offsets from the pumping event, not calendar dates.</td><td>Coefficients in LP constraints.</td></tr>
+	Periods are <em>relative</em> offsets from the pumping event, not calendar dates. Units are meters per (cubic meter per period).</td><td>Coefficients in LP constraints.</td></tr>
 	<tr><td>hedcon file: control points</td><td>Locations where head limits apply. For example, the hydrologist could specify control points at wells, wetlands, and points near saltwater coasts (to prevent saltwater intrusion).</td><td>Optimization constraints.</td></tr>
 	<tr><td>hedcon and mps files: control point bounds</td><td>Maximum allowable change in head per period. Head limits are currently set only for maximum drawdown, but the hydrologist could also implement minimum drawdown and head difference constraints.</td><td>Right-hand side bounds in constraints.</td></tr>
 	<tr><td>mps file: auction periods</td><td>Time blocks as defined by the groundwater response matrix. If the auction manager wants the market to run only weekly, the response matrix periods must be set to weekly or shorter periods.</td><td>Timing of water use and environmental effects.</td></tr>
-	<tr><td>mps file: initial rights for each well and pumping period</td><td>This is the upgraded per-period licensed quantities.</td><td>Initial quota</td></tr>
+	<tr><td>mps file: initial rights for each well and pumping period</td><td>This is the upgraded per-period licensed quantities. Units are cubic meters per period; for Tianqiao, cubic meters per week.</td><td>Initial quota</td></tr>
 </tbody></table>
 
 <h2>Loading initial rights for the first auction</h2>
@@ -50,7 +64,7 @@ Validate that bound values and units match bid quantities. Run a small known cas
 	When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html. 
 	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
-<p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
+<p>[TODO: flesh out number of bidding periods, season length. Does the number of bidding periods have to match the number of pump periods?] The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
 
 <p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
@@ -65,12 +79,6 @@ Validate that bound values and units match bid quantities. Run a small known cas
 	For a real auction, the hydrologist should re-load head limits that match the forecasted limits based on forecasted inflows.
 To update the bounds, just upload revised .hedcon and .mps files via the Programmer page. The new bounds take effect for any auction created after that upload.
  Auctions that were already created keep the bounds that were current when they were scheduled.</p>
-
-{% if bounds_imported_at %}
-<p>Head-constraint bounds were last imported: <strong>{{ bounds_imported_at[:19] | replace("T", " ") }}</strong>. New auctions will use these bounds.</p>
-{% else %}
-<p>{% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %} <em>No head-constraint bounds are loaded yet. Upload a .hedcon or .mps file on the <a href="/programmer">Programmer page</a> first.</em></p>
-{% endif %}
 
 <h2>The smart market clearing model for groundwater</h2>
 <p>The following is the mathematical formulation of the Forever Fair market-clearing model.
@@ -87,9 +95,9 @@ To update the bounds, just upload revised .hedcon and .mps files via the Program
 
 <h3>Parameters</h3>
 <p><i>n</i> = number of well locations</p>
-<p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i></p>
+<p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i>. Units: meters per (cubic meter per period).</p>
 <p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
-<p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase.</p>
+<p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase. Units: cubic meters per period.</p>
 <p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_event.head_constraint_upper_bound.</p>
 <p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
 

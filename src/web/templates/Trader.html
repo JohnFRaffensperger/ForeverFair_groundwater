@@ -9,7 +9,7 @@
 
 {% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 
-<p>Welcome, <strong>{{ current_participant.name }}</strong>.
+<p>Welcome, <strong>{{ current_trader.name }}</strong>.
 {% if current_well %}
   Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
 {% else %}
@@ -101,18 +101,24 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
   <li>Your metering and reporting obligations must be in place.</li>
 </ul>
 
+<h3>Adjusting your initial quota to the available water</h3>
+<p>For the first auction, and any auction where the forecasted aquifer head changes, we will scale your quota separately for each control point and time period. 
+	We will convert your well quota will be converted to time-based quota for each environmental constraint. 
+	You can review your detailed time-based control point quota <a>here, sorted by size of impact, biggest first</a>.</p>
+
 <h3>How to submit a bid</h3>
 <ol>
-  <li>Log in at the participant login page and select your participant identity.</li>
+  <li>Log in at the  login page and select your trader identity.</li>
   <li>Select a well and auction period.</li>
   <li>Enter quantity and price for each tradable period.</li>
   <li>Submit your bid. It will then appear in your bid history.</li>
+  <li><b>Standing bids:</b> We will reuse your last bids unless you change them.</li>
 </ol>
 
 <h3>Bidding principle</h3>
 <p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
 
-<h3>Trading cadence and flexibility</h3>
+<h3>Trading schedule and flexibility</h3>
 <ul>
   <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
   <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
@@ -122,7 +128,7 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
 <h3>Current validation rules</h3>
 <ul>
   <li>Auction must be open.</li>
-  <li>The selected well must belong to your participant account.</li>
+  <li>The selected well must belong to your trader account.</li>
   <li>Period must be part of the active auction.</li>
   <li>Quantity and price must be positive.</li>
 </ul>
@@ -134,11 +140,6 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
   <li>Future periods may be revised in later operational updates.</li>
 </ul>
 
-<h3>References</h3>
-<ul>
-  <li><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger water bibliography</a></li>
-  <li><a href="https://link.springer.com/book/10.1007/978-3-319-55008-4">Groundwater allocation and trading reference text</a></li>
-</ul>
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>

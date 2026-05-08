@@ -4,7 +4,15 @@
 <body>
 <p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
 
-<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Auction Manager's Page</h1>
+<div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
+	<div style="flex:1 1 auto; min-width:540px;">
+		<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Auction Manager's Page</h1>
+	</div>
+	<div style="flex:0 0 420px;">
+		<label for="auction-debug-box">Message box</label><br>
+		<textarea id="auction-debug-box" readonly style="width:100%; height:150px; font-family:Consolas, 'Courier New', monospace;">{{ debug_text or '' }}</textarea>
+	</div>
+</div>
 
 <h2>Auction schedule</h2>
 <p>Dates are synthetic in this demo code. The system automatically creates an open auction for Friday 4 pm whenever none exists.
@@ -23,9 +31,10 @@
 <strong>Default close time:</strong> {{ scheduled_close_display }} (Friday 4 pm).</p>
 
 <p>{% if notice %}<strong>{{ notice }}</strong>{% endif %} </p>
+<p id="run-status-message"></p>
 
 <h2>Run the auction</h2>
-<p><strong>Next auction {{ next_auction_id }} bids:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} automatic bids.</p>
+<p><strong>Next auction {{ next_auction_id }}:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} automatic bids.</p>
 
 <table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th><th></th></tr></thead>
 <tbody>{% for auction in auctions %}
@@ -37,8 +46,8 @@
 	<td>{% if is_tentative %}Tentative{% else %}Final{% endif %}</td>
 	<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
 	<td>{{ auction.solve_status or '—' }}</td>
-	<td>{% if auction.objective_value is not none %}${{ '%.2f'|format(auction.objective_value) }}{% else %}—{% endif %}</td>
-	<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
+	<td>{% if auction.objective_value is not none %}${{ '{:,.2f}'.format(auction.objective_value) }}{% else %}—{% endif %}</td>
+	<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction" class="run-auction-form"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
 	<!-- Unnecessarily complicated. td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td-->
 </tr>
 {% endfor %}
@@ -53,6 +62,61 @@
 </ol>
 
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
+
+<script>
+const debugBox = document.getElementById('auction-debug-box');
+const runStatusMessage = document.getElementById('run-status-message');
+let debugPollTimer = null;
+
+async function refreshAuctionDebug() {
+	const response = await fetch('/api/auctionmanager-debug', { cache: 'no-store' });
+	if (!response.ok) return { run_active: false };
+	const payload = await response.json();
+	if (debugBox) {
+		debugBox.value = payload.debug_text || '';
+		debugBox.scrollTop = debugBox.scrollHeight;
+	}
+	return payload;
+}
+
+async function pollAuctionDebugUntilDone() {
+	const payload = await refreshAuctionDebug();
+	if (payload.run_active) {
+		debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 1000);
+		return;
+	}
+	debugPollTimer = null;
+}
+
+for (const form of document.querySelectorAll('.run-auction-form')) {
+	form.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		if (debugPollTimer !== null) return;
+		const submitButton = form.querySelector('button[type="submit"]');
+		if (submitButton) submitButton.disabled = true;
+		if (runStatusMessage) runStatusMessage.textContent = 'Running auction...';
+		if (debugBox) debugBox.value = '';
+		debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 0);
+		try {
+			const response = await fetch(form.action, {
+				method: 'POST',
+				body: new FormData(form),
+				headers: { 'X-Requested-With': 'fetch' },
+				cache: 'no-store'
+			});
+			const payload = await response.json();
+			await refreshAuctionDebug();
+			if (runStatusMessage) runStatusMessage.textContent = payload.message || (response.ok ? 'Auction run completed' : 'Auction run failed');
+			window.setTimeout(() => window.location.reload(), 400);
+		} catch (error) {
+			if (runStatusMessage) runStatusMessage.textContent = `Error: ${error}`;
+			await refreshAuctionDebug();
+		} finally {
+			if (submitButton) submitButton.disabled = false;
+		}
+	});
+}
+</script>
 
 </body>
 </html>
