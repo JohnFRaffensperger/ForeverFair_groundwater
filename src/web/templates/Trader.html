@@ -3,7 +3,7 @@
 	<title>Forever Fair Trader's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader's Page</h1>
 
@@ -37,21 +37,17 @@
 	</label>
 	<label>Quantity requested (ML): <input type="number" name="quantity" min="0.1" step="0.1" required></label>
 	<label>Bid price ($/ML): <input type="number" name="price" min="0.01" step="0.01" required></label>
-	<p><strong>Optional additional steps</strong> (up to 5 total):</p>
-	<label>Step 2 quantity (ML): <input type="number" name="quantity2" min="0.1" step="0.1"></label>
-	<label>Step 2 bid price ($/ML): <input type="number" name="price2" min="0.01" step="0.01"></label>
-	<label>Step 3 quantity (ML): <input type="number" name="quantity3" min="0.1" step="0.1"></label>
-	<label>Step 3 bid price ($/ML): <input type="number" name="price3" min="0.01" step="0.01"></label>
-	<label>Step 4 quantity (ML): <input type="number" name="quantity4" min="0.1" step="0.1"></label>
-	<label>Step 4 bid price ($/ML): <input type="number" name="price4" min="0.01" step="0.01"></label>
-	<label>Step 5 quantity (ML): <input type="number" name="quantity5" min="0.1" step="0.1"></label>
-	<label>Step 5 bid price ($/ML): <input type="number" name="price5" min="0.01" step="0.01"></label>
-	<label><input type="checkbox" name="is_automatic" value="true"> Standing bid — carry forward automatically to future auctions</label>
+	<p><strong>Optional additional steps</strong> (up to {{ max_bid_steps }} total):</p>
+	{% for step_num in optional_bid_step_numbers %}
+	<label>Step {{ step_num }} quantity (ML): <input type="number" name="quantity{{ step_num }}" min="0.1" step="0.1"></label>
+	<label>Step {{ step_num }} bid price ($/ML): <input type="number" name="price{{ step_num }}" min="0.01" step="0.01"></label>
+	{% endfor %}
+	<label><input type="checkbox" name="is_default" value="true"> Standing bid — carry forward defaultally to future auctions</label>
 	<button type="submit">Submit bid</button>
 </form>
 <script>
 document.querySelector('form[action="/bids/new"]').addEventListener('submit', function(e) {
-	for (var i = 2; i <= 5; i++) {
+	for (var i = 2; i <= {{ max_bid_steps }}; i++) {
 		var q = (document.querySelector('[name="quantity' + i + '"]').value || '').trim();
 		var p = (document.querySelector('[name="price' + i + '"]').value || '').trim();
 		if ((q && !p) || (!q && p)) { e.preventDefault(); alert('Step ' + i + ': quantity and price must both be provided.'); return; }
@@ -80,7 +76,7 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
 			<td>{% if bid.final_allocation is not none %}{{ '%.2f'|format(bid.final_allocation) }} ML{% else %}&mdash;{% endif %}</td>
 			<td>{% if bid.traded_price is not none %}${{ '%.2f'|format(bid.traded_price) }}{% else %}&mdash;{% endif %}</td>
 			<td>{{ bid.submitted_at }}</td>
-			<td>{% if bid.is_automatic %}<abbr title="Standing bid: will carry forward to future auctions">&#9733; Standing</abbr>{% endif %}</td>
+			<td>{% if bid.is_default %}<abbr title="Standing bid: will carry forward to future auctions">&#9733; Standing</abbr>{% endif %}</td>
 			<td>{% if auction_case.auction.status == 'OPEN' %}<form method="post" action="/bids/{{ bid.bid_id }}/delete"><button type="submit">Delete</button></form>{% endif %}</td>
 		</tr>
 		{% endfor %}
@@ -122,7 +118,7 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
 <ul>
   <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
   <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
-  <li>If you do not rebid in a cycle, prior bids can be reused automatically when enabled by the manager.</li>
+  <li>If you do not rebid in a cycle, prior bids can be reused defaultally when enabled by the manager.</li>
 </ul>
 
 <h3>Current validation rules</h3>

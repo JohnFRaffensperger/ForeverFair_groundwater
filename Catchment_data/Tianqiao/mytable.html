@@ -1,0 +1,36 @@
+<html><script src="sorttable.js" type="text/javascript"></script><title>take_date_idx</title><body><p>WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=0 AND take_date IS NOT NULL)),
+  effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_event WHERE auction_id=0 AND effect_date IS NOT NULL)),
+  q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
+	cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change, cp.alpha AS alpha_db FROM control_point_event cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
+  denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+    JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
+SELECT cpe.control_point_id, rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+FROM response_matrix rm
+JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
+JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
+JOIN denom ON denom.control_point_id=rm.control_point_id AND denom.effect_period=rm.effect_period
+WHERE rm.well_id=22 AND rm.pumping_period=1 AND rm.effect_period=1
+, 10 rows. </p><TABLE border="1" style="border: 1px solid #000000; border-collapse: collapse;" cellpadding="4" class="sortable">
+ <TR>
+<TH>control_point_id</TH><TH>well_id</TH><TH>take_period</TH><TH>effect_period</TH><TH>quota_auction_start</TH><TH>factor_value</TH><TH>denominator</TH><TH>alpha_computed</TH><TH>alpha_db</TH><TH>constraint_quota</TH> </TR>
+ <TR>
+<TD>1</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-8.257e-06</TD><TD>-3.7141</TD><TD>1.2805255647397755</TD><TD>1.2805255647397755</TD><TD>-0.4017853843461404</TD> </TR>
+ <TR>
+<TD>2</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-9.364e-07</TD><TD>-4.2817568</TD><TD>1.1457913723637922</TD><TD>1.1457913723637922</TD><TD>-0.040770923561095296</TD> </TR>
+ <TR>
+<TD>3</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-1.182e-06</TD><TD>-0.8888815</TD><TD>4.0387835723884455</TD><TD>4.0387835723884455</TD><TD>-0.18140600293739945</TD> </TR>
+ <TR>
+<TD>4</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-7.192e-09</TD><TD>-0.017285512</TD><TD>176.62190162489836</TD><TD>176.62190162489836</TD><TD>-0.04827005922647823</TD> </TR>
+ <TR>
+<TD>5</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-1.008e-07</TD><TD>-0.21354122</TD><TD>9.422068488697404</TD><TD>9.422068488697404</TD><TD>-0.03609029113910654</TD> </TR>
+ <TR>
+<TD>6</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>1.013e-09</TD><TD>-0.61478508462</TD><TD>4.290930385259027</TD><TD>4.290930385259027</TD><TD>0.00016517507425016094</TD> </TR>
+ <TR>
+<TD>7</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-1.008e-06</TD><TD>-4.231431</TD><TD>0.9233283019385169</TD><TD>0.9233283019385169</TD><TD>-0.03536716727745295</TD> </TR>
+ <TR>
+<TD>8</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-7.53e-06</TD><TD>-3.7306493</TD><TD>1.0086716004101484</TD><TD>1.0086716004101484</TD><TD>-0.28862129174135986</TD> </TR>
+ <TR>
+<TD>9</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>-3.457e-13</TD><TD>-2.9401638456462</TD><TD>2.1719877990665046</TD><TD>2.1719877990665046</TD><TD>-2.8532534921217044e-08</TD> </TR>
+ <TR>
+<TD>10</TD><TD>22</TD><TD>1</TD><TD>1</TD><TD>38000.0</TD><TD>4.618e-10</TD><TD>-2.35950243982</TD><TD>2.44627846218304</TD><TD>2.44627846218304</TD><TD>4.292827296577286e-05</TD> </TR>
+</TABLE></body></html>

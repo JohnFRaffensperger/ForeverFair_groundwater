@@ -8,7 +8,7 @@ from services.ForeverFairData import ForeverFairData
 
 def _make_repo(tmp_path: Path) -> ForeverFairData:
 	project_root = Path(__file__).resolve().parents[1]
-	debug_db = project_root / "data" / "Tianqiao" / "foreverfair.db"
+	debug_db = project_root / "Catchment_data" / "Tianqiao" / "foreverfair.db"
 	return ForeverFairData(db_path=tmp_path / "small_debug_database_temp.db", debug_db_path=debug_db)
 
 def _seed_auction_id(foreverFairData_instance: ForeverFairData) -> int:
@@ -41,8 +41,13 @@ def test_setup_and_reset_auction_data(tmp_path):
 	updated_auction = foreverFairData_instance.add_auction()
 	assert updated_auction["auction_id"] is not None
 	assert len(foreverFairData_instance.list_auctions()) == initial_count + 1
+	assert foreverFairData_instance.get_max_bid_steps() == 5
+	with foreverFairData_instance.connect_to_db() as conn:
+		row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
+		assert row is not None
+		assert row["meta_value"] == "5"
 
-	reset_data = ForeverFairData(db_path=tmp_path / "small_debug_database_reset.db", debug_db_path=Path(__file__).resolve().parents[1] / "data" / "Tianqiao" / "foreverfair.db")
+	reset_data = ForeverFairData(db_path=tmp_path / "small_debug_database_reset.db", debug_db_path=Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao" / "foreverfair.db")
 	assert len(reset_data.list_auctions()) == initial_count
 
 def test_manager_run_persists_results(tmp_path):
@@ -82,7 +87,7 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	period_key, trader_id, well_id = _first_period_trader_well(foreverFairData_instance, seed_auction_id)
 	new_auction = foreverFairData_instance.add_auction()
 	auction_id = int(new_auction["auction_id"])
-	foreverFairData_instance.ensure_quota_rows_for_auction(auction_id, source_auction_id=0)
+	foreverFairData_instance.set_quota_for_auction(auction_id, source_auction_id=0)
 	auction = foreverFairData_instance.get_auction_info(auction_id)
 	with foreverFairData_instance.connect_to_db() as conn:
 		period_label = next(p.label for p in auction.periods if p.id == period_key)
@@ -101,6 +106,6 @@ def test_manager_run_rejects_auction_with_no_bids(tmp_path):
 	latest = foreverFairData_instance.get_run_summary(auction_id)
 	assert latest is not None
 	assert latest["solve_status"] == "Optimal"
-	assert foreverFairData_instance.has_automatic_bids(auction_id)
+	assert foreverFairData_instance.has_default_bids(auction_id)
 
 

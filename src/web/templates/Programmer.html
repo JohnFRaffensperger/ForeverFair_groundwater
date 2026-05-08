@@ -3,7 +3,7 @@
   <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
 	
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
@@ -27,6 +27,17 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <h2>Database status</h2>
 {% if notice %}<p id="flash-notice"><strong>{{ notice }}</strong></p>{% endif %}
 
+<p><strong>Active catchment:</strong> {{ active_catchment_name }}. <strong>MAX_BID_STEPS:</strong> {{ max_bid_steps }}.</p>
+<form method="post" action="/setup/select-catchment" style="display:inline-block; margin-bottom:1em;">
+<label for="catchment-name">Catchment dataset:</label>
+<select id="catchment-name" name="catchment_name">
+  {% for catchment_name in available_catchments %}
+  <option value="{{ catchment_name }}" {% if catchment_name == active_catchment_name %}selected{% endif %}>{{ catchment_name }}</option>
+  {% endfor %}
+</select>
+<button type="submit">Switch catchment</button>
+</form>
+
 {% if missing_report and missing_report.db_exists %}
 <table><thead><tr><th>Table</th>
 	<th>Total rows</th><th>Missing gw_model_row</th><th>Missing gw_model_column</th><th>Missing latitude</th><th>Missing longitude</th></tr></thead>
@@ -46,6 +57,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <h1>Set up the database: 7 files</h1>
 <p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
+<p>The code reads catchment datasets from subdirectories under <code>/Catchment_data/</code>. It uses the subdirectory name, <code>/Tianqiao/</code> in this example, as the Catchment name stored in <code>Catchment_info</code>.</p>
 
 <h2>1. Import .decvar file</h2>
 <p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
@@ -122,6 +134,13 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
   <span id="bidding-period-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This configures the number of periods for bidding in each auction. If your period length is a week, this could be the number of weeks in the irrigation season.
 </p>
 
+<p>
+  <label for="max-bid-steps">Maximum bid steps per bid:</label>
+  <select id="max-bid-steps"></select>
+  <button type="button" id="save-max-bid-steps">Save</button>
+  <span id="max-bid-steps-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This limits how many price-quantity steps each trader can enter for a single bid.
+</p>
+
 <h2>8. Import mps file</h2>
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
 	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
@@ -135,6 +154,16 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <input type="hidden" id="period-unit-hidden" name="period_unit" value="day">
 <p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
 </form>
+
+<h2>9. Rights policy</h2>
+<p>Select how water rights are handled when the auction clears below full quota:</p>
+<fieldset id="rights-policy-fieldset" style="border:1px solid #ccc; padding:0.75em 1em; display:inline-block;">
+  <legend>Rights policy</legend>
+  <label><input type="radio" name="rights_policy" value="Users_pay"> User pays for all quota</label><br>
+  <label><input type="radio" name="rights_policy" value="Auction_manager_pays"> Auction manager pays users for lost quota</label><br>
+  <label><input type="radio" name="rights_policy" value="Quota_scaled"> Auction manager scales quota to available water</label>
+</fieldset>
+<span id="rights-policy-status" style="margin-left:0.75em; font-size:0.9em; color:gray;"></span>
 
 
 
@@ -400,6 +429,74 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
         status.textContent = d.ok ? 'Saved (' + d.num_bidding_periods + ')' : 'Error: ' + d.error;
       })
       .catch(function () { status.textContent = 'Save failed'; });
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    var sel = document.getElementById('max-bid-steps');
+    var btn = document.getElementById('save-max-bid-steps');
+    var status = document.getElementById('max-bid-steps-status');
+    for (var i = 1; i <= 5; i += 1) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = String(i);
+      if (i === 3) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    fetch('/setup/current-max-bid-steps')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.max_bid_steps) sel.value = String(d.max_bid_steps);
+      })
+      .catch(function () { status.textContent = 'Load failed'; });
+
+    btn.addEventListener('click', function () {
+      var value = Number(sel.value || '3');
+      status.textContent = 'Saving...';
+      fetch('/setup/set-max-bid-steps', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({max_bid_steps: value})
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        status.textContent = d.ok ? 'Saved (' + d.max_bid_steps + ')' : 'Error: ' + d.error;
+      })
+      .catch(function () { status.textContent = 'Save failed'; });
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    var status = document.getElementById('rights-policy-status');
+    var radios = document.querySelectorAll('input[name="rights_policy"]');
+
+    fetch('/setup/current-rights-policy')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var policy = d.rights_policy || 'Users_pay';
+        radios.forEach(function (rb) { if (rb.value === policy) rb.checked = true; });
+      })
+      .catch(function () { status.textContent = 'Load failed'; });
+
+    radios.forEach(function (rb) {
+      rb.addEventListener('change', function () {
+        status.textContent = 'Saving\u2026';
+        fetch('/setup/set-rights-policy', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({rights_policy: rb.value})
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          status.textContent = d.ok ? 'Saved (' + d.rights_policy + ')' : 'Error: ' + d.error;
+        })
+        .catch(function () { status.textContent = 'Save failed'; });
+      });
     });
   })();
 </script>

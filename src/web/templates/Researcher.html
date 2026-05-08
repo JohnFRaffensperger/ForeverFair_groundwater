@@ -3,7 +3,7 @@
 	<title>Forever Fair Researcher's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Researcher's Page</h1>
 
@@ -198,7 +198,7 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Constraint quota</b>. Constraint quota is quota translated from well-take units into drawdown rights at control points and periods for scaling in drought conditions.</p>
 <p><b>Constraint quota scaling</b>. Constraint quota scaling is the adjustment of those translated head-impact rights so aggregate use matches available water.</p>
 <p><b>Control point</b>. A control point is a monitored location where groundwater head must satisfy hydrologic constraints.</p>
-<p><b>Default bid</b>. A default bid is a standing bid that the system can carry forward into later auctions when marked as automatic.</p>
+<p><b>Default bid</b>. A default bid is a standing bid that the system can carry forward into later auctions when marked as default.</p>
 <p><b>Drought adjustment</b>. Drought adjustment is the process of scaling users' quota to match available water while following license rules.</p>
 <p><b>Environmental constraint</b>. An environmental constraint is a non-negotiable model limit, typically minimum head, that protects streams, wetlands, or aquifer health.</p>
 <p><b>Final auction</b>. A final auction is the binding auction run that determines enforceable allocations and traded prices.</p>
@@ -217,7 +217,7 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Scaling</b>. Scaling is the pre-auction process that proportionally adjusts quota to satisfy hydrologic availability and legal priority rules.</p>
 <p><b>Settlement</b>. Settlement is the post-solution accounting step that converts accepted quantities and initial allocations into net buy/sell outcomes.</p>
 <p><b>Solve status</b>. Solve status records whether the optimizer run succeeded and stores run-state information for each auction.</p>
-<p><b>Standing bid</b>. A standing bid is an automatic bid carried forward into future auctions unless the trader replaces it.</p>
+<p><b>Standing bid</b>. A standing bid is an default bid carried forward into future auctions unless the trader replaces it.</p>
 <p><b>Tentative auction</b>. A tentative auction is a non-binding preview run that helps traders see likely outcomes before final clearing.</p>
 <p><b>Trader</b>. A trader is someone who bids to buy or sell well quota through Trader.html. A trader can own more than one well.</p>
 <p><b>Water take date</b>. Water take date is the scheduled date-time for a period when allocated water rights are intended to be exercised.</p>

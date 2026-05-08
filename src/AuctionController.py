@@ -10,9 +10,9 @@ from ForeverFairClasses import ResponseFactor, ControlPoint
 import BiddingController
 from services.ForeverFairData import ForeverFairData
 
-# Set up automatic bids. A trader's manual entry will overwrite these.
+# Set up default bids. A trader's manual entry will overwrite these.
 def call_for_bids(foreverFairData_instance: ForeverFairData, auction_id: int) -> None:
-	if foreverFairData_instance.has_automatic_bids(auction_id): return
+	if foreverFairData_instance.has_default_bids(auction_id): return
 	quota_by_well_period = foreverFairData_instance.get_quota(auction_id)
 	for well_id in sorted({well_id for (well_id, _period_id) in quota_by_well_period.keys()}):
 		BiddingController.create_default_bid(foreverFairData_instance, auction_id, well_id)
@@ -42,7 +42,7 @@ def compute_alphas (foreverFairData_instance: ForeverFairData, auction_id: int) 
 		# Case: factors < 0, allowed_change < 0, so allowed_change/drawdown_with_all_quota > 0. So pumping lowers head and allowed change is negative. Most typical.
 		else: alphas_by_constraint [(cp_id, effect_date)] = allowed_change/drawdown_with_all_quota
 
-		# Not saved anywhere yet. Better to use the SQL.
+		# From alphas, calculate well constraint quota. Not saved anywhere yet. Better to use the SQL.
 		factors_for_denominator = [rf for rf in factors if rf.pumping_period <= effect_period and (rf.well_id, rf.pumping_period) in quota]
 		total_head_change_from_all_quota = sum (quota [(rf.well_id, rf.pumping_period)] * rf.value for rf in factors_for_denominator) # This is the denominator.
 		for rf in factors_for_denominator: # well_constraint_quota is the allowable head change at cp_id in effect_date allocated to well_id in pumping_period. Likely negative!
@@ -51,26 +51,27 @@ def compute_alphas (foreverFairData_instance: ForeverFairData, auction_id: int) 
 	foreverFairData_instance.set_control_point_alphas (auction_id, alphas_by_constraint)
 	return alphas_by_constraint
 
-# Solve the market-clearing optimization. 
+# Solve the market-clearing optimization. The debug_log strings go to the AuctionManager.html message box.
 def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> None:
 	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
-	log(f"runCurrentAuction started: auction_id={auction_id}") # The "log" strings go to the AuctionManager.html message box.
+	log(f"runCurrentAuction started: auction_id={auction_id}") 
 	auction = foreverFairData_instance.get_auction_info (auction_id) # Should always be exactly one auction scheduled.
 	
 	call_for_bids(foreverFairData_instance, auction_id)
-	foreverFairData_instance.ensure_control_point_event_rows_for_auction(auction_id)
+	foreverFairData_instance.set_control_point_events_for_auction(auction_id)
 	
 	auction_model = LpProblem ("Forever_Fair_clearing_model", LpMaximize)
 
 	# Define bid variables with their upper bounds. Bid decision variables exist only for bid periods, but are constrained by allowed drawdown in later periods.
 	period_labels = [p.label for p in auction.periods]
 	period_id_map = {period_label: idx + 1 for idx, period_label in enumerate(period_labels)}
+	max_bid_steps = foreverFairData_instance.get_max_bid_steps()
 	bid_variables: dict[tuple[int, int, int], LpVariable] = {}
 	bid_prices: dict[tuple[int, int, int], float] = {}
 	for row in foreverFairData_instance.get_bids (auction_id):
 		period_id = period_id_map.get(str(row.get("effect_date") or ""), 0)
 		if period_id == 0: continue
-		for step_num in range(1, 6):
+		for step_num in range(1, max_bid_steps + 1):
 			# Need to check for None in case the trader doesn't put in all 5 steps?
 			if (qty := row.get(f"qty{step_num}")) is None or (price := row.get(f"price{step_num}")) is None: continue
 			key = (int(row["well_id"]), period_id, step_num)
@@ -108,7 +109,7 @@ def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: in
 					for factor in response_lookup.get ((control_point.id, effect_period_id), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
 						<= -1.0*control_point.bound_by_period[effect_period_id], f"cp_{control_point.id}_{effect_period_id}")
 
-	auction_model.writeLP (f"Forever_Fair_auction_{auction.id}.lpt")
+	auction_model.writeLP (f"../Auction_lpt_files/Forever_Fair_auction_{auction.id}.lpt")
 	solve_status = LpStatus[auction_model.solve (PULP_CBC_CMD (msg=0))]
 	log(f"Solve status: {solve_status}")
 	

@@ -2,7 +2,7 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Auction Manager's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
 <body>
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
 	<div style="flex:1 1 auto; min-width:540px;">
@@ -15,7 +15,7 @@
 </div>
 
 <h2>Auction schedule</h2>
-<p>Dates are synthetic in this demo code. The system automatically creates an open auction for Friday 4 pm whenever none exists.
+<p>Dates are synthetic in this demo code. The system defaultally creates an open auction for Friday 4 pm whenever none exists.
 	If the auction manager runs a final auction, the synthetic date jumps to the next Friday at 4 pm and the "Today" display updates to the next week.</p>
 
 <p><strong>Today is</strong> {{ today_display }} ({{ today_weekday }}). <strong>Period length is </strong>
@@ -34,7 +34,7 @@
 <p id="run-status-message"></p>
 
 <h2>Run the auction</h2>
-<p><strong>Next auction {{ next_auction_id }}:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} automatic bids.</p>
+<p><strong>Next auction {{ next_auction_id }}:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} default bids.</p>
 
 <table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th><th></th></tr></thead>
 <tbody>{% for auction in auctions %}

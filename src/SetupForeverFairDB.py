@@ -33,8 +33,10 @@ def create_empty_db(db_path: Path) -> None:
 	db_path.parent.mkdir(parents=True, exist_ok=True)
 	conn = sqlite3.connect(db_path)
 	conn.executescript(SCHEMA_DDL)
-	conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) VALUES ('synthetic_current_date', '2030-01-04T16:00')")
-	conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) VALUES ('num_bidding_periods', '4')")
+	save_catchment_info(conn, "synthetic_current_date", "2030-01-04T16:00")
+	save_catchment_info(conn, "MAX_BID_STEPS", 3)
+	save_catchment_info(conn, "num_bidding_periods", 20)
+	save_catchment_info(conn, "Rights_policy", "Users_pay")
 	conn.commit()
 	conn.close()
 
@@ -90,9 +92,16 @@ def get_catchment_info(conn: sqlite3.Connection, key: str) -> int | None:
 	try: return int(row[0])
 	except Exception: return None
 
-def save_catchment_info(conn: sqlite3.Connection, key: str, value: str) -> None:
+def save_catchment_info(conn: sqlite3.Connection, key: str, value: str | int | float) -> None:
 	ensure_catchment_info_table(conn)
-	conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES (?,?)", (key, value),)
+	if conn.execute("SELECT 1 FROM Catchment_info WHERE meta_key IN ('catchment_name', 'Catchment name') LIMIT 1").fetchone() is None:
+		row = conn.execute("PRAGMA database_list").fetchone()
+		db_path = "" if row is None or len(row) < 3 else str(row[2] or "")
+		case_name = Path(db_path).parent.name.strip() if db_path else ""
+		if case_name:
+			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) VALUES ('catchment_name', ?)", (case_name,))
+			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) VALUES ('Catchment name', ?)", (case_name,))
+	conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES (?,?)", (key, str(value)),)
 
 # Programmer.html, section 1, import decvar. -------------------------------------------
 def import_decvar(db_path: Path, text: str) -> dict[str, Any]:
@@ -730,7 +739,7 @@ def missing_import_data_report(db_path: Path) -> dict[str, Any]:
 
 def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	"""Delete foreverfair.db and reload from Tianqiao data files, replicating the Programmer.html workflow."""
-	data_dir = Path(__file__).resolve().parents[1] / "data" / "Tianqiao"
+	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao"
 	db_path = data_dir / "foreverfair.db"
 	delete_db(db_path)
 	print("Deleted db")
@@ -756,7 +765,7 @@ if __name__ == "__main__":
 	setup_tianqiao()
 	from AuctionController import compute_alphas
 	from services.ForeverFairData import ForeverFairData
-	data_dir = Path(__file__).resolve().parents[1] / "data" / "Tianqiao"
+	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao"
 	db_path = data_dir / "foreverfair.db"
 	print("Computing alphas...")
 	compute_alphas(ForeverFairData(db_path), auction_id=0)

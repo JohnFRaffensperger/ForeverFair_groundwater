@@ -7,21 +7,21 @@ from ForeverFairClasses import BidSegment
 from services.ForeverFairData import ForeverFairData
 
 def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: int, well_id: int) -> None:
-	foreverFairData_instance.ensure_quota_rows_for_auction(auction_id)
+	foreverFairData_instance.set_quota_for_auction(auction_id)
 	quota_by_well_period = foreverFairData_instance.get_quota (auction_id)
-	price_steps = [0.01, 0.02, 0.04, 0.08, 0.16] # $/(cubic meter per week).
+	price_steps = [0.01, 0.02, 0.04, 0.08, 0.16][:foreverFairData_instance.get_max_bid_steps()] # $/(cubic meter per week).
 	created_bids: list[BidSegment] = []
 	for (quota_well_id, period_id), quota_auction_start in quota_by_well_period.items():
 		if quota_well_id != well_id: continue
 		step_size = 0.4 * quota_auction_start
-		bid_steps = [(step_size * step_num, price_steps[step_num - 1]) for step_num in range(1, 6)]
-		created_bids.append (foreverFairData_instance.add_bid (auction_id = auction_id, well_id=well_id, period_id=period_id, quantity=bid_steps[0][0], price=bid_steps[0][1], is_automatic=True, bid_steps=bid_steps))
+		bid_steps = [(step_size * step_num, price_steps[step_num - 1]) for step_num in range(1, len(price_steps) + 1)]
+		created_bids.append (foreverFairData_instance.add_bid (auction_id = auction_id, well_id=well_id, period_id=period_id, quantity=bid_steps[0][0], price=bid_steps[0][1], is_default=True, bid_steps=bid_steps))
 	# if not created_bids: raise ValueError (f"No quota rows found for well {well_id} in auction {auction_id}")
 	return None 
 
 def submitBid(foreverFairData_instance: ForeverFairData, well_id: int, this_trader_id: int, auction_id: int, period_id: int,
 			  quantity: float, price: float, is_bid_default: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> BidSegment:
-	foreverFairData_instance.ensure_quota_rows_for_auction(auction_id)
+	foreverFairData_instance.set_quota_for_auction(auction_id)
 	# auction_case = foreverFairData_instance.load(auction_id)
 	# if auction_case.auction.status != "OPEN": raise ValueError("Auction is not open for bids.")
 	# F.3/C.11: Reject bids after the closing datetime even if status is still OPEN.
@@ -52,7 +52,7 @@ def submitBid(foreverFairData_instance: ForeverFairData, well_id: int, this_trad
 	# 		if step_qty <= 0: raise ValueError("Bid quantity must be positive.")
 	# 		if step_price <= 0: raise ValueError("Bid price must be positive.")
 	steps = bid_steps if bid_steps is not None else [(quantity, price)]
-	return foreverFairData_instance.add_bid(auction_id=auction_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_automatic=is_bid_default, bid_steps=steps)
+	return foreverFairData_instance.add_bid(auction_id=auction_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_default=is_bid_default, bid_steps=steps)
 
 def deleteBid(foreverFairData_instance: ForeverFairData, bid_id: int, trader_id: int) -> bool: 
 	return foreverFairData_instance.delete_bid(bid_id=bid_id, current_trader_id=trader_id)
