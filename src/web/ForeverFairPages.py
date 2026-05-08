@@ -95,10 +95,11 @@ def doc_programmer(request: Request):
 def doc_auctionmanager(request: Request):
 	next_auction = foreverFairData_instance.get_next_auction_info()
 	if next_auction is None: next_auction = foreverFairData_instance.add_auction()
+	add_auctionmanager_debug("Next auction is ready. If no trader has put in bids, code will add default bids.")
 	
 	next_real_bid_count, next_default_bid_count = foreverFairData_instance.get_bid_count(next_auction["auction_id"])
 	period_length_hours = foreverFairData_instance.latest_period_length_hours()
-	bidding_periods = foreverFairData_instance.number_of_bidding_periods()
+	bidding_periods = foreverFairData_instance.get_number_of_bidding_periods()
 	now_dt = foreverFairData_instance.the_time_at_the_tone_is()
 	close_dt, default_first, default_last = foreverFairData_instance.get_auction_close_first_last_dates(now_dt, period_length_hours or 168, bidding_periods)
 
@@ -145,8 +146,8 @@ def trader_page(request: Request):
 	auction_info = auction_record.model_dump()
 	current_wells = foreverFairData_instance.get_trader_wells(trader_id)
 	current_well = current_wells[0]
-	bid_history = foreverFairData_instance.bid_history(auction_id, trader_id)
-	quota_by_period = foreverFairData_instance.get_quota_auction_start(trader_id=trader_id, auction_id=auction_id)
+	bid_history = foreverFairData_instance.get_bid_history(auction_id, trader_id)
+	quota_by_period = foreverFairData_instance.get_quota_for_trader(trader_id=trader_id, auction_id=auction_id)
 	period_rows: list[dict[str, Any]] = []
 	for period in auction_record.periods:
 		period_rows.append({"period_id": period.id, "period_key": period.id, "period_label": period.label, "allocation": quota_by_period.get(period.id, 0.0),})
@@ -241,7 +242,7 @@ def system_state_api(auction_id: int | None = None) -> dict[str, Any]:
 	if auction_id is None:
 		next_auction = foreverFairData_instance.get_next_auction_info() or foreverFairData_instance.add_auction()
 		auction_id = next_auction["auction_id"]
-	latest_run = foreverFairData_instance.latest_run_summary(auction_id)
+	latest_run = foreverFairData_instance.get_run_summary(auction_id)
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
 	return {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id).model_dump(), "rights_conversion": foreverFairData_instance.get_rights_conversion_dict(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 
@@ -350,7 +351,7 @@ async def setup_set_period_unit(request: Request) -> dict[str, Any]:
 
 @app.get("/setup/current-bidding-periods")
 def setup_current_bidding_periods():
-	return {"num_bidding_periods": foreverFairData_instance.number_of_bidding_periods()}
+	return {"num_bidding_periods": foreverFairData_instance.get_number_of_bidding_periods()}
 
 @app.post("/setup/set-bidding-periods")
 async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:

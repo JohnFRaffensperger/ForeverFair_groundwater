@@ -68,23 +68,20 @@ const debugBox = document.getElementById('auction-debug-box');
 const runStatusMessage = document.getElementById('run-status-message');
 let debugPollTimer = null;
 
+function waitForPaint() {return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));}
+
 async function refreshAuctionDebug() {
 	const response = await fetch('/api/auctionmanager-debug', { cache: 'no-store' });
 	if (!response.ok) return { run_active: false };
 	const payload = await response.json();
-	if (debugBox) {
-		debugBox.value = payload.debug_text || '';
-		debugBox.scrollTop = debugBox.scrollHeight;
-	}
+	if (debugBox) {debugBox.value = payload.debug_text || '';
+		debugBox.scrollTop = debugBox.scrollHeight;}
 	return payload;
 }
 
 async function pollAuctionDebugUntilDone() {
 	const payload = await refreshAuctionDebug();
-	if (payload.run_active) {
-		debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 1000);
-		return;
-	}
+	if (payload.run_active) {debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 1000); return;}
 	debugPollTimer = null;
 }
 
@@ -94,9 +91,13 @@ for (const form of document.querySelectorAll('.run-auction-form')) {
 		if (debugPollTimer !== null) return;
 		const submitButton = form.querySelector('button[type="submit"]');
 		if (submitButton) submitButton.disabled = true;
-		if (runStatusMessage) runStatusMessage.textContent = 'Running auction...';
-		if (debugBox) debugBox.value = '';
-		debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 0);
+		if (runStatusMessage) runStatusMessage.textContent = 'Run requested. Starting auction...';
+		if (debugBox) {
+			debugBox.value = 'Run requested. Starting auction...\n';
+			debugBox.scrollTop = debugBox.scrollHeight;
+		}
+		await waitForPaint();
+		debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 300);
 		try {
 			const response = await fetch(form.action, {
 				method: 'POST',

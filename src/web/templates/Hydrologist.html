@@ -37,12 +37,14 @@ Validate that bound values and units match bid quantities. Run a small known cas
 
 <h2>Units convention</h2>
 
-<p>From now on, Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
+<p>Careful with units! Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
 
-<p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>.</p>
+<p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>. 
+You can read about the Tianqiao case in <a href="https://john.raffensperger.org/water/Planning_a_smart_market_for_Tianqiao_groundwater%2023%20Feb%202010%20jfr.pdf">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, “Planning a smart market for Tianqiao groundwater,” 2010.</a></p>
 
 <p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
 
+<h2>Files from your groundwater model</h2>
 <table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
 	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
 	<tr><td>mps file: response factors</td><td>Measures of how pumping at a well in a given time period affects head on control points in later time periods. 
