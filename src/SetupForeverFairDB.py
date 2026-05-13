@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS well_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMEN
 CREATE TABLE IF NOT EXISTS wells (well_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, trader_id INTEGER, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id) );
 """
 
-# Programmer.html, section 0.
+# Programmer.html, section 0. 
 def create_empty_db(db_path: Path) -> None:
 	"""Create all tables and seed default catchment settings."""
 	db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -754,8 +754,7 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 
 	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168) # hours
 	conn = sqlite3.connect(db_path)
-	print("Finished mps, saving num_bidding_periods")
-	save_catchment_info(conn, "num_bidding_periods", '4') # 4 weeks
+	print("Finished mps")
 	conn.commit()
 	conn.close()
 	

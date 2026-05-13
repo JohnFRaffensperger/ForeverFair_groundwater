@@ -94,7 +94,7 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 		conn.execute("INSERT INTO well_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (trader_id, well_id, 90.0, None, 1),)
 		conn.execute("UPDATE well_quota SET quota_auction_start=? WHERE trader_id=? AND auction_id=? AND well_id=? AND take_date=?", (90.0, trader_id, auction_id, well_id, period_label),)
 
-	quota = foreverFairData_instance.get_quota_for_trader(trader_id=trader_id, auction_id=auction_id)
+	quota = foreverFairData_instance.get_well_start_quota(well_id=well_id, auction_id=auction_id)
 	assert quota[period_key] == 90.0
 
 def test_manager_run_rejects_auction_with_no_bids(tmp_path):

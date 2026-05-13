@@ -20,7 +20,7 @@ class ForeverFairData:
 		self.debug_db_path = debug_db_path
 		self.does_db_exist()
 
-	# Database connect, existence, setup.  --------------------------------------------------------------------------------------
+	# 1. Database connect, existence, setup.  --------------------------------------------------------------------------------------
 	def connect_to_db(self) -> sqlite3.Connection:
 		conn = sqlite3.connect(self.db_path)
 		conn.row_factory = sqlite3.Row
@@ -45,24 +45,24 @@ class ForeverFairData:
 	def get_rights_conversion_dict(self) -> dict[str, str]:
 		with self.connect_to_db() as conn: return {"policy_name": self.get_meta_data(conn, "rights_policy_name"), "summary": self.get_meta_data(conn, "rights_policy_summary")}
 
-	def get_max_bid_steps(self) -> int:
-		try:
+	def get_max_bid_steps(self) -> int: # If you didn't set up the database properly, this should crash. Don't pretend you have the right data.
+		# try:
 			with self.connect_to_db() as conn: row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
-			if row is None or row["meta_value"] is None: return DEFAULT_BID_STEPS
-			try: value = int(row["meta_value"])
-			except Exception: return DEFAULT_BID_STEPS
-			return min(MAX_BID_STEPS, max(1, value))
-		except sqlite3.OperationalError: 
+			# if row is None or row["meta_value"] is None: return DEFAULT_BID_STEPS
+		# 	try: value = int(row["meta_value"])
+		# 	except Exception: return DEFAULT_BID_STEPS
+		# 	return min(MAX_BID_STEPS, max(1, value))
+		# except sqlite3.OperationalError: 
 			return DEFAULT_BID_STEPS
 
-	def get_rights_policy(self) -> str:
-		try:
+	def get_rights_policy(self) -> str: # If you didn't set up the database properly, this should crash. Don't pretend you have the right data.
+		# try:
 			with self.connect_to_db() as conn: row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='Rights_policy'").fetchone()
-			return row["meta_value"] if row and row["meta_value"] else "Users_pay"
-		except sqlite3.OperationalError:
-			return "Users_pay"
+			return row["meta_value"] # if row and row["meta_value"] else "Users_pay"
+		# except sqlite3.OperationalError:
+		# 	return "Users_pay"
 
-	# Timing, calendar --------------------------------------------------------------------------------------
+	# 2. Timing, calendar --------------------------------------------------------------------------------------
 	def the_time_at_the_tone_is(self) -> datetime:
 		"""Return the current synthetic simulation date/time from the database."""
 		with self.connect_to_db() as conn:
@@ -76,8 +76,7 @@ class ForeverFairData:
 		if target < base: target += timedelta(days=7)
 		return target
 
-	def next_friday_at_4pm(self, base: datetime) -> datetime:
-		return self._next_friday_at_4pm(base)
+	def next_friday_at_4pm(self, base: datetime) -> datetime: return self._next_friday_at_4pm(base)
 
 	def _next_monday(self, base: datetime) -> datetime:
 		days_ahead = (0 - base.weekday()) % 7
@@ -92,7 +91,7 @@ class ForeverFairData:
 			try: return int(float(row["meta_value"]))
 			except Exception: return None
 
-	# Auction management --------------------------------------------------------------------------------
+	# 3. Auction management --------------------------------------------------------------------------------
 	def add_auction(self, auction_type: str | None = "final") -> dict[str, Any]:
 		now_dt = self.the_time_at_the_tone_is()
 		period_length_hours = self.latest_period_length_hours()
@@ -206,7 +205,7 @@ class ForeverFairData:
 			conn.execute("UPDATE auctions SET auction_type='tentative' WHERE auction_id=?", (auction_id,))
 		return auction_id
 		
-	# Traders, wells. -------------------------------------------------------------------------------------------------
+	# 4. Traders, wells. -------------------------------------------------------------------------------------------------
 	def list_of_traders(self) -> list[dict[str, Any]]:
 		with self.connect_to_db() as conn:
 			return [{"id": int(row["trader_id"]), "name": row["name_tag"]} for row in conn.execute("SELECT trader_id, name_tag FROM traders ORDER BY name_tag").fetchall()]
@@ -215,7 +214,12 @@ class ForeverFairData:
 		with self.connect_to_db() as conn:
 			return [Well(id=int(row["well_id"]), name=row["name"], trader_id=int(row["trader_id"]) if row["trader_id"] is not None else 0, gw_model_layer=row["gw_model_layer"], gw_model_row=row["gw_model_row"], gw_model_column=row["gw_model_column"], latitude=row["latitude"], longitude=row["longitude"],) for row in conn.execute("SELECT well_id, name, trader_id, gw_model_layer, gw_model_row, gw_model_column, latitude, longitude FROM wells WHERE trader_id=? ORDER BY well_id", (trader_id,)).fetchall()]
 
-	# Bids -------------------------------------------------------------------------------------------------
+	def get_wells(self) -> set[int]:
+		"""Return a set of all well_id integers in the wells table."""
+		with self.connect_to_db() as conn:
+			return {int(row["well_id"]) for row in conn.execute("SELECT well_id FROM wells ORDER BY well_id").fetchall()}
+
+	# 5. Bids -------------------------------------------------------------------------------------------------
 	def add_bid(self, auction_id: int, well_id: int, period_id: int, quantity: float, price: float, is_default: bool = False, 
 			 bid_steps: list[tuple[float, float]] | None = None) -> BidSegment:
 		now = datetime.now(timezone.utc).isoformat()
@@ -294,12 +298,30 @@ class ForeverFairData:
 				conn.execute("UPDATE well_bids SET deleted=1 WHERE auction_id=? AND well_id=? AND effect_date=? AND deleted=0", (auction_id, s["well_id"], s["effect_date"]),)
 				conn.execute("INSERT OR IGNORE INTO well_bids(auction_id, trader_id, well_id, bid_date, effect_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)", (auction_id, s["trader_id"], s["well_id"], now, s["effect_date"], s["qty1"], s["price1"], s["qty2"], s["price2"], s["qty3"], s["price3"], s["qty4"], s["price4"], s["qty5"], s["price5"]),)
 
-	def get_quota_for_trader(self, trader_id: int, auction_id: int) -> dict[int, float]:
+	def get_number_of_bidding_periods(self) -> int:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='num_bidding_periods'").fetchone()
+			return int(row["meta_value"])
+
+	def has_default_bids(self, auction_id: int) -> bool:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT 1 FROM well_bids WHERE auction_id=? AND is_bid_default=1 AND deleted=0 LIMIT 1", (auction_id,)).fetchone()
+			return row is not None
+
+	# 6. Quota -----------------------------------------
+	def get_well_start_quota(self, well_id: int, auction_id: int) -> dict[int, float]:
 		"""Return {bid_period: quota_auction_start} from well_quota for the given auction_id, ordered by take_date."""
 		with self.connect_to_db() as conn:
-			rows = conn.execute("SELECT quota_auction_start FROM well_quota WHERE trader_id=? AND auction_id=? ORDER BY take_date", (trader_id, auction_id)).fetchall()
+			rows = conn.execute("SELECT quota_auction_start FROM well_quota WHERE well_id=? AND auction_id=? ORDER BY take_date", (well_id, auction_id)).fetchall()
 			return {i + 1: float(row["quota_auction_start"] or 0.0) for i, row in enumerate(rows)}
 	
+	def get_well_end_quota(self, well_id: int, auction_id: int) -> dict[int, float]:
+		"""Return {bid_period: quota_auction_end} from well_quota for the given auction_id, ordered by take_date."""
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT quota_auction_end FROM well_quota WHERE well_id=? AND auction_id=? ORDER BY take_date", (well_id, auction_id)).fetchall()
+			return {i + 1: float(row["quota_auction_end"] or 0.0) for i, row in enumerate(rows)}
+	
+	# TODO: need to fix Programmer.html to have a button to set up the first auction. Then no auction is auction 0. So this function would be simpler.
 	def get_quota(self, auction_id: int) -> dict[tuple[int, int], float]:
 		"""Return {(well_id, period_idx): quota_auction_start} for all wells in the auction."""
 		period_labels = [p.label for p in self.get_auction_info(auction_id).periods]
@@ -321,18 +343,15 @@ class ForeverFairData:
 	def set_quota_for_auction (self, auction_id: int, source_auction_id: int = 0) -> int:
 		period_labels = [p.label for p in self.get_auction_info(auction_id).periods]
 		with self.connect_to_db() as conn:
-			if conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (auction_id,)).fetchone() is not None:
-				return 0
+			if conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (auction_id,)).fetchone() is not None: return 0
 			source_id = source_auction_id
-			if conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (source_id,)).fetchone() is None:
-				source_id = 0
+			if conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (source_id,)).fetchone() is None: source_id = 0
 			take_dates = [str(r["take_date"] or "") for r in conn.execute("SELECT DISTINCT take_date FROM well_quota WHERE auction_id=? AND take_date IS NOT NULL ORDER BY take_date", (source_id,)).fetchall()]
 			source_period_idx = {take_date: idx + 1 for idx, take_date in enumerate(take_dates)}
 			inserted = 0
 			for row in conn.execute("SELECT trader_id, well_id, quota_auction_start, quota_adjusted, take_date FROM well_quota WHERE auction_id=? ORDER BY take_date, well_id", (source_id,)).fetchall():
 				period_id = source_period_idx.get(str(row["take_date"] or ""), 0)
-				if period_id < 1 or period_id > len(period_labels):
-					continue
+				if period_id < 1 or period_id > len(period_labels): continue
 				conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, quota_adjusted, quota_auction_end, price, take_date) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)", (row["trader_id"], auction_id, row["well_id"], row["quota_auction_start"], row["quota_adjusted"], period_labels[period_id - 1],))
 				inserted += 1
 			return inserted
@@ -351,17 +370,7 @@ class ForeverFairData:
 				trader_id = base_row["trader_id"]
 			conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, quota_adjusted, quota_auction_end, price, take_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (trader_id, auction_id, well_id, quota_auction_start, quota_adjusted, quota_auction_end, price, take_date))
 
-	def get_number_of_bidding_periods(self) -> int:
-		with self.connect_to_db() as conn:
-			row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='num_bidding_periods'").fetchone()
-			return int(row["meta_value"])
-
-	def has_default_bids(self, auction_id: int) -> bool:
-		with self.connect_to_db() as conn:
-			row = conn.execute("SELECT 1 FROM well_bids WHERE auction_id=? AND is_bid_default=1 AND deleted=0 LIMIT 1", (auction_id,)).fetchone()
-			return row is not None
-
-	# Response matrix, control points  --------------------------------------------------------
+	# 7. Response matrix, control points  --------------------------------------------------------
 	def bounds_imported_at(self) -> str | None:
 		try:
 			with self.connect_to_db() as conn:
@@ -374,7 +383,6 @@ class ForeverFairData:
 		return self.get_quota(auction_id)
 
 	def get_allowable_head_change_by_cp_effect_date(self, auction_id: int) -> tuple[dict[tuple[int, str], float], dict[str, int]]:
-		auction = self.get_auction_info(auction_id)
 		with self.connect_to_db() as conn:
 			source_auction_id = auction_id
 			rows = conn.execute("SELECT control_point_id, effect_date, allowable_head_change FROM control_point_events WHERE auction_id=?", (auction_id,)).fetchall()
@@ -400,40 +408,19 @@ class ForeverFairData:
 				rows = conn.execute("SELECT control_point_id, effect_date, allowable_head_change FROM control_point_events WHERE auction_id=?", (source_auction_id,)).fetchall()
 			return [dict(row) for row in rows]
 
-	def get_response_factors_for_cp_period(self, control_point_id: int, effect_period: int) -> list[ResponseFactor]:
-		with self.connect_to_db() as conn:
-			rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_matrix WHERE control_point_id=? AND effect_period=? ORDER BY pumping_period, well_id", (control_point_id, effect_period)).fetchall()
-			return [ResponseFactor(well_id=int(row["well_id"]), control_point_id=int(row["control_point_id"]), pumping_period=int(row["pumping_period"]), effect_period=int(row["effect_period"]), value=float(row["factor_value"])) for row in rows]
-
-	def get_all_response_factors(self) -> list[ResponseFactor]:
-		with self.connect_to_db() as conn:
-			rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_matrix ORDER BY control_point_id, effect_period, pumping_period, well_id").fetchall()
-			return [ResponseFactor(well_id=int(row["well_id"]), control_point_id=int(row["control_point_id"]), pumping_period=int(row["pumping_period"]), effect_period=int(row["effect_period"]), value=float(row["factor_value"])) for row in rows]
-
 	def get_control_points_for_auction(self, auction_id: int) -> list[ControlPoint]:
 		auction = self.get_auction_info(auction_id)
 		period_labels = [p.label for p in auction.periods]
 		period_label_to_idx = {label: idx + 1 for idx, label in enumerate(period_labels)}
 		with self.connect_to_db() as conn:
 			source_auction_id = auction_id
-			rows = conn.execute("""
-				SELECT c.control_point_id, c.name, c.gw_model_row, c.gw_model_column, c.latitude, c.longitude,
-				       e.effect_date, e.allowable_head_change
-				FROM control_points c
-				JOIN control_point_events e ON e.control_point_id = c.control_point_id
-				WHERE e.auction_id=?
-				ORDER BY c.control_point_id, e.effect_date
-			""", (auction_id,)).fetchall()
+			rows = conn.execute("""SELECT c.control_point_id, c.name, c.gw_model_row, c.gw_model_column, c.latitude, c.longitude, e.effect_date, e.allowable_head_change
+				FROM control_points c JOIN control_point_events e ON e.control_point_id = c.control_point_id
+				WHERE e.auction_id=? ORDER BY c.control_point_id, e.effect_date""", (auction_id,)).fetchall()
 			if not rows and auction_id != 0:
 				source_auction_id = 0
-				rows = conn.execute("""
-					SELECT c.control_point_id, c.name, c.gw_model_row, c.gw_model_column, c.latitude, c.longitude,
-					       e.effect_date, e.allowable_head_change
-					FROM control_points c
-					JOIN control_point_events e ON e.control_point_id = c.control_point_id
-					WHERE e.auction_id=?
-					ORDER BY c.control_point_id, e.effect_date
-				""", (source_auction_id,)).fetchall()
+				rows = conn.execute("""SELECT c.control_point_id, c.name, c.gw_model_row, c.gw_model_column, c.latitude, c.longitude, e.effect_date, e.allowable_head_change
+					FROM control_points c JOIN control_point_events e ON e.control_point_id = c.control_point_id WHERE e.auction_id=? ORDER BY c.control_point_id, e.effect_date""", (source_auction_id,)).fetchall()
 			control_points: dict[int, ControlPoint] = {}
 			for row in rows:
 				control_point_id = int(row["control_point_id"])
@@ -442,8 +429,7 @@ class ForeverFairData:
 					control_point = ControlPoint(id=control_point_id, name=str(row["name"]), bound_by_period={}, gw_model_row=row["gw_model_row"], gw_model_column=row["gw_model_column"], latitude=row["latitude"], longitude=row["longitude"])
 					control_points[control_point_id] = control_point
 				period_id = period_label_to_idx.get(str(row["effect_date"] or ""), 0)
-				if period_id > 0:
-					control_point.bound_by_period[period_id] = float(row["allowable_head_change"] or 0.0)
+				if period_id > 0: control_point.bound_by_period[period_id] = float(row["allowable_head_change"] or 0.0)
 			return list(control_points.values())
 
 	def get_control_point_rhs(self, auction_id: int) -> dict[tuple[int, int], float]:
@@ -455,19 +441,27 @@ class ForeverFairData:
 			# First check for the current auction.
 			rows = conn.execute("SELECT control_point_id, effect_date, allowable_head_change FROM control_point_events WHERE auction_id=?", (auction_id,)).fetchall()
 			# If no current auction, use the default with auction_id = 0.
-			if not rows:
-				rows = conn.execute("SELECT control_point_id, effect_date, allowable_head_change FROM control_point_events WHERE auction_id=0").fetchall()
+			if not rows: rows = conn.execute("SELECT control_point_id, effect_date, allowable_head_change FROM control_point_events WHERE auction_id=0").fetchall()
 			result: dict[tuple[int, int], float] = {}
 			for row in rows: result[(row["control_point_id"], period_label_to_idx.get(row["effect_date"], 0))] = float(row["allowable_head_change"] or 0.0)
 			return result
+
+	def get_all_response_factors(self) -> list[ResponseFactor]:
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_matrix ORDER BY control_point_id, effect_period, pumping_period, well_id").fetchall()
+			return [ResponseFactor(well_id=int(row["well_id"]), control_point_id=int(row["control_point_id"]), pumping_period=int(row["pumping_period"]), effect_period=int(row["effect_period"]), value=float(row["factor_value"])) for row in rows]
+
+	def get_response_factors_for_cp_period(self, control_point_id: int, effect_period: int) -> list[ResponseFactor]:
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT well_id, control_point_id, pumping_period, effect_period, factor_value FROM response_matrix WHERE control_point_id=? AND effect_period=? ORDER BY pumping_period, well_id", (control_point_id, effect_period)).fetchall()
+			return [ResponseFactor(well_id=int(row["well_id"]), control_point_id=int(row["control_point_id"]), pumping_period=int(row["pumping_period"]), effect_period=int(row["effect_period"]), value=float(row["factor_value"])) for row in rows]
 
 	def response_matrix_period_count(self) -> int: # Should be the same as Catchment_info.gwm_num_control_periods.
 		with self.connect_to_db() as conn:
 			row = conn.execute("SELECT COALESCE(MAX(effect_period), 0) AS n FROM response_matrix").fetchone()
 			return int(row["n"] or 0)
 
-	def set_control_point_event_for_auction (self, auction_id: int, source_auction_id: int = 0) -> int:
-		period_labels = [p.label for p in self.get_auction_info(auction_id).periods]
+	def set_control_point_events_for_auction (self, auction_id: int, source_auction_id: int = 0) -> int:
 		with self.connect_to_db() as conn:
 			# Do table control_point_events already have rows for this auction?
 			if conn.execute("SELECT 1 FROM control_point_events WHERE auction_id=? LIMIT 1", (auction_id,)).fetchone() is not None: return 0
@@ -475,14 +469,12 @@ class ForeverFairData:
 			# Maybe this is the default initial auction.
 			if conn.execute("SELECT 1 FROM control_point_events WHERE auction_id=? LIMIT 1", (source_id,)).fetchone() is None: source_id = 0
 
-			effect_dates = [str(r["effect_date"] or "") for r in conn.execute("SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=? AND effect_date IS NOT NULL ORDER BY effect_date", (source_id,)).fetchall()]
-			# Advance effect date by 1. 
-			source_period_idx = {effect_date: idx + 1 for idx, effect_date in enumerate(effect_dates)}
+			# Copy all non-staging effect periods verbatim. effect_date_to_idx in the LP
+			# assigns 1-based ordinals over the same sorted dates, which aligns with
+			# factor.effect_period from the response matrix — no remapping needed.
 			inserted = 0
-			for row in conn.execute("SELECT control_point_id, effect_date, actual_start_head, minimum_head, allowable_head_change, head_constraint_upper_bound FROM control_point_events WHERE auction_id=? ORDER BY control_point_id, effect_date", (source_id,)).fetchall():
-				period_id = source_period_idx.get(str(row["effect_date"] or ""), 0)
-				if period_id < 1 or period_id > len(period_labels): continue
-				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, actual_start_head, minimum_head, allowable_head_change, head_constraint_upper_bound) VALUES (?, ?, ?, ?, ?, ?, ?)", (row["control_point_id"], auction_id, period_labels[period_id - 1], row["actual_start_head"], row["minimum_head"], row["allowable_head_change"], row["head_constraint_upper_bound"],))
+			for row in conn.execute("SELECT control_point_id, effect_date, actual_start_head, minimum_head, allowable_head_change, head_constraint_upper_bound FROM control_point_events WHERE auction_id=? AND effect_date IS NOT NULL AND effect_date NOT LIKE 'stg:%' ORDER BY control_point_id, effect_date", (source_id,)).fetchall():
+				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, actual_start_head, minimum_head, allowable_head_change, head_constraint_upper_bound) VALUES (?, ?, ?, ?, ?, ?, ?)", (row["control_point_id"], auction_id, str(row["effect_date"]), row["actual_start_head"], row["minimum_head"], row["allowable_head_change"], row["head_constraint_upper_bound"],))
 				inserted += 1
 			return inserted
 
@@ -490,7 +482,7 @@ class ForeverFairData:
 		with self.connect_to_db() as conn:
 			conn.execute("UPDATE control_point_events SET slack=?, dual_price=? WHERE auction_id=? AND control_point_id=? AND effect_date=?", (slack, dual_price, auction_id, control_point_id, effect_date))
 
-	# Rights -------------------------------------------------------------------------
+	# 8. Rights -------------------------------------------------------------------------
 	# Amazing query by Claude, though I gave it a lot of guidance. The same as AuctionController.compute_alphas, but for just one well. SQL is faster in this case than Python.
 	# Used for showing the well constraint quota on Trader.html.
 	# UNUSED
@@ -533,7 +525,34 @@ class ForeverFairData:
 			""", (source_auction_id, source_auction_id, source_auction_id, source_auction_id, well_id)).fetchall()
 			return {(str(r["take_date"]), int(r["effect_period"]), int(r["control_point_id"])): float(r["constraint_quota"] or 0.0) for r in rows}
 
-	# Key function! Claude wrote this. Wrong at first. Now verified against function AuctionController.py compute_alphas().
+	# UNUSED
+	def get_well_constraint_quota1(self, well_id: int, auction_id: int = 0) -> dict[tuple[str, int, int], float]:
+		"""Return {(take_date, effect_period, control_point_id): constraint_quota} using precomputed cpe.alpha.
+
+		Assumes calculate_and_set_constraint_alphas has already populated control_point_events.alpha
+		for the same source_auction_id used below.
+		"""
+		with self.connect_to_db() as conn:
+			source_auction_id = auction_id
+			row = conn.execute("SELECT 1 FROM well_quota WHERE auction_id=? LIMIT 1", (auction_id,)).fetchone()
+			if row is None and auction_id != 0: source_auction_id = 0
+
+			rows = conn.execute("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period
+						FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=? AND take_date IS NOT NULL)),
+					q AS (SELECT wq.well_id, wq.take_date, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq
+						JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=?),
+					effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period
+						FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=? AND effect_date IS NOT NULL)),
+					cpe AS (SELECT cp.control_point_id, cp.effect_date, cp.alpha, edi.effect_period FROM control_point_events cp
+						JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=?)
+				SELECT q.take_date, rm.effect_period, rm.control_point_id, q.quota_auction_start * rm.factor_value * cpe.alpha AS constraint_quota
+				FROM response_matrix rm JOIN q   ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
+				WHERE rm.well_id=?
+				ORDER BY q.take_date, rm.effect_period, rm.control_point_id
+			""", (source_auction_id, source_auction_id, source_auction_id, source_auction_id, well_id)).fetchall()
+			return {(str(r["take_date"]), int(r["effect_period"]), int(r["control_point_id"])): float(r["constraint_quota"] or 0.0) for r in rows}
+
+	# Key function! Claude wrote this, wrong at first. Now verified against function AuctionController.py compute_alphas().
 	def calculate_and_set_constraint_alphas(self, auction_id: int) -> int:
 		"""Compute and persist alpha on control_point_events for one auction.
 
@@ -597,6 +616,7 @@ class ForeverFairData:
 				if not period_label: continue
 				conn.execute("UPDATE control_point_events SET alpha = ? WHERE auction_id = ? AND control_point_id = ? AND effect_date = ?", (alpha, auction_id, cp_id, period_label),)
 
+	# 9. Get price output. ---------------------------------------------
 	def catchment_price_rows(self, auction_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
 		"""Fetch price and constraint results from well_quota and control_point_events."""
 		period_labels = [p.label for p in self.get_auction_info(auction_id).periods]

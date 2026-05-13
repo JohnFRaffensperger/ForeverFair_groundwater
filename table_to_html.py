@@ -168,17 +168,23 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 # WHERE rm.control_point_id=1 AND rm.pumping_period=1 AND rm.effect_period=1
 # """)
 
-if __name__ == "__main__":
-	tableToHtml("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=0 AND take_date IS NOT NULL)),
-	  effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=0 AND effect_date IS NOT NULL)),
-	  q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
-		cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change, cp.alpha AS alpha_db FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
-	  denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
-	    JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
-	SELECT cpe.control_point_id, rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
-	FROM response_matrix rm
-	JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
-	JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
-	JOIN denom ON denom.control_point_id=rm.control_point_id AND denom.effect_period=rm.effect_period
-	WHERE rm.well_id=22 AND rm.pumping_period=1 AND rm.effect_period=1
-	""")
+# tableToHtml("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=0 AND take_date IS NOT NULL)),
+#   effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=0 AND effect_date IS NOT NULL)),
+#   q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
+# 	cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change, cp.alpha AS alpha_db FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
+#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+#     JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
+# SELECT cpe.control_point_id, rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+# FROM response_matrix rm
+# JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
+# JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
+# JOIN denom ON denom.control_point_id=rm.control_point_id AND denom.effect_period=rm.effect_period
+# WHERE rm.well_id=22 AND rm.pumping_period=1 AND rm.effect_period=1
+# """)
+
+tableToHtml("""WITH effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=2)),
+  cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.dual_price FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date=cp.effect_date WHERE cp.auction_id=2),
+  base AS (SELECT rm.*, rm.factor_value * cpe.dual_price AS factor_x_dual_price
+    FROM response_matrix rm JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period WHERE rm.well_id=1)
+SELECT well_id, pumping_period, SUM(factor_x_dual_price) AS factor_x_dual_price
+FROM base GROUP BY well_id, pumping_period""")

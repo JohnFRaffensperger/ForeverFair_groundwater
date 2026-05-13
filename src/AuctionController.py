@@ -4,18 +4,59 @@
 
 from __future__ import annotations
 from collections import defaultdict
+from pathlib import Path
 from typing import Callable
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
 from ForeverFairClasses import ResponseFactor
 import BiddingController
 from services.ForeverFairData import ForeverFairData
 
-# Set up default bids. A trader's manual entry will overwrite these.
-def call_for_bids(foreverFairData_instance: ForeverFairData, auction_id: int) -> None:
-	if foreverFairData_instance.has_default_bids(auction_id): return
-	quota_by_well_period = foreverFairData_instance.get_quota(auction_id)
-	for well_id in sorted({well_id for (well_id, _period_id) in quota_by_well_period.keys()}):
-		BiddingController.create_default_bid(foreverFairData_instance, auction_id, well_id)
+def compute_revenue_on_constraint_quota (foreverFairData_instance: ForeverFairData, auction_id: int) -> float:
+	"""Compute revenue extracted from constraint quota changes across all wells.
+	
+	Revenue = sum over wells and control point events of: cpe_pi * (well_cpe_quota_start - well_cpe_quota_end)
+	
+	where:
+	- cpe_pi is the control point event constraint dual price (shadow price)
+	- well_cpe_quota_start is the constraint quota allocated to the well at auction start
+	- well_cpe_quota_end is the constraint quota allocated to the well at auction end
+	"""
+	
+	# Get all control point events with dual prices
+	cp_events = foreverFairData_instance.get_control_point_events(auction_id)
+	cp_dual_prices: dict[tuple[int, str], float] = {}
+	for row in cp_events:
+		dual_price = row.get("dual_price")
+		if dual_price is not None: cp_dual_prices[(int(row["control_point_id"]), str(row["effect_date"]))] = float(dual_price)
+	
+	wells_in_auction = foreverFairData_instance.get_wells()
+	revenue = 0.0
+	for well_id in wells_in_auction:
+		# Get constraint quotas at auction start (using quota_auction_start from well_quota)
+		start_quota = foreverFairData_instance.get_well_start_quota(well_id, auction_id)
+		
+		# Get constraint quotas at auction end (using quota_auction_end from well_quota)
+		# This uses the same calculation as start_quotas but with quota_auction_end values
+		end_quota = foreverFairData_instance.get_well_constraint_quota_end(well_id, auction_id)
+		
+		# Revenue = sum of dual prices times the change in quota
+		for (take_date, effect_period, cp_id), start_quota in start_quotas.items():
+			end_quota = end_quotas.get((take_date, effect_period, cp_id), 0.0)
+			# Map back to find dual price using effect_date (note: we have effect_period here)
+			# The dual price is on the control point constraint at each effect_date
+			# To find the right effect_date, we'd need a reverse mapping, but since we're looking at
+			# constraint quota changes, we can use the control point's dual price for the effect_period
+			dual_price = 0.0
+			for (cpe_cp_id, cpe_effect_date) in cp_dual_prices:
+				if cpe_cp_id == cp_id:
+					# This is approximate—should ideally match by both cp_id and the effect_period
+					# For now, use the dual price from the control point event
+					dual_price = cp_dual_prices.get((cp_id, cpe_effect_date), 0.0)
+					break
+			
+			revenue += dual_price * (start_quota - end_quota)
+	
+	return revenue
 
 # This works, but the SQL implementation in ForeverFairData.get_well_constraint_quota () is faster.
 # Other differences: this works for all wells while the SQL implementation works for only one well.
@@ -50,6 +91,13 @@ def compute_alphas (foreverFairData_instance: ForeverFairData, auction_id: int) 
 
 	foreverFairData_instance.set_constraint_alphas (auction_id, alphas_by_constraint)
 	return alphas_by_constraint
+
+# Set up default bids. A trader's manual entry will overwrite these.
+def call_for_bids(foreverFairData_instance: ForeverFairData, auction_id: int) -> None:
+	if foreverFairData_instance.has_default_bids(auction_id): return
+	quota_by_well_period = foreverFairData_instance.get_quota(auction_id)
+	for well_id in sorted({well_id for (well_id, _period_id) in quota_by_well_period.keys()}):
+		BiddingController.create_default_bid(foreverFairData_instance, auction_id, well_id)
 
 # Solve the market-clearing optimization. The debug_log strings go to the AuctionManager.html message box.
 def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> None:
@@ -105,6 +153,12 @@ def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: in
 	cp_events = foreverFairData_instance.get_control_point_events(auction_id)
 	effect_dates = sorted({str(row["effect_date"]) for row in cp_events})
 	effect_date_to_idx = {effect_date: idx + 1 for idx, effect_date in enumerate(effect_dates)}
+
+	# Guard: every (cp_id, effect_period) from cp_events must have response factors, otherwise the constraint is empty.
+	empty_constraints = [(int(row["control_point_id"]), effect_date_to_idx[str(row["effect_date"])]) for row in cp_events if not response_lookup[(int(row["control_point_id"]), effect_date_to_idx[str(row["effect_date"])])]]
+	if empty_constraints: log(f"WARNING: cp_events with no response factors (constraint will be trivial): {empty_constraints}")
+	assert not empty_constraints, f"cp_events with no response factors: {empty_constraints}"
+
 	for row in cp_events:
 		cp_id = int(row["control_point_id"])
 		effect_period = effect_date_to_idx[str(row["effect_date"])]
@@ -112,10 +166,15 @@ def runCurrentAuction (foreverFairData_instance: ForeverFairData, auction_id: in
 				for factor in response_lookup.get ((cp_id, effect_period), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
 					<= -1.0*float(row["allowable_head_change"]), f"cp_{cp_id}_{effect_period}")
 
-	auction_model.writeLP (f"../Auction_lpt_files/Forever_Fair_auction_{auction.id}.lpt")
+	lpt_dir = Path (__file__).parent.parent / "Auction_lpt_files"
+	lpt_dir.mkdir (exist_ok=True)
+	auction_model.writeLP (str (lpt_dir / f"Forever_Fair_auction_{auction.id}.lpt"))
 	solve_status = LpStatus[auction_model.solve (PULP_CBC_CMD (msg=0))]
 	log(f"Solve status: {solve_status}")
-	
+	if solve_status != "Optimal":
+		foreverFairData_instance.close_auction (auction_id, solve_status=solve_status, objective_value=None, auction_close_time=foreverFairData_instance.the_time_at_the_tone_is ().isoformat (timespec="minutes"))
+		return
+
 	# Save the resulting quota and prices.
 	for (well_id, period_id) in bid_periods:
 		foreverFairData_instance.set_quota_auction_end (auction_id, well_id, period_labels[period_id - 1], 

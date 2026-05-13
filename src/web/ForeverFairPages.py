@@ -186,7 +186,7 @@ def trader_page(request: Request):
 	current_wells = foreverFairData_instance.get_trader_wells(trader_id)
 	current_well = current_wells[0]
 	bid_history = foreverFairData_instance.get_bid_history(auction_id, trader_id)
-	quota_by_period = foreverFairData_instance.get_quota_for_trader(trader_id=trader_id, auction_id=auction_id)
+	quota_by_period = foreverFairData_instance.get_well_start_quota(well_id=current_well.id, auction_id=auction_id)
 	max_bid_steps = foreverFairData_instance.get_max_bid_steps()
 	period_rows: list[dict[str, Any]] = []
 	for period in auction_record.periods:
