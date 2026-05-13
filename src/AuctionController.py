@@ -11,6 +11,24 @@ from ForeverFairClasses import ResponseFactor
 import BiddingController
 from services.ForeverFairData import ForeverFairData
 
+def create_auction(db_path: Path) -> int:
+	"""Create a new OPEN auction and return its auction_id."""
+	ffdata = ForeverFairData(db_path)
+	return int(ffdata.add_auction()["auction_id"])
+
+def setup_first_auction(db_path: Path) -> int:
+	"""Compute constraint alphas for the first OPEN auction.
+
+	The auction must already exist and have well_quota and control_point_events
+	populated by import_mps. Returns the auction_id.
+	"""
+	ffdata = ForeverFairData(db_path)
+	auction = ffdata.get_next_auction_info()
+	if auction is None: raise ValueError("No OPEN auction found. Import MPS first (/setup/import-mps).")
+	auction_id = int(auction["auction_id"])
+	ffdata.calculate_and_set_constraint_alphas(auction_id)
+	return auction_id
+
 def compute_revenue_on_constraint_quota (foreverFairData_instance: ForeverFairData, auction_id: int) -> float:
 	"""Compute revenue extracted from constraint quota changes across all wells.
 	

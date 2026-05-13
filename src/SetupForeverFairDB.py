@@ -522,7 +522,7 @@ def get_mps_indices(text: str) -> tuple[int, int]:
 
 	return max_well_idx, max_row_idx
 
-def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, Any]:
+def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: int = 0) -> dict[str, Any]:
 	"""Parse a GWM2K .mps file; insert response_matrix, initial control-point data, and wells.
 
 	GWM2K MPS section formats (4-token per line):
@@ -535,16 +535,18 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 				written by import_hedcon (auction_id=0, effect_date='stg:{period_id}').
 				actual_start_head = minimum_head - LP_RHS (the base-run head from GWM HDCSTATE0).
 				minimum_head, actual_start_head, and allowable_head_change (=LP_RHS) are written
-				to control_point_events with auction_id=0 and effect_date as ISO datetime.
+				to control_point_events with auction_id and effect_date as ISO datetime.
 	  BOUNDS:   bound_type  bnd_name  wellNNNN  value
 				UP bounds are stored in well_license as one row per well and bid period.
+	auction_id: write well_quota and control_point_events rows to this auction. The auction
+				must already exist in the auctions table. Default 0 (legacy staging; FK off).
 	"""
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA foreign_keys = OFF")
 	imported_at = datetime.now().isoformat()
 	conn.execute("DELETE FROM well_license")
-	conn.execute("DELETE FROM well_quota WHERE auction_id=0")
-	conn.execute("DELETE FROM control_point_events WHERE auction_id=0 AND effect_date NOT LIKE 'stg:%'")
+	conn.execute("DELETE FROM well_quota WHERE auction_id=?", (auction_id,))
+	conn.execute("DELETE FROM control_point_events WHERE auction_id=? AND effect_date NOT LIKE 'stg:%'", (auction_id,))
 
 	max_well_idx, max_row_idx = get_mps_indices(text)
 	num_wells = get_catchment_info(conn, "gwm_num_wells")
@@ -667,8 +669,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 				min_row = conn.execute("SELECT allowable_head_change FROM control_point_events WHERE auction_id=0 AND control_point_id=? AND effect_date=?", (cp_id, staged_key)).fetchone()
 				minimum_head_val = float(min_row[0]) if min_row and min_row[0] is not None else None
 				actual_start_head = (minimum_head_val - val) if minimum_head_val is not None else None
-				conn.execute("DELETE FROM control_point_events WHERE auction_id=0 AND control_point_id=? AND effect_date=?", (cp_id, effect_date))
-				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, minimum_head, actual_start_head, allowable_head_change) VALUES (?, 0, ?, ?, ?, ?)", (cp_id, effect_date, minimum_head_val, actual_start_head, val))
+				conn.execute("DELETE FROM control_point_events WHERE auction_id=? AND control_point_id=? AND effect_date=?", (auction_id, cp_id, effect_date))
+				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, minimum_head, actual_start_head, allowable_head_change) VALUES (?, ?, ?, ?, ?, ?)", (cp_id, auction_id, effect_date, minimum_head_val, actual_start_head, val))
 				bound_count += 1
 			except Exception as exc:
 				errors.append(f"RHS row {row_token}: {exc}")
@@ -698,7 +700,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 					continue
 				take_date = take_dates[pump_period - 1] if 1 <= pump_period <= len(take_dates) else None
 				conn.execute("INSERT INTO well_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (trader_id, well_id, float(val), None, pump_period))
-				conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, take_date) VALUES (?, 0, ?, ?, ?)", (trader_id, well_id, float(val), take_date))
+				conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, take_date) VALUES (?, ?, ?, ?, ?)", (trader_id, auction_id, well_id, float(val), take_date))
 				license_count += 1
 			except Exception as exc:
 				errors.append(f"BOUNDS {col_token}: {exc}")
@@ -712,6 +714,9 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 	save_catchment_info(conn, "period_length_hours", str(period_length_hours))
 	save_catchment_info(conn, "mps_loaded_date", imported_at)
 	save_catchment_info(conn, "mps_notes", "Imported from .mps via Programmer page")
+	if auction_id != 0 and take_dates:
+		conn.execute("UPDATE auctions SET period_length_hours=?, firstWaterTakeDate=?, lastWaterTakeDate=? WHERE auction_id=?",
+			(period_length_hours, take_dates[0], take_dates[-1], auction_id))
 	conn.commit()
 	conn.close()
 	return {"response_matrix_inserted": rf_count, "control_point_rows_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": period_length_hours, "errors": errors[:20],}
@@ -746,22 +751,18 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	import_hedcon(db_path, (data_dir / "tianqiao.hedcon").read_text())
 	import_trader_names(db_path, (data_dir / "Trader_names.csv").read_text())
 	print("Imported decvar, hedcon, trader_names")
-	
+
 	import_trader_wells(db_path, (data_dir / "Trader_wells.csv").read_text())
 	import_well_lat_lon(db_path, (data_dir / "Tianqiao_well_lat_lon_estimated.tsv").read_text())
 	import_control_point_lat_lon(db_path, (data_dir / "Tianqiao_control_point_lat_lon_estimated.tsv").read_text())
-	print("Imported trader_wells, well lat lon, cp lat lon. Starting mps")
+	print("Imported trader_wells, well lat lon, cp lat lon. Creating auction...")
+	import AuctionController
+	auction_id = AuctionController.create_auction(db_path)
+	print(f"Created auction_id={auction_id}. Starting mps...")
+	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=auction_id) # hours
+	print("Finished mps. Computing constraint alphas...")
+	AuctionController.setup_first_auction(db_path)
+	print(f"First auction set up: auction_id={auction_id}")
 
-	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168) # hours
-	conn = sqlite3.connect(db_path)
-	print("Finished mps")
-	conn.commit()
-	conn.close()
-	
 if __name__ == "__main__":
 	setup_tianqiao()
-	from services.ForeverFairData import ForeverFairData
-	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao"
-	db_path = data_dir / "foreverfair.db"
-	print("Computing constraint alpha...")
-	ForeverFairData(db_path).calculate_and_set_constraint_alphas(auction_id=0)

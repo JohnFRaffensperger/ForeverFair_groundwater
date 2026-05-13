@@ -42,9 +42,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <div id="db-status-panel"><em>Loading&hellip;</em></div>
 
-<form id="create-db-form" method="post" action="/setup/create-db" style="display:inline-block; margin-right:1em;"><button type="submit">Create new database</button></form>
-<form id="delete-db-form" method="post" action="/setup/delete-db" style="display:inline-block;" onsubmit="return confirm('Are you sure you want to delete the whole Forever Fair database?')">
-<button type="submit">Delete database</button></form>
+<form id="delete-db-form" method="post" action="/setup/delete-db" onsubmit="return confirm('Are you sure you want to delete the old ForeverFair.db and create a new one?')">
+<button type="submit">Delete old ForeverFair.db and create new ForeverFair.db</button></form>
 
 <h1>Set up the database: 7 files</h1>
 <p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
@@ -143,7 +142,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 	<div id="mps-result" style="display:none"></div>
 <form id="mps-form" method="post" action="/setup/import-mps" enctype="multipart/form-data">
 <input type="hidden" id="period-unit-hidden" name="period_unit" value="day">
-<p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button></p>
+<p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button> <span id="mps-import-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span></p>
 </form>
 
 <h2>9. Rights policy</h2>
@@ -156,6 +155,12 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 </fieldset>
 <span id="rights-policy-status" style="margin-left:0.75em; font-size:0.9em; color:gray;"></span>
 
+<h2>10. Set up auction system</h2>
+<p>After all data files have been imported and settings configured, click this button to create the first auction from the imported data. This copies well quotas and control-point bounds into a proper auction record and computes constraint alphas.</p>
+<form id="setup-auction-form" method="post" action="/setup/setup-first-auction">
+<button type="submit">Set up auction system</button>
+<span id="setup-auction-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span>
+</form>
 
 
 <script>
@@ -215,15 +220,13 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
   <script>
     fetch('/setup/db-status')
       .then(r => r.json())
-      .then(data => {const panel = document.getElementById('db-status-panel'); const createForm = document.getElementById('create-db-form'); const deleteForm = document.getElementById('delete-db-form');
+      .then(data => {const panel = document.getElementById('db-status-panel');
         
-        if (!data.exists) {panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path; createForm.style.display = 'inline-block'; deleteForm.style.display = 'inline-block'; return;}
+        if (!data.exists) {panel.innerHTML = '<strong>Database does not exist.</strong> Path: ' + data.db_path; return;}
         const tables = data.tables || {};
         const names = Object.keys(tables).sort();
         let rows = names.map(t => `<tr><td>${t}</td><td>${tables[t]}</td></tr>`).join('');
-        panel.innerHTML = `<p>Database exists: ${data.db_path} &mdash; ${names.length} tables.</p>` + `<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${rows}</tbody></table>`;
-        createForm.style.display = 'inline-block';
-        deleteForm.style.display = 'inline-block';})
+        panel.innerHTML = `<p>Database exists: ${data.db_path} &mdash; ${names.length} tables.</p>` + `<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${rows}</tbody></table>`;})
       .catch(err => {document.getElementById('db-status-panel').textContent = 'Error fetching status: ' + err;});
   </script>
 
@@ -506,6 +509,39 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
         })
         .catch(function () { status.textContent = 'Save failed'; });
       });
+    });
+  })();
+</script>
+
+<script>
+  (function () {
+    var mpsForm = document.getElementById('mps-form');
+    var mpsStatus = document.getElementById('mps-import-status');
+    mpsForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      mpsStatus.style.color = 'gray';
+      mpsStatus.textContent = 'Working\u2026';
+      fetch('/setup/import-mps', {method: 'POST', body: new FormData(mpsForm), redirect: 'follow'})
+        .then(function () { mpsStatus.textContent = 'Done.'; })
+        .catch(function () { mpsStatus.style.color = 'red'; mpsStatus.textContent = 'Error.'; });
+    });
+
+    var auctionForm = document.getElementById('setup-auction-form');
+    var auctionStatus = document.getElementById('setup-auction-status');
+    auctionForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      auctionStatus.style.color = 'gray';
+      auctionStatus.textContent = 'Working\u2026';
+      fetch('/setup/setup-first-auction', {method: 'POST', redirect: 'follow'})
+        .then(function (r) {
+          if (r.ok) {
+            auctionStatus.innerHTML = 'Auction system ready. Have a look at <a href="/auctionmanager">AuctionManager</a>.';
+          } else {
+            auctionStatus.style.color = 'red';
+            auctionStatus.textContent = 'Error.';
+          }
+        })
+        .catch(function () { auctionStatus.style.color = 'red'; auctionStatus.textContent = 'Error.'; });
     });
   })();
 </script>

@@ -338,6 +338,7 @@ def setup_delete_db():
 	try:
 		SetupForeverFairDB.delete_db(db_path)
 		if db_path.exists(): return _flash_redirect("/programmer", "Error deleting database: database file still exists")
+		SetupForeverFairDB.create_empty_db(db_path)
 		return _flash_redirect("/programmer", "Database deleted")
 	except Exception as e:
 		import logging
@@ -376,7 +377,10 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 		unit_hours = {"hour": 1, "day": 24, "week": 168}.get(str(period_unit).strip().lower())
 		if unit_hours is None: return _flash_redirect("/programmer", "Error importing MPS: invalid period unit")
 		text = (await file.read()).decode("utf-8", errors="replace")
-		result = SetupForeverFairDB.import_mps(DATA_DIR / "foreverfair.db", text, period_length_hours=unit_hours)
+		db_path = DATA_DIR / "foreverfair.db"
+		next_auction = foreverFairData_instance.get_next_auction_info()
+		auction_id = int(next_auction["auction_id"]) if next_auction is not None else int(foreverFairData_instance.add_auction()["auction_id"])
+		result = SetupForeverFairDB.import_mps(db_path, text, period_length_hours=unit_hours, auction_id=auction_id)
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing MPS: {e}")
 	notice = (f"MPS import complete: {result['response_matrix_inserted']} response factors,"
@@ -523,3 +527,11 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 		f" {result['rows_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
+
+@app.post("/setup/setup-first-auction")
+def setup_first_auction():
+	try:
+		auction_id = AuctionController.setup_first_auction(DATA_DIR / "foreverfair.db")
+		return _flash_redirect("/programmer", f"Auction system set up: auction_id={auction_id}")
+	except Exception as e:
+		return _flash_redirect("/programmer", f"Error setting up auction system: {e}")

@@ -41,11 +41,11 @@ def test_setup_and_reset_auction_data(tmp_path):
 	updated_auction = foreverFairData_instance.add_auction()
 	assert updated_auction["auction_id"] is not None
 	assert len(foreverFairData_instance.list_auctions()) == initial_count + 1
-	assert foreverFairData_instance.get_max_bid_steps() == 5
+	assert foreverFairData_instance.get_max_bid_steps() == 3
 	with foreverFairData_instance.connect_to_db() as conn:
 		row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
 		assert row is not None
-		assert row["meta_value"] == "5"
+		assert row["meta_value"] == "3"
 
 	reset_data = ForeverFairData(db_path=tmp_path / "small_debug_database_reset.db", debug_db_path=Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao" / "foreverfair.db")
 	assert len(reset_data.list_auctions()) == initial_count
@@ -87,7 +87,7 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	period_key, trader_id, well_id = _first_period_trader_well(foreverFairData_instance, seed_auction_id)
 	new_auction = foreverFairData_instance.add_auction()
 	auction_id = int(new_auction["auction_id"])
-	foreverFairData_instance.set_quota_for_auction(auction_id, source_auction_id=0)
+	foreverFairData_instance.set_quota_for_auction(auction_id, source_auction_id=seed_auction_id)
 	auction = foreverFairData_instance.get_auction_info(auction_id)
 	with foreverFairData_instance.connect_to_db() as conn:
 		period_label = next(p.label for p in auction.periods if p.id == period_key)

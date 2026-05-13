@@ -1,5 +1,6 @@
-from __future__ import annotations
+# tableToHtml. Use this to write stand-alone SQL queries on any SQLite database. Output is an HTML file. JFR 2026-05-13.
 
+from __future__ import annotations
 import csv
 import shutil
 import sqlite3
@@ -22,13 +23,11 @@ PRIMARY_TABLE_NAME = "maps_atg_schema"
 HTMLTableRenderer = cast(Callable[..., str], getattr(LocalHTML, "table"))
 
 def _render_html_table(rows: list[list[Any]], header_row: list[str] | None = None) -> str:
-	if header_row is None:
-		return HTMLTableRenderer(rows)
+	if header_row is None: return HTMLTableRenderer(rows)
 	return HTMLTableRenderer(rows, header_row=header_row)
 
 def _transpose_rows(rows: list[list[Any]], header_row: list[str]) -> list[list[Any]]:
-	if not rows:
-		return [[field_name] for field_name in header_row]
+	if not rows: return [[field_name] for field_name in header_row]
 	source_rows: list[list[Any]] = [list(header_row)] + [list(row) for row in rows]
 	column_count = len(source_rows[0])
 	return [[source_rows[row_index][column_index] for row_index in range(len(source_rows))] for column_index in range(column_count)]
@@ -37,11 +36,9 @@ def getTableNameFromQueryString(query: str) -> str:
 	"""Return the first token after FROM, or 'query' if it cannot be inferred."""
 	query_lower = query.lower()
 	start = query_lower.find(" from ")
-	if start < 0:
-		return "query"
+	if start < 0: return "query"
 	tail = query[start + 6:].strip()
-	if not tail:
-		return "query"
+	if not tail: return "query"
 	return tail.split()[0].strip() or "query"
 
 def makeHTML(rows: list[list[Any]], fieldIndices: dict[str, int] | None = None) -> None:
@@ -54,8 +51,7 @@ def makeHTML(rows: list[list[Any]], fieldIndices: dict[str, int] | None = None) 
 		for field_name, column_index in fieldIndices.items():
 			fieldnames[column_index] = field_name
 		html = _render_html_table(rows, header_row=fieldnames)
-	else:
-		html = _render_html_table(rows)
+	else: html = _render_html_table(rows)
 	with open(outputfilename, "w", encoding="utf-8") as handle:
 		handle.write("<html>" + html + "</html>")
 	print(f"Wrote {len(rows)} rows to {outputfilename}.")
@@ -69,8 +65,7 @@ def saveQueryToCSV(query: str, optionalFileName: str | Path = DEFAULT_QUERY_CSV)
 			csv_writer.writerow([description[0] for description in cursor.description])
 			csv_writer.writerows(cursor)
 
-def show(tablename: str) -> tuple[dict[str, int], list[list[Any]]] | None:
-	return tableToHtml(f"select * from {tablename} limit 500")
+def show(tablename: str) -> tuple[dict[str, int], list[list[Any]]] | None: return tableToHtml(f"select * from {tablename} limit 500")
 
 def tableToHtml(query: str, optionalFileName: str | Path = DEFAULT_HTML_FILE, talk: bool = True, databaseFileName: str | Path = DEFAULT_DB_FILE, transpose: bool = False) -> tuple[dict[str, int], list[list[Any]]] | None:
 	"""Run a read-only query and optionally write its result as HTML."""
