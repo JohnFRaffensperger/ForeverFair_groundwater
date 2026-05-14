@@ -49,65 +49,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
 <p>The code reads catchment datasets from subdirectories under <code>/Catchment_data/</code>. It uses the subdirectory name, <code>/Tianqiao/</code> in this example, as the Catchment name stored in <code>Catchment_info</code>.</p>
 
-<h2>1. Import .decvar file</h2>
-<p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
-	The layer, row, and col fields are the MODFLOW grid coordinates. Module import_decvar.py stores this data in table wells with one well row per unique well number.
-	(Confusingly, GWM writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
-	The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
-<div id="decvar-result" style="display:none"></div>
-<form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
-<p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>2. Import .hedcon file</h2>
-<p>Forever Fair uses this information for the list of control points and head constraints by time periods.
-	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
-	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
-  Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
-  The module also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
-	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
-(Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
-
-<div id="hedcon-result" style="display:none"></div>
-<form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
-<p><label for="hedcon-file">File type ".hedcon":</label> <input type="file" id="hedcon-file" name="file" accept=".hedcon" required> <button id="hedcon-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>3. Import trader names</h2>
-<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. The import derives trader_id, name, and trader_loginid from the last name. 
-	A trader name can appear only once. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Chunmiao</em>, <em>Chunmiao1</em>, <em>Chunmiao2</em>).
-	Note that a trader can have more than one well.</p>
-<div id="trader-names-result" style="display:none"></div>
-<form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
-<p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>4. Import trader-well assignments</h2>
-<p>Upload a tab-delimited file with columns name and well_id. Requirements:</p>
-<ul><li>Check 1: name must exactly match a value in the traders.name_tag column (case-sensitive).  A trader may have more than one well; each well can be assigned to only one trader.</li>
-<li>Check 2: well_id must exactly match a value in the wells.well_id column.</li>
-</ul>
-<p>Rows that fail either check are skipped and listed in the notice. For each matched row, the import updates wells.trader_id.</p>
-<div id="trader-wells-result" style="display:none"></div>
-<form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
-<p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>5. Import well latitude and longitude</h2>
-<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. The latitude and longitude are used only for the catchment visualizations.</p>
-<div id="well-lat-lon-result" style="display:none"></div>
-<form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
-<p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>6. Import control point latitude and longitude</h2>
-<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
-<div id="control-point-lat-lon-result" style="display:none"></div>
-<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
-<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
-</form>
-
-<h2>7. Auction calendar settings</h2>
+<h2>1. Auction calendar settings</h2>
 <p><label for="period-unit">MODFLOW period length:</label>
   <select id="period-unit">
     <option value="hour">hour</option>
@@ -130,6 +72,76 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
   <button type="button" id="save-max-bid-steps">Save</button>
   <span id="max-bid-steps-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This limits how many price-quantity steps each trader can enter for a single bid.
 </p>
+
+<p><strong>Today is</strong> {{ today_display }} ({{ today_weekday }}).
+{% if period_length_hours %}
+	<strong>Period length is</strong>{% if period_length_hours == 1 %} 1 hour.{% elif period_length_hours == 24 %} 1 day.{% elif period_length_hours == 168 %} 1 week.{% else %} {{ period_length_hours }} hours.{% endif %}
+	<strong>Bidding periods:</strong> {{ bidding_periods }}.
+	{% if first_three_closes %}
+	<strong>The first 3 auctions will close for bidding on:</strong> {{ first_three_closes[0] }}, {{ first_three_closes[1] }}, {{ first_three_closes[2] }}.
+	{% endif %}
+{% else %}
+	Period length is not set yet. Import an .mps file and choose a period length above.
+{% endif %}
+</p>
+
+<h2>2. Import .decvar file</h2>
+<p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
+	The layer, row, and col fields are the MODFLOW grid coordinates. Module import_decvar.py stores this data in table wells with one well row per unique well number.
+	(Confusingly, GWM writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
+	The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
+<div id="decvar-result" style="display:none"></div>
+<form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
+<p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>3. Import .hedcon file</h2>
+<p>Forever Fair uses this information for the list of control points and head constraints by time periods.
+	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
+	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
+  Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
+  The module also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
+	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
+(Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
+
+<div id="hedcon-result" style="display:none"></div>
+<form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
+<p><label for="hedcon-file">File type ".hedcon":</label> <input type="file" id="hedcon-file" name="file" accept=".hedcon" required> <button id="hedcon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>4. Import trader names</h2>
+<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. The import derives trader_id, name, and trader_loginid from the last name. 
+	A trader name can appear only once. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Chunmiao</em>, <em>Chunmiao1</em>, <em>Chunmiao2</em>).
+	Note that a trader can have more than one well.</p>
+<div id="trader-names-result" style="display:none"></div>
+<form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
+<p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>5. Import trader-well assignments</h2>
+<p>Upload a tab-delimited file with columns name and well_id. Requirements:</p>
+<ul><li>Check 1: name must exactly match a value in the traders.name_tag column (case-sensitive).  A trader may have more than one well; each well can be assigned to only one trader.</li>
+<li>Check 2: well_id must exactly match a value in the wells.well_id column.</li>
+</ul>
+<p>Rows that fail either check are skipped and listed in the notice. For each matched row, the import updates wells.trader_id.</p>
+<div id="trader-wells-result" style="display:none"></div>
+<form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
+<p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>6. Import well latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="well-lat-lon-result" style="display:none"></div>
+<form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
+<p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>7. Import control point latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="control-point-lat-lon-result" style="display:none"></div>
+<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
+<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
 
 <h2>8. Import mps file</h2>
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.

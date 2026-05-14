@@ -124,6 +124,19 @@ def doc_programmer(request: Request):
 	report = SetupForeverFairDB.missing_import_data_report(DATA_DIR / "foreverfair.db")
 	notice = request.cookies.get("flash")
 	context = _common_template_context()
+	period_length_hours = foreverFairData_instance.latest_period_length_hours()
+	bidding_periods = foreverFairData_instance.get_number_of_bidding_periods()
+	now_dt = foreverFairData_instance.the_time_at_the_tone_is()
+	context["today_display"] = now_dt.strftime("%d %b %Y")
+	context["today_weekday"] = now_dt.strftime("%A")
+	context["period_length_hours"] = period_length_hours
+	context["bidding_periods"] = bidding_periods
+	if period_length_hours is not None:
+		close_dt, _, _ = foreverFairData_instance.get_auction_close_first_last_dates(now_dt, period_length_hours, bidding_periods)
+		period_td = timedelta(hours=period_length_hours)
+		context["first_three_closes"] = [( close_dt + i * period_td).strftime("%d %b %Y %H:%M") for i in range(3)]
+	else:
+		context["first_three_closes"] = None
 	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": foreverFairData_instance.get_max_bid_steps(), })
 	resp = templates.TemplateResponse(request, "Programmer.html", context)
 	if notice: resp.delete_cookie("flash")
@@ -391,13 +404,11 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 		if unit_hours is None: return _flash_redirect("/programmer", "Error importing MPS: invalid period unit")
 		text = (await file.read()).decode("utf-8", errors="replace")
 		db_path = DATA_DIR / "foreverfair.db"
-		next_auction = foreverFairData_instance.get_next_auction_info()
-		auction_id = int(next_auction["auction_id"]) if next_auction is not None else int(foreverFairData_instance.add_auction()["auction_id"])
-		result = SetupForeverFairDB.import_mps(db_path, text, period_length_hours=unit_hours, auction_id=auction_id)
+		result = SetupForeverFairDB.import_mps(db_path, text, period_length_hours=unit_hours)
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing MPS: {e}")
 	notice = (f"MPS import complete: {result['response_matrix_inserted']} response factors,"
-		      f" {result['control_point_rows_inserted']} control-point rows,"
+		      f" {result['aquifer_head_rows_inserted']} aquifer-head rows,"
 		      f" {result['license_rows_inserted']} trader-license rows"
 		      f" ({result['wells_ensured']} wells ensured)"
 		      f" (using: {result['num_wells']} wells, {result['num_pump_periods']} pump periods,"
@@ -470,7 +481,7 @@ async def setup_set_rights_policy(request: Request) -> dict[str, Any]:
 async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
 	body = await request.json()
 	try:
-		value = int(body.get("num_bidding_periods", 4))
+		value = int(body.get("num_bidding_periods", 4)) # TODO: Why "4"? Why int?
 	except Exception:
 		return {"ok": False, "error": "invalid number of bidding periods"}
 	if value < 1 or value > 52: return {"ok": False, "error": "number of bidding periods must be 1..52"}
@@ -479,7 +490,7 @@ async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('num_bidding_periods', ?)", (str(value),))
+		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, integer_value) VALUES ('num_bidding_periods', ?)", (value,))
 		conn.commit()
 	finally:
 		conn.close()

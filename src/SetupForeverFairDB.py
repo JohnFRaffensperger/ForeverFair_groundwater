@@ -15,10 +15,11 @@ from pathlib import Path
 
 # Database creation, status, deletion. -----------------------------------------------
 SCHEMA_DDL = """
-CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_type TEXT, status TEXT NOT NULL, created_date TEXT NOT NULL, closed_date TEXT, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, solve_status TEXT, objective_value REAL );
-CREATE TABLE IF NOT EXISTS control_points (control_point_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL );
-CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, alpha REAL, slack REAL, dual_price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
-CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, meta_value TEXT NOT NULL );
+CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_type TEXT, created_date TEXT NOT NULL, closed_date TEXT, status TEXT NOT NULL, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, solve_status TEXT, objective_value REAL);
+CREATE TABLE IF NOT EXISTS control_points (control_point_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL);
+CREATE TABLE IF NOT EXISTS aquifer_head_limits (ahl_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, effect_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, alpha REAL, slack REAL, dual_price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, text_value TEXT, integer_value INTEGER );
 CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id INTEGER NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id) );
 CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT );
 CREATE TABLE IF NOT EXISTS well_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, effect_date TEXT, expiry_date TEXT, is_bid_default INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0 );
@@ -79,18 +80,33 @@ def delete_db(db_path: Path) -> None:
 
 # Meta data. -------------------------
 def ensure_catchment_info_table(conn: sqlite3.Connection) -> None:
-	"""Ensure Catchment_info exists; migrate rows from legacy metadata table if present."""
-	conn.execute("CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, meta_value TEXT NOT NULL)")
+	"""Ensure Catchment_info exists with typed columns; migrate from legacy schema if present."""
+	conn.execute("CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, text_value TEXT, integer_value INTEGER)")
+	# Migrate from legacy metadata table if present
 	legacy_exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata' LIMIT 1").fetchone()
 	if legacy_exists:
-		conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) SELECT meta_key, meta_value FROM metadata")
+		conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) SELECT meta_key, meta_value FROM metadata")
+	# Migrate from old meta_value column schema if present
+	old_schema = conn.execute("PRAGMA table_info(Catchment_info)").fetchall()
+	has_old_schema = any(col[1] == 'meta_value' for col in old_schema)
+	if has_old_schema:
+		# Migrate old schema to new schema: try to parse values as integers
+		conn.execute("ALTER TABLE Catchment_info ADD COLUMN text_value TEXT")
+		conn.execute("ALTER TABLE Catchment_info ADD COLUMN integer_value INTEGER")
+		for row in conn.execute("SELECT meta_key, meta_value FROM Catchment_info WHERE meta_value IS NOT NULL"):
+			key, val = row
+			try:
+				int_val = int(val)
+				conn.execute("UPDATE Catchment_info SET integer_value=?, text_value=NULL WHERE meta_key=?", (int_val, key))
+			except ValueError:
+				conn.execute("UPDATE Catchment_info SET text_value=?, integer_value=NULL WHERE meta_key=?", (val, key))
 
-def get_catchment_info(conn: sqlite3.Connection, key: str) -> int | None:
+def get_catchment_info(conn: sqlite3.Connection, key: str) -> str | int | None:
 	ensure_catchment_info_table(conn)
-	row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key=?", (key,)).fetchone()
+	row = conn.execute("SELECT text_value, integer_value FROM Catchment_info WHERE meta_key=?", (key,)).fetchone()
 	if row is None: return None
-	try: return int(row[0])
-	except Exception: return None
+	text_val, int_val = row[0], row[1]
+	return int_val if int_val is not None else text_val
 
 def save_catchment_info(conn: sqlite3.Connection, key: str, value: str | int | float) -> None:
 	ensure_catchment_info_table(conn)
@@ -98,8 +114,11 @@ def save_catchment_info(conn: sqlite3.Connection, key: str, value: str | int | f
 		row = conn.execute("PRAGMA database_list").fetchone()
 		db_path = "" if row is None or len(row) < 3 else str(row[2] or "")
 		case_name = Path(db_path).parent.name.strip() if db_path else ""
-		if case_name: conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, meta_value) VALUES ('Catchment_name', ?)", (case_name,))
-	conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES (?,?)", (key, str(value)),)
+		if case_name: conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) VALUES ('Catchment_name', ?)", (case_name,))
+	if isinstance(value, int):
+		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, integer_value, text_value) VALUES (?, ?, NULL)", (key, value))
+	else:
+		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES (?, ?, NULL)", (key, str(value)))
 
 # Programmer.html, section 1, import decvar. -------------------------------------------
 def import_decvar(db_path: Path, text: str) -> dict[str, Any]:
@@ -143,8 +162,8 @@ def import_decvar(db_path: Path, text: str) -> dict[str, Any]:
 		except Exception as exc:
 			errors.append(str(exc))
 	conn.commit()
-	save_catchment_info(conn, "gwm_num_wells", str(num_wells))
-	save_catchment_info(conn, "gwm_num_pump_periods", str(num_pump_periods))
+	save_catchment_info(conn, "gwm_num_wells", int(num_wells))
+	save_catchment_info(conn, "gwm_num_pump_periods", int(num_pump_periods)) # Unused!
 	conn.commit()
 	conn.close()
 	return {"wells_inserted": inserted, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "errors": errors[:20],}
@@ -156,8 +175,8 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 	HEDCON line format:  bonNNNN  LAYER  ROW  COL  SENSE  RHS_head  stress_period
 	  tokens[0] = bonNNNN (sequential index across all control_point × control_period)
 	  tokens[5] = RHS_head (the head target, e.g. 829.0 metres)
-	RHS_head values are staged in control_point_events.allowable_head_change using
-	auction_id=0 and effect_date='stg:{period_id}' (period-index staging key).
+	RHS_head values are staged in aquifer_head_limits.minimum_head using
+	effect_date='stg:{period_id}' (period-index staging key).
 	These staged values are consumed by import_mps to compute final rows.
 	Uploading a new .hedcon file replaces the staged values consumed by import_mps.
 	Index NNNN is 1-based sequential across all (control_point × control_period):
@@ -171,7 +190,7 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 	cp_inserted = 0
 	bounds_inserted = 0
 	errors: list[str] = []
-	conn.execute("DELETE FROM control_point_events WHERE auction_id=0 AND effect_date LIKE 'stg:%'")
+	conn.execute("DELETE FROM aquifer_head_limits WHERE effect_date LIKE 'stg:%'")
 	for line in text.splitlines():
 		m = _BON_RE.match(line.strip())
 		if not m: continue
@@ -200,13 +219,13 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 			rhs_head = float(tokens[5]) if len(tokens) >= 6 else None
 			if rhs_head is not None:
 				staged_key = f"stg:{effect_period}"
-				conn.execute("DELETE FROM control_point_events WHERE auction_id=0 AND control_point_id=? AND effect_date=?", (cp_id, staged_key))
-				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, allowable_head_change) VALUES (?, 0, ?, ?)", (cp_id, staged_key, rhs_head))
+				conn.execute("DELETE FROM aquifer_head_limits WHERE control_point_id=? AND effect_date=?", (cp_id, staged_key))
+				conn.execute("INSERT INTO aquifer_head_limits(control_point_id, effect_date, minimum_head) VALUES (?, ?, ?)", (cp_id, staged_key, rhs_head))
 				bounds_inserted += 1
 		except Exception as exc: errors.append(str(exc))
 	conn.commit()
-	save_catchment_info(conn, "gwm_num_control_points", str(num_control_points))
-	save_catchment_info(conn, "gwm_num_control_periods", str(num_control_periods))
+	save_catchment_info(conn, "gwm_num_control_points", int(num_control_points))
+	save_catchment_info(conn, "gwm_num_control_periods", int(num_control_periods))
 	conn.commit()
 	conn.close()
 	return {"control_points_inserted": cp_inserted, "control_point_rows_inserted": bounds_inserted, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "errors": errors[:20],}
@@ -522,8 +541,8 @@ def get_mps_indices(text: str) -> tuple[int, int]:
 
 	return max_well_idx, max_row_idx
 
-def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: int = 0) -> dict[str, Any]:
-	"""Parse a GWM2K .mps file; insert response_matrix, initial control-point data, and wells.
+def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, Any]:
+	"""Parse a GWM2K .mps file; insert response_matrix, aquifer_head_limits, and well_license.
 
 	GWM2K MPS section formats (4-token per line):
 	  COLUMNS:  wellNNNN  model_name  row_index  coefficient
@@ -531,22 +550,19 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 				Lines with [1]=="OBJ" are objective-function coefficients and are skipped.
 	  RHS:      rhs_label  rhs_name  row_index  value
 				value is the GWM LP RHS = minimum_head (h_l) - actual_start_head (h_0).
-				minimum_head is read from staged control_point_events.allowable_head_change rows
-				written by import_hedcon (auction_id=0, effect_date='stg:{period_id}').
+				minimum_head is read from staged aquifer_head_limits.minimum_head rows
+				written by import_hedcon (effect_date='stg:{period_id}').
 				actual_start_head = minimum_head - LP_RHS (the base-run head from GWM HDCSTATE0).
 				minimum_head, actual_start_head, and allowable_head_change (=LP_RHS) are written
-				to control_point_events with auction_id and effect_date as ISO datetime.
+				to aquifer_head_limits with effect_date as ISO datetime.
 	  BOUNDS:   bound_type  bnd_name  wellNNNN  value
 				UP bounds are stored in well_license as one row per well and bid period.
-	auction_id: write well_quota and control_point_events rows to this auction. The auction
-				must already exist in the auctions table. Default 0 (legacy staging; FK off).
 	"""
 	conn = sqlite3.connect(db_path)
 	conn.execute("PRAGMA foreign_keys = OFF")
 	imported_at = datetime.now().isoformat()
 	conn.execute("DELETE FROM well_license")
-	conn.execute("DELETE FROM well_quota WHERE auction_id=?", (auction_id,))
-	conn.execute("DELETE FROM control_point_events WHERE auction_id=? AND effect_date NOT LIKE 'stg:%'", (auction_id,))
+	conn.execute("DELETE FROM aquifer_head_limits WHERE effect_date NOT LIKE 'stg:%'")
 
 	max_well_idx, max_row_idx = get_mps_indices(text)
 	num_wells = get_catchment_info(conn, "gwm_num_wells")
@@ -577,22 +593,17 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 	cp_id_by_num: dict[int, int] = {}
 	well_trader_map: dict[int, int | None] = {}
 	unassigned_wells: set[int] = set()
-	take_dates: list[str] = []
 	effect_dates: list[str] = []
-	row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='synthetic_current_date'").fetchone()
+	row = conn.execute("SELECT text_value FROM Catchment_info WHERE meta_key='synthetic_current_date'").fetchone()
 	if row is not None and row[0]:
 		base = datetime.fromisoformat(str(row[0]))
 		days_ahead = (0 - base.weekday()) % 7
 		start_dt = (base + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
 		if start_dt <= base: start_dt += timedelta(days=7)
 		step = timedelta(hours=period_length_hours)
-		for i in range(max(0, int(num_pump_periods or 0))):
-			take_dates.append((start_dt + i * step).isoformat(timespec="minutes"))
 		for i in range(max(0, int(num_control_periods or 0))):
 			effect_dates.append((start_dt + i * step).isoformat(timespec="minutes"))
 	bidding_periods = get_catchment_info(conn, "num_bidding_periods")
-	active_bidding_periods = int(bidding_periods) if bidding_periods is not None else int(num_pump_periods)
-	active_take_dates = take_dates[:max(0, active_bidding_periods)] if take_dates else []
 
 	for row in conn.execute("SELECT control_point_id, name FROM control_points").fetchall():
 		cp_id = int(row[0])
@@ -658,7 +669,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 
 		elif section == "RHS":
 			# GWM2K format: rhs_label  rhs_name  row_index  value
-			# Seed initial control-point bounds in control_point_events with auction_id=0.
+			# Compute and store aquifer head limits from MPS RHS and staged hedcon minimum heads.
 			if len(tokens) < 4: continue
 			row_token = tokens[2]
 			try: val = float(tokens[3])
@@ -667,13 +678,13 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 				cp_num, effect_period = mps_control_pt_decoding(row_token, num_control_periods)
 				cp_id = _ensure_cp_id(cp_num)
 				effect_date = effect_dates[effect_period - 1] if 1 <= effect_period <= len(effect_dates) else str(effect_period)
-				# minimum_head (h_l) from HEDCON staging in control_point_events; actual_start_head (h_0) = minimum_head - LP_RHS.
+				# minimum_head (h_l) from HEDCON staging in aquifer_head_limits; actual_start_head (h_0) = minimum_head - LP_RHS.
 				staged_key = f"stg:{effect_period}"
-				min_row = conn.execute("SELECT allowable_head_change FROM control_point_events WHERE auction_id=0 AND control_point_id=? AND effect_date=?", (cp_id, staged_key)).fetchone()
+				min_row = conn.execute("SELECT minimum_head FROM aquifer_head_limits WHERE control_point_id=? AND effect_date=?", (cp_id, staged_key)).fetchone()
 				minimum_head_val = float(min_row[0]) if min_row and min_row[0] is not None else None
 				actual_start_head = (minimum_head_val - val) if minimum_head_val is not None else None
-				conn.execute("DELETE FROM control_point_events WHERE auction_id=? AND control_point_id=? AND effect_date=?", (auction_id, cp_id, effect_date))
-				conn.execute("INSERT INTO control_point_events(control_point_id, auction_id, effect_date, minimum_head, actual_start_head, allowable_head_change) VALUES (?, ?, ?, ?, ?, ?)", (cp_id, auction_id, effect_date, minimum_head_val, actual_start_head, val))
+				conn.execute("DELETE FROM aquifer_head_limits WHERE control_point_id=? AND effect_date=?", (cp_id, effect_date))
+				conn.execute("INSERT INTO aquifer_head_limits(control_point_id, effect_date, minimum_head, actual_start_head, allowable_head_change) VALUES (?, ?, ?, ?, ?)", (cp_id, effect_date, minimum_head_val, actual_start_head, val))
 				bound_count += 1
 			except Exception as exc:
 				errors.append(f"RHS row {row_token}: {exc}")
@@ -701,29 +712,23 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 						unassigned_wells.add(well_id)
 						errors.append(f"BOUNDS well{well_id}: skipped license insert because wells.trader_id is NULL. Import trader-well assignments first.")
 					continue
-				take_date = take_dates[pump_period - 1] if 1 <= pump_period <= len(take_dates) else None
 				conn.execute("INSERT INTO well_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (trader_id, well_id, float(val), None, pump_period))
-				if 1 <= pump_period <= active_bidding_periods:
-					conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, take_date) VALUES (?, ?, ?, ?, ?)", (trader_id, auction_id, well_id, float(val), take_date))
 				license_count += 1
 			except Exception as exc:
 				errors.append(f"BOUNDS {col_token}: {exc}")
 
 	conn.commit()
-	if num_wells: save_catchment_info(conn, "gwm_num_wells", str(num_wells))
-	if num_pump_periods: save_catchment_info(conn, "gwm_num_pump_periods", str(num_pump_periods))
-	if num_control_points: save_catchment_info(conn, "gwm_num_control_points", str(num_control_points))
-	if num_control_periods: save_catchment_info(conn, "gwm_num_control_periods", str(num_control_periods))
-	conn.execute("DELETE FROM control_point_events WHERE auction_id=0 AND effect_date LIKE 'stg:%'")
-	save_catchment_info(conn, "period_length_hours", str(period_length_hours))
+	if num_wells: save_catchment_info(conn, "gwm_num_wells", int(num_wells))
+	if num_pump_periods: save_catchment_info(conn, "gwm_num_pump_periods", int(num_pump_periods)) # Unused!
+	if num_control_points: save_catchment_info(conn, "gwm_num_control_points", int(num_control_points))
+	if num_control_periods: save_catchment_info(conn, "gwm_num_control_periods", int(num_control_periods))
+	conn.execute("DELETE FROM aquifer_head_limits WHERE effect_date LIKE 'stg:%'")
+	save_catchment_info(conn, "period_length_hours", period_length_hours)
 	save_catchment_info(conn, "mps_loaded_date", imported_at)
 	save_catchment_info(conn, "mps_notes", "Imported from .mps via Programmer page")
-	if auction_id != 0 and active_take_dates:
-		conn.execute("UPDATE auctions SET period_length_hours=?, firstWaterTakeDate=?, lastWaterTakeDate=? WHERE auction_id=?",
-			(period_length_hours, active_take_dates[0], active_take_dates[-1], auction_id))
 	conn.commit()
 	conn.close()
-	return {"response_matrix_inserted": rf_count, "control_point_rows_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": period_length_hours, "errors": errors[:20],}
+	return {"response_matrix_inserted": rf_count, "aquifer_head_rows_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": period_length_hours, "errors": errors[:20],}
 
 # Show info on Programmer.html. -----------------------------------------------
 def missing_import_data_report(db_path: Path) -> dict[str, Any]:
@@ -759,14 +764,13 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	import_trader_wells(db_path, (data_dir / "Trader_wells.csv").read_text())
 	import_well_lat_lon(db_path, (data_dir / "Tianqiao_well_lat_lon_estimated.tsv").read_text())
 	import_control_point_lat_lon(db_path, (data_dir / "Tianqiao_control_point_lat_lon_estimated.tsv").read_text())
-	print("Imported trader_wells, well lat lon, cp lat lon. Creating auction...")
+	print("Imported trader_wells, well lat lon, cp lat lon. Importing mps...")
 	import AuctionController
+	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168)
+	print("Finished mps. Creating auctions...")
 	auction_id = AuctionController.create_auction(db_path)
-	print(f"Created auction_id={auction_id}. Starting mps...")
-	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=auction_id) # hours
-	print("Finished mps. Computing constraint alphas...")
 	AuctionController.create_auction(db_path)
-	print(f"First auction set up: auction_id={auction_id}")
+	print(f"Set up: first auction_id={auction_id}")
 
 if __name__ == "__main__":
 	setup_tianqiao()

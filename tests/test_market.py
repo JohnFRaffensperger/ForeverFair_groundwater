@@ -18,8 +18,8 @@ def _make_repo(tmp_path: Path) -> ForeverFairData:
 	SetupForeverFairDB.import_trader_wells(db_path, (data_dir / "Trader_wells.csv").read_text())
 	SetupForeverFairDB.import_well_lat_lon(db_path, (data_dir / "Tianqiao_well_lat_lon_estimated.tsv").read_text())
 	SetupForeverFairDB.import_control_point_lat_lon(db_path, (data_dir / "Tianqiao_control_point_lat_lon_estimated.tsv").read_text())
+	SetupForeverFairDB.import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168)
 	create_auction(db_path)
-	SetupForeverFairDB.import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=1)
 	create_auction(db_path)
 	return ForeverFairData(db_path=db_path)
 
@@ -52,12 +52,12 @@ def test_setup_and_reset_auction_data(tmp_path):
 	initial_count = len(foreverFairData_instance.list_auctions())
 	auction_id = create_auction(foreverFairData_instance.db_path)
 	assert auction_id is not None
-	assert len(foreverFairData_instance.list_auctions()) == initial_count
+	assert len(foreverFairData_instance.list_auctions()) == initial_count + 1
 	assert foreverFairData_instance.get_max_bid_steps() == 3
 	with foreverFairData_instance.connect_to_db() as conn:
-		row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
+		row = conn.execute("SELECT integer_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
 		assert row is not None
-		assert row["meta_value"] == "3"
+		assert row["integer_value"] == 3
 
 	reset_data = _make_repo(tmp_path / "reset")
 	assert len(reset_data.list_auctions()) == initial_count

@@ -1,4 +1,4 @@
-# AuctionController.py. Claude guided by JFR, 2026 05 08.
+# AuctionController.py. Claude guided by JFR, 2026 05 14.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Call for bids, clear ("run") the auction with optimization, calculate rights and cash exchanges.
 
@@ -12,16 +12,12 @@ import BiddingController
 from services.ForeverFairData import ForeverFairData
 
 def create_auction(db_path: Path) -> int:
-	"""Ensure one OPEN auction exists and initialize it when possible."""
+	"""Create and initialize an auction."""
 	ffdata = ForeverFairData(db_path)
-	auction = ffdata.get_next_auction_info()
-	if auction is None: # Set up first auction.
-		auction_id = int(ffdata.add_auction()["auction_id"])
-	else:
-		auction_id = int(auction["auction_id"])
+	auction_id = ffdata.add_auction()["auction_id"]
 	ffdata.set_control_point_events_for_auction(auction_id)
-	if ffdata.get_control_point_events(auction_id):
-		ffdata.calculate_and_set_constraint_alphas(auction_id)
+	ffdata.set_quota_for_auction(auction_id)
+	ffdata.calculate_and_set_constraint_alphas(auction_id)
 	call_for_bids(ffdata, auction_id)
 	return auction_id
 

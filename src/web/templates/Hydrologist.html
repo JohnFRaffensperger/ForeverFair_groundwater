@@ -44,6 +44,8 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 
 <p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
 
+<h2>Timing, the calendar, pumping periods</h2>
+
 <h2>Files from your groundwater model</h2>
 <table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
 	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
@@ -66,7 +68,26 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 	When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html. 
 	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
-<p>[TODO: flesh out number of bidding periods, season length. Does the number of bidding periods have to match the number of pump periods?] The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
+<p>You will have set up your MPS optimization with a pumping schedule and a constraint schedule. The pumping schedule should 
+	be shorter, preferably much shorter, than the constraint schedule. For example, you might have pumping variables for 52 weeks of the year 
+	and constraint variables for the same weeks plus another 26 weeks. That ensures constraints on the delayed effects of pumping.
+	The auction schedule has the same idea, with some extra controls. The auction "bidding periods" are the auction pumping schedule,
+	but you can choose to run bidding periods for shorter than the schedule in your MPS file. For example, if your MPS file has 52 weeks of pumping,
+	you can choose to run bidding periods for only 20 weeks. The purpose of having fewer bidding periods is to make bidding easier for your traders,
+	because they must enter bids for all bidding periods in every auction, though the web page has controls to make it a bit easier.
+	The Tianqiao example mps file has 78 weeks of constraints, of which the first 52 are also bidding periods corresponding to a calendar year.
+	I decided to run the auction for only 20 weeks at a time, making this auction more like one farmers would use over a hydrological season
+	rather than an auction for year-round abstraction as for urban use.</p>
+
+<p>The MPS file defines gwm_num_pump_periods, the total number of pumping periods in the groundwater model. 
+	The programmer sets num_bidding_periods through the Programmer page, which must be num_bidding_periods &le; gwm_num_pump_periods. 
+	For example, Tianqiao.mps has gwm_num_pump_periods = 52 weeks, and the auction is configured to run num_bidding_periods = 20 weeks. 
+	This ensures the optimization can access response factors for all the bidding periods, plus the lagged constraint periods that follow.</p>
+
+<p>If the auction runs over a hydrological season, the final pumping period is fixed, so the auction manager should not have to convert license to quota for a new period. 
+	If the auction runs over a rolling time horizon of less than a year, the auction manager may have to convert license to quota for each new "last pumping period" in the auction.
+	I will assume the auction runs over a hydrological season, so the final pumping period is fixed, not rolling. 
+	The schedule of pumping gets shorter as auctions progress over time. As I said above, I decided to run the auction for 20 weeks declining rather than 20 weeks rolling.</p>
 
 <p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 

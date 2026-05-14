@@ -165,6 +165,11 @@ If the user doesn't have enough water, they are stuck.</p>
 	to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html.
 	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
+<p>Under any rights policy, this software assumes that only the initial license is subject to payments to traders
+	from the auction manager. If a trader buys quota for a future period, then the hydrologist updates the available head
+	 forecast, the auction manager reserves the right to scale quota without compensating traders.
+	Traders may be compensated for scaling of license to quota, but not for scaling of quota to updated inflow forecasts.</p>
+
 <p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
 
 <p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
