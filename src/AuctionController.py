@@ -12,23 +12,17 @@ import BiddingController
 from services.ForeverFairData import ForeverFairData
 
 def create_auction(db_path: Path) -> int:
-	"""Create a new OPEN auction and return its auction_id."""
-	ffdata = ForeverFairData(db_path)
-	auction_id = int(ffdata.add_auction()["auction_id"])
-	call_for_bids(ffdata, auction_id)
-	return auction_id
-
-def setup_first_auction_alphas(db_path: Path) -> int:
-	"""Compute constraint alphas for the first OPEN auction.
-
-	The auction must already exist and have well_quota and control_point_events
-	populated by import_mps. Returns the auction_id.
-	"""
+	"""Ensure one OPEN auction exists and initialize it when possible."""
 	ffdata = ForeverFairData(db_path)
 	auction = ffdata.get_next_auction_info()
-	if auction is None: raise ValueError("No OPEN auction found. Import MPS first (/setup/import-mps).")
-	auction_id = int(auction["auction_id"])
-	ffdata.calculate_and_set_constraint_alphas(auction_id)
+	if auction is None: # Set up first auction.
+		auction_id = int(ffdata.add_auction()["auction_id"])
+	else:
+		auction_id = int(auction["auction_id"])
+	ffdata.set_control_point_events_for_auction(auction_id)
+	if ffdata.get_control_point_events(auction_id):
+		ffdata.calculate_and_set_constraint_alphas(auction_id)
+	call_for_bids(ffdata, auction_id)
 	return auction_id
 
 def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: int) -> float:
@@ -133,13 +127,10 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
 	log(f"runCurrentAuction started: auction_id={auction_id}") 
 	auction = ffdata.get_auction_info (auction_id) # Should always be exactly one auction scheduled.
-	call_for_bids(ffdata, auction_id)
-	
-	ffdata.set_control_point_events_for_auction(auction_id)
 
 	# effect_date_to_idx uses get_all_period_dates() — the complete global sequence from well_quota,
 	# which aligns with response_matrix.pumping_period / effect_period integers for all auctions.
-	# cp_events now contains only this auction's dates; building the index from cp_events alone
+	# cp_events contains only this auction's dates; building the index from cp_events alone
 	# would give local (auction-relative) indices, breaking the LP constraint alignment.
 	cp_events = ffdata.get_control_point_events(auction_id)
 	all_period_dates = ffdata.get_all_period_dates()

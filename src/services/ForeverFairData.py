@@ -103,7 +103,6 @@ class ForeverFairData:
 			return dict(row)
 
 	# Save auction optimization results to the database. --------------------------------------------
-	# UNUSED
 	def close_auction(self, auction_id: int, solve_status: str, objective_value: float, auction_close_time: str) -> int:
 		with self.connect_to_db() as conn:
 			conn.execute("UPDATE auctions SET status='Closed', closed_date=COALESCE(closed_date, ?), solve_status=?, objective_value=? WHERE auction_id=?", 
@@ -207,11 +206,17 @@ class ForeverFairData:
 			return {int(row["well_id"]) for row in conn.execute("SELECT well_id FROM wells ORDER BY well_id").fetchall()}
 
 	def get_all_period_dates(self) -> list[str]:
-		"""All distinct take_dates across all auctions, sorted. Gives the global period date sequence
-		that aligns with response_matrix.pumping_period / effect_period integers (1-based)."""
+		"""All distinct period dates (pumping + effect) sorted. Gives the global period date sequence
+		that aligns with response_matrix.pumping_period / effect_period integers (1-based).
+		Effect periods can extend beyond the last pumping date, so both tables are needed."""
 		with self.connect_to_db() as conn:
-			rows = conn.execute("SELECT DISTINCT take_date FROM well_quota WHERE take_date IS NOT NULL ORDER BY take_date").fetchall()
-			return [str(row["take_date"]) for row in rows]
+			rows = conn.execute("""SELECT DISTINCT date_val FROM (
+					SELECT take_date AS date_val FROM well_quota WHERE take_date IS NOT NULL
+					UNION
+					SELECT effect_date AS date_val FROM control_point_events
+					WHERE effect_date IS NOT NULL AND effect_date NOT LIKE 'stg:%'
+				) ORDER BY date_val""").fetchall()
+			return [str(row[0]) for row in rows]
 
 	# 5. Bids -------------------------------------------------------------------------------------------------
 	def add_bid(self, auction_id: int, well_id: int, period_id: int, quantity: float, price: float, is_default: bool = False, 

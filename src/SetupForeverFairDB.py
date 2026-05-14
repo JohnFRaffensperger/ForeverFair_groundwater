@@ -590,6 +590,9 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 			take_dates.append((start_dt + i * step).isoformat(timespec="minutes"))
 		for i in range(max(0, int(num_control_periods or 0))):
 			effect_dates.append((start_dt + i * step).isoformat(timespec="minutes"))
+	bidding_periods = get_catchment_info(conn, "num_bidding_periods")
+	active_bidding_periods = int(bidding_periods) if bidding_periods is not None else int(num_pump_periods)
+	active_take_dates = take_dates[:max(0, active_bidding_periods)] if take_dates else []
 
 	for row in conn.execute("SELECT control_point_id, name FROM control_points").fetchall():
 		cp_id = int(row[0])
@@ -700,7 +703,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 					continue
 				take_date = take_dates[pump_period - 1] if 1 <= pump_period <= len(take_dates) else None
 				conn.execute("INSERT INTO well_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (trader_id, well_id, float(val), None, pump_period))
-				conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, take_date) VALUES (?, ?, ?, ?, ?)", (trader_id, auction_id, well_id, float(val), take_date))
+				if 1 <= pump_period <= active_bidding_periods:
+					conn.execute("INSERT INTO well_quota(trader_id, auction_id, well_id, quota_auction_start, take_date) VALUES (?, ?, ?, ?, ?)", (trader_id, auction_id, well_id, float(val), take_date))
 				license_count += 1
 			except Exception as exc:
 				errors.append(f"BOUNDS {col_token}: {exc}")
@@ -714,9 +718,9 @@ def import_mps(db_path: Path, text: str, period_length_hours: int, auction_id: i
 	save_catchment_info(conn, "period_length_hours", str(period_length_hours))
 	save_catchment_info(conn, "mps_loaded_date", imported_at)
 	save_catchment_info(conn, "mps_notes", "Imported from .mps via Programmer page")
-	if auction_id != 0 and take_dates:
+	if auction_id != 0 and active_take_dates:
 		conn.execute("UPDATE auctions SET period_length_hours=?, firstWaterTakeDate=?, lastWaterTakeDate=? WHERE auction_id=?",
-			(period_length_hours, take_dates[0], take_dates[-1], auction_id))
+			(period_length_hours, active_take_dates[0], active_take_dates[-1], auction_id))
 	conn.commit()
 	conn.close()
 	return {"response_matrix_inserted": rf_count, "control_point_rows_inserted": bound_count, "license_rows_inserted": license_count, "wells_ensured": wells_ensured, "num_wells": num_wells, "num_pump_periods": num_pump_periods, "num_control_points": num_control_points, "num_control_periods": num_control_periods, "period_length_hours": period_length_hours, "errors": errors[:20],}
@@ -761,7 +765,7 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	print(f"Created auction_id={auction_id}. Starting mps...")
 	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=auction_id) # hours
 	print("Finished mps. Computing constraint alphas...")
-	AuctionController.setup_first_auction_alphas(db_path)
+	AuctionController.create_auction(db_path)
 	print(f"First auction set up: auction_id={auction_id}")
 
 if __name__ == "__main__":

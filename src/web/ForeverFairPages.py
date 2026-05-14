@@ -544,7 +544,7 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 @app.post("/setup/setup-first-auction")
 def setup_first_auction():
 	try:
-		auction_id = AuctionController.setup_first_auction_alphas(DATA_DIR / "foreverfair.db")
+		auction_id = AuctionController.create_auction(DATA_DIR / "foreverfair.db")
 		return _flash_redirect("/programmer", f"Auction system set up: auction_id={auction_id}")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error setting up auction system: {e}")

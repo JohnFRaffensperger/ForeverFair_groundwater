@@ -4,12 +4,24 @@
 
 from pathlib import Path
 from AuctionController import create_auction, runCurrentAuction
+import SetupForeverFairDB
 from services.ForeverFairData import ForeverFairData
 
 def _make_repo(tmp_path: Path) -> ForeverFairData:
 	project_root = Path(__file__).resolve().parents[1]
-	debug_db = project_root / "Catchment_data" / "Tianqiao" / "foreverfair.db"
-	return ForeverFairData(db_path=tmp_path / "small_debug_database_temp.db", debug_db_path=debug_db)
+	data_dir = project_root / "Catchment_data" / "Tianqiao"
+	db_path = tmp_path / "small_debug_database_temp.db"
+	SetupForeverFairDB.create_empty_db(db_path)
+	SetupForeverFairDB.import_decvar(db_path, (data_dir / "tianqiao.decvar").read_text())
+	SetupForeverFairDB.import_hedcon(db_path, (data_dir / "tianqiao.hedcon").read_text())
+	SetupForeverFairDB.import_trader_names(db_path, (data_dir / "Trader_names.csv").read_text())
+	SetupForeverFairDB.import_trader_wells(db_path, (data_dir / "Trader_wells.csv").read_text())
+	SetupForeverFairDB.import_well_lat_lon(db_path, (data_dir / "Tianqiao_well_lat_lon_estimated.tsv").read_text())
+	SetupForeverFairDB.import_control_point_lat_lon(db_path, (data_dir / "Tianqiao_control_point_lat_lon_estimated.tsv").read_text())
+	create_auction(db_path)
+	SetupForeverFairDB.import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=1)
+	create_auction(db_path)
+	return ForeverFairData(db_path=db_path)
 
 def _seed_auction_id(foreverFairData_instance: ForeverFairData) -> int:
 	next_auction = foreverFairData_instance.get_next_auction_info()
@@ -40,14 +52,14 @@ def test_setup_and_reset_auction_data(tmp_path):
 	initial_count = len(foreverFairData_instance.list_auctions())
 	auction_id = create_auction(foreverFairData_instance.db_path)
 	assert auction_id is not None
-	assert len(foreverFairData_instance.list_auctions()) == initial_count + 1
+	assert len(foreverFairData_instance.list_auctions()) == initial_count
 	assert foreverFairData_instance.get_max_bid_steps() == 3
 	with foreverFairData_instance.connect_to_db() as conn:
 		row = conn.execute("SELECT meta_value FROM Catchment_info WHERE meta_key='MAX_BID_STEPS'").fetchone()
 		assert row is not None
 		assert row["meta_value"] == "3"
 
-	reset_data = ForeverFairData(db_path=tmp_path / "small_debug_database_reset.db", debug_db_path=Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao" / "foreverfair.db")
+	reset_data = _make_repo(tmp_path / "reset")
 	assert len(reset_data.list_auctions()) == initial_count
 
 def test_manager_run_persists_results(tmp_path):
@@ -96,11 +108,10 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	quota = foreverFairData_instance.get_well_start_quota(well_id=well_id, auction_id=auction_id)
 	assert quota[period_key] == 90.0
 
-def test_manager_run_rejects_auction_with_no_bids(tmp_path):
+def test_open_auction_has_default_bids_before_run(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)
 	auction_id = _seed_auction_id(foreverFairData_instance)
-	with foreverFairData_instance.connect_to_db() as conn:
-		conn.execute("UPDATE well_bids SET deleted=1 WHERE auction_id=?", (auction_id,))
+	assert foreverFairData_instance.has_default_bids(auction_id)
 	runCurrentAuction(foreverFairData_instance, auction_id)
 	latest = foreverFairData_instance.get_run_summary(auction_id)
 	assert latest is not None
