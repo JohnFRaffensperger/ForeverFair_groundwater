@@ -1,4 +1,4 @@
-# BiddingController.py. Claude guided by JFR, 2026 04 21.
+# BiddingController.py. Claude guided by JFR, 2026 05 13.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Validate, submit, and manage trader bids.
 
@@ -7,13 +7,15 @@ from ForeverFairClasses import BidSegment
 from services.ForeverFairData import ForeverFairData
 
 def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: int, well_id: int) -> None:
-	foreverFairData_instance.set_quota_for_auction(auction_id)
 	quota_by_well_period = foreverFairData_instance.get_quota (auction_id)
+	license_by_period = foreverFairData_instance.get_well_license_quantity(well_id)
 	price_steps = [0.01, 0.02, 0.04, 0.08, 0.16][:foreverFairData_instance.get_max_bid_steps()] # $/(cubic meter per week).
 	created_bids: list[BidSegment] = []
-	for (quota_well_id, period_id), quota_auction_start in quota_by_well_period.items():
+	for (quota_well_id, period_id), _quota_auction_start in quota_by_well_period.items():
 		if quota_well_id != well_id: continue
-		step_size = 0.4 * quota_auction_start
+		license_quantity = license_by_period.get(period_id, 0.0)
+		if license_quantity <= 0.0: continue
+		step_size = 2.0 * license_quantity / len(price_steps)
 		bid_steps = [(step_size * step_num, price_steps[step_num - 1]) for step_num in range(1, len(price_steps) + 1)]
 		created_bids.append (foreverFairData_instance.add_bid (auction_id = auction_id, well_id=well_id, period_id=period_id, quantity=bid_steps[0][0], price=bid_steps[0][1], is_default=True, bid_steps=bid_steps))
 	# if not created_bids: raise ValueError (f"No quota rows found for well {well_id} in auction {auction_id}")

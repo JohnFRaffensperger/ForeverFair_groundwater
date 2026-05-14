@@ -34,9 +34,9 @@ def create_empty_db(db_path: Path) -> None:
 	conn = sqlite3.connect(db_path)
 	conn.executescript(SCHEMA_DDL)
 	save_catchment_info(conn, "synthetic_current_date", "2030-01-04T16:00")
-	save_catchment_info(conn, "MAX_BID_STEPS", 3)
-	save_catchment_info(conn, "num_bidding_periods", 20)
-	save_catchment_info(conn, "Rights_policy", "Users_pay")
+	save_catchment_info(conn, "MAX_BID_STEPS", 3) # Up to 5.
+	save_catchment_info(conn, "num_bidding_periods", 20) # length of your hydrological season.
+	save_catchment_info(conn, "Rights_policy", "Quota_scaled") # or "Auction_manager_pays" or "Users_pay"
 	conn.commit()
 	conn.close()
 
@@ -761,7 +761,7 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	print(f"Created auction_id={auction_id}. Starting mps...")
 	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168, auction_id=auction_id) # hours
 	print("Finished mps. Computing constraint alphas...")
-	AuctionController.setup_first_auction(db_path)
+	AuctionController.setup_first_auction_alphas(db_path)
 	print(f"First auction set up: auction_id={auction_id}")
 
 if __name__ == "__main__":

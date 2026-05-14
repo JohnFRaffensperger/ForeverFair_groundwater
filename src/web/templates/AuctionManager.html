@@ -15,7 +15,7 @@
 </div>
 
 <h2>Auction schedule</h2>
-<p>Dates are synthetic in this demo code. The system defaultally creates an open auction for Friday 4 pm whenever none exists.
+<p>Dates are synthetic in this demo code. The system opens an auction for Friday 4 pm whenever none exists.
 	If the auction manager runs a final auction, the synthetic date jumps to the next Friday at 4 pm and the "Today" display updates to the next week.</p>
 
 <p><strong>Today is</strong> {{ today_display }} ({{ today_weekday }}). <strong>Period length is </strong>
@@ -31,12 +31,11 @@
 <strong>Default close time:</strong> {{ scheduled_close_display }} (Friday 4 pm).</p>
 
 <p>{% if notice %}<strong>{{ notice }}</strong>{% endif %} </p>
-<p id="run-status-message"></p>
 
 <h2>Run the auction</h2>
 <p><strong>Next auction {{ next_auction_id }}:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} default bids.</p>
 
-<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th></th><th></th></tr></thead>
+<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th>Constraint revenue</th><th></th><th></th></tr></thead>
 <tbody>{% for auction in auctions %}
 {% set is_tentative = auction.auction_type == 'tentative' %}
 {% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
@@ -47,6 +46,7 @@
 	<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
 	<td>{{ auction.solve_status or '—' }}</td>
 	<td>{% if auction.objective_value is not none %}${{ '{:,.2f}'.format(auction.objective_value) }}{% else %}—{% endif %}</td>
+	<td>{% if auction.auction_id in constraint_revenues %}${{ '{:,.2f}'.format(constraint_revenues[auction.auction_id]) }}{% else %}—{% endif %}</td>
 	<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction" class="run-auction-form"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
 	<!-- Unnecessarily complicated. td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td-->
 </tr>
@@ -65,7 +65,6 @@
 
 <script>
 const debugBox = document.getElementById('auction-debug-box');
-const runStatusMessage = document.getElementById('run-status-message');
 let debugPollTimer = null;
 
 function waitForPaint() {return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));}
@@ -91,9 +90,8 @@ for (const form of document.querySelectorAll('.run-auction-form')) {
 		if (debugPollTimer !== null) return;
 		const submitButton = form.querySelector('button[type="submit"]');
 		if (submitButton) submitButton.disabled = true;
-		if (runStatusMessage) runStatusMessage.textContent = 'Run requested. Starting auction...';
 		if (debugBox) {
-			debugBox.value = 'Run requested. Starting auction...\n';
+			debugBox.value = 'Run requested. Starting auction clearing...\n';
 			debugBox.scrollTop = debugBox.scrollHeight;
 		}
 		await waitForPaint();
@@ -107,10 +105,8 @@ for (const form of document.querySelectorAll('.run-auction-form')) {
 			});
 			const payload = await response.json();
 			await refreshAuctionDebug();
-			if (runStatusMessage) runStatusMessage.textContent = payload.message || (response.ok ? 'Auction run completed' : 'Auction run failed');
 			window.setTimeout(() => window.location.reload(), 400);
 		} catch (error) {
-			if (runStatusMessage) runStatusMessage.textContent = `Error: ${error}`;
 			await refreshAuctionDebug();
 		} finally {
 			if (submitButton) submitButton.disabled = false;

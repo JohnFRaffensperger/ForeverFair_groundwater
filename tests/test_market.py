@@ -3,7 +3,7 @@
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
 from pathlib import Path
-from AuctionController import runCurrentAuction
+from AuctionController import create_auction, runCurrentAuction
 from services.ForeverFairData import ForeverFairData
 
 def _make_repo(tmp_path: Path) -> ForeverFairData:
@@ -38,8 +38,8 @@ def test_market_clears_seed_case(tmp_path):
 def test_setup_and_reset_auction_data(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)
 	initial_count = len(foreverFairData_instance.list_auctions())
-	updated_auction = foreverFairData_instance.add_auction()
-	assert updated_auction["auction_id"] is not None
+	auction_id = create_auction(foreverFairData_instance.db_path)
+	assert auction_id is not None
 	assert len(foreverFairData_instance.list_auctions()) == initial_count + 1
 	assert foreverFairData_instance.get_max_bid_steps() == 3
 	with foreverFairData_instance.connect_to_db() as conn:
@@ -85,8 +85,7 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)
 	seed_auction_id = _seed_auction_id(foreverFairData_instance)
 	period_key, trader_id, well_id = _first_period_trader_well(foreverFairData_instance, seed_auction_id)
-	new_auction = foreverFairData_instance.add_auction()
-	auction_id = int(new_auction["auction_id"])
+	auction_id = create_auction(foreverFairData_instance.db_path)
 	foreverFairData_instance.set_quota_for_auction(auction_id, source_auction_id=seed_auction_id)
 	auction = foreverFairData_instance.get_auction_info(auction_id)
 	with foreverFairData_instance.connect_to_db() as conn:

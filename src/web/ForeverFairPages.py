@@ -133,7 +133,6 @@ def doc_programmer(request: Request):
 def doc_auctionmanager(request: Request):
 	next_auction = foreverFairData_instance.get_next_auction_info()
 	if next_auction is None: next_auction = foreverFairData_instance.add_auction()
-	add_auctionmanager_debug("Next auction is ready. If no trader has put in bids, code will add default bids.")
 	
 	next_real_bid_count, next_default_bid_count = foreverFairData_instance.get_bid_count(next_auction["auction_id"])
 	period_length_hours = foreverFairData_instance.latest_period_length_hours()
@@ -157,6 +156,12 @@ def doc_auctionmanager(request: Request):
 	context["default_last_water_take"] = default_last.isoformat(timespec="minutes")
 	context["debug_text"] = get_auctionmanager_debug_text()
 	context.update(_common_template_context())
+	constraint_revenues: dict[int, float] = {}
+	for a in auctions:
+		if a.get("solve_status") == "Optimal":
+			try: constraint_revenues[int(a["auction_id"])] = AuctionController.compute_revenue_on_constraint_quota(foreverFairData_instance, int(a["auction_id"]))
+			except Exception as e: add_auctionmanager_debug(f"Constraint revenue error for auction {a.get('auction_id')}: {e}")
+	context["constraint_revenues"] = constraint_revenues
 	if period_length_hours is not None and response_period_count:
 		context["default_last_constrained"] = (default_first + timedelta(hours=period_length_hours * response_period_count)).strftime("%d %b %Y")
 	else: context["default_last_constrained"] = ""
@@ -179,7 +184,7 @@ def trader_page(request: Request):
 	except ValueError: return RedirectResponse(url="/login", status_code=303)
 
 	next_auction = foreverFairData_instance.get_next_auction_info()
-	if next_auction is None: next_auction = foreverFairData_instance.add_auction()
+	if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 	auction_id = next_auction["auction_id"]
 	auction_record = foreverFairData_instance.get_auction_info(auction_id)
 	auction_info = auction_record.model_dump()
@@ -243,7 +248,13 @@ def delete_bid(request: Request, bid_id: int):
 	return _flash_redirect("/trader", "Bid deleted" if deleted else "Bid not found")
 
 @app.post("/auctionmanager/run-auction")
-def manager_run_auction(request: Request, auction_id: int = Form(...)):
+async def manager_run_auction(request: Request):
+	try:
+		form = await request.form()
+		auction_id = int(str(form.get("auction_id", "")).strip())
+	except (ValueError, KeyError):
+		return JSONResponse({"ok": False, "message": "Error: Missing or invalid auction_id"}, status_code=400)
+	
 	# Guard: do not run an auction that has already closed by time.
 	target = next((a for a in foreverFairData_instance.list_auctions() if a.get("auction_id") == auction_id), None)
 	if target is None:
@@ -283,7 +294,8 @@ def api_auctionmanager_debug() -> JSONResponse:
 @app.get("/catchment", response_class=HTMLResponse)
 def catchment_page(request: Request, auction_id: int | None = None):
 	if auction_id is None:
-		next_auction = foreverFairData_instance.get_next_auction_info() or foreverFairData_instance.add_auction()
+		next_auction = foreverFairData_instance.get_next_auction_info()
+		if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 		auction_id = next_auction["auction_id"]
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
 	context: dict[str, Any] = {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id).model_dump(), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
@@ -297,7 +309,8 @@ def catchment_page(request: Request, auction_id: int | None = None):
 @app.get("/api/system-state")
 def system_state_api(auction_id: int | None = None) -> dict[str, Any]:
 	if auction_id is None:
-		next_auction = foreverFairData_instance.get_next_auction_info() or foreverFairData_instance.add_auction()
+		next_auction = foreverFairData_instance.get_next_auction_info()
+		if next_auction is None: return {"error": "No open auction. Ask the auction manager to create one."}
 		auction_id = next_auction["auction_id"]
 	latest_run = foreverFairData_instance.get_run_summary(auction_id)
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
@@ -531,7 +544,7 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 @app.post("/setup/setup-first-auction")
 def setup_first_auction():
 	try:
-		auction_id = AuctionController.setup_first_auction(DATA_DIR / "foreverfair.db")
+		auction_id = AuctionController.setup_first_auction_alphas(DATA_DIR / "foreverfair.db")
 		return _flash_redirect("/programmer", f"Auction system set up: auction_id={auction_id}")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error setting up auction system: {e}")
