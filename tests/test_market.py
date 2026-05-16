@@ -2,6 +2,7 @@
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
+import sqlite3
 from pathlib import Path
 from AuctionController import create_auction, runCurrentAuction
 import SetupForeverFairDB
@@ -12,6 +13,10 @@ def _make_repo(tmp_path: Path) -> ForeverFairData:
 	data_dir = project_root / "Catchment_data" / "Tianqiao"
 	db_path = tmp_path / "small_debug_database_temp.db"
 	SetupForeverFairDB.create_empty_db(db_path)
+	# Simulate Programmer.html Section 1: auction calendar settings must precede import_hedcon.
+	_conn = sqlite3.connect(db_path)
+	SetupForeverFairDB.save_catchment_info(_conn, "period_length_hours", 168)
+	_conn.commit(); _conn.close()
 	SetupForeverFairDB.import_decvar(db_path, (data_dir / "tianqiao.decvar").read_text())
 	SetupForeverFairDB.import_hedcon(db_path, (data_dir / "tianqiao.hedcon").read_text())
 	SetupForeverFairDB.import_trader_names(db_path, (data_dir / "Trader_names.csv").read_text())
@@ -19,7 +24,6 @@ def _make_repo(tmp_path: Path) -> ForeverFairData:
 	SetupForeverFairDB.import_well_lat_lon(db_path, (data_dir / "Tianqiao_well_lat_lon_estimated.tsv").read_text())
 	SetupForeverFairDB.import_control_point_lat_lon(db_path, (data_dir / "Tianqiao_control_point_lat_lon_estimated.tsv").read_text())
 	SetupForeverFairDB.import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168)
-	create_auction(db_path)
 	create_auction(db_path)
 	return ForeverFairData(db_path=db_path)
 
@@ -30,12 +34,12 @@ def _seed_auction_id(foreverFairData_instance: ForeverFairData) -> int:
 
 def _first_period_trader_well(foreverFairData_instance: ForeverFairData, auction_id: int) -> tuple[int, int, int]:
 	auction = foreverFairData_instance.get_auction_info(auction_id)
-	period_key = auction.periods[0].id
+	period_key = auction.periods[0]["id"]
 	for trader in foreverFairData_instance.list_of_traders():
 		wells = foreverFairData_instance.get_trader_wells(trader["id"])
 		if wells:
 			well = wells[0]
-			return period_key, int(trader["id"]), int(well.id)
+			return period_key, int(trader["id"]), int(well["id"])
 	raise ValueError("No trader well found in debug database")
 
 def test_market_clears_seed_case(tmp_path):
@@ -101,7 +105,7 @@ def test_get_quota_uses_licenses_and_final_quota(tmp_path):
 	foreverFairData_instance.set_quota_for_auction(auction_id, source_auction_id=seed_auction_id)
 	auction = foreverFairData_instance.get_auction_info(auction_id)
 	with foreverFairData_instance.connect_to_db() as conn:
-		period_label = next(p.label for p in auction.periods if p.id == period_key)
+		period_label = next(p["label"] for p in auction["periods"] if p["id"] == period_key)
 		conn.execute("INSERT INTO well_license(trader_id, well_id, license_quantity, license_date, bid_period) VALUES (?, ?, ?, ?, ?)", (trader_id, well_id, 90.0, None, 1),)
 		conn.execute("UPDATE well_quota SET quota_auction_start=? WHERE trader_id=? AND auction_id=? AND well_id=? AND take_date=?", (90.0, trader_id, auction_id, well_id, period_label),)
 

@@ -13,7 +13,7 @@ if next_auction is None:
     raise SystemExit(0)
 auction_id = int(next_auction['auction_id'])
 auction = repo.get_auction_info(auction_id)
-print('auction_period_count:', len(auction.periods))
+print('auction_period_count:', len(auction["periods"]))
 with repo.connect_to_db() as conn:
     q = conn.execute('SELECT COUNT(*) FROM well_quota WHERE auction_id=?', (auction_id,)).fetchone()[0]
     qd = conn.execute('SELECT COUNT(DISTINCT take_date) FROM well_quota WHERE auction_id=?', (auction_id,)).fetchone()[0]

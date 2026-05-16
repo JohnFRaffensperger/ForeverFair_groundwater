@@ -7,7 +7,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Callable
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
-from ForeverFairClasses import ResponseFactor
 import BiddingController
 from services.ForeverFairData import ForeverFairData
 
@@ -17,7 +16,8 @@ def create_auction(db_path: Path) -> int:
 	auction_id = ffdata.add_auction()["auction_id"]
 	ffdata.set_control_point_events_for_auction(auction_id)
 	ffdata.set_quota_for_auction(auction_id)
-	ffdata.calculate_and_set_constraint_alphas(auction_id)
+	# Scale license to quota only on the first auction. TODO: Should also scale quota on reload of aquifer head limits, and for a new period in a rolling auction horizon.
+	if 1 == auction_id: ffdata.calculate_and_set_constraint_alphas(auction_id)
 	call_for_bids(ffdata, auction_id)
 	return auction_id
 
@@ -45,7 +45,7 @@ def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: in
 	# get_well_start/end_quota return local 1-based indices (enumerate over auction rows), but
 	# rf.pumping_period is global; map local → global via auction period labels and effect_date_to_idx.
 	auction = ffdata.get_auction_info(auction_id)
-	period_labels = [p.label for p in auction.periods]
+	period_labels = [p["label"] for p in auction["periods"]]
 	local_to_global = {i + 1: effect_date_to_idx[label] for i, label in enumerate(period_labels) if label in effect_date_to_idx}
 	quota_start: dict[tuple[int, int], float] = {}
 	quota_end: dict[tuple[int, int], float] = {}
@@ -113,7 +113,6 @@ def compute_alphas (ffdata: ForeverFairData, auction_id: int) -> dict[tuple[int,
 # Set up default bids. A trader's manual entry will overwrite these.
 def call_for_bids(ffdata: ForeverFairData, auction_id: int) -> None:
 	if ffdata.has_default_bids(auction_id): return
-	ffdata.set_quota_for_auction(auction_id)  # ensure quota is populated before reading it
 	quota_by_well_period = ffdata.get_quota(auction_id)
 	for well_id in sorted({well_id for (well_id, _period_id) in quota_by_well_period.keys()}):
 		BiddingController.create_default_bid(ffdata, auction_id, well_id)
@@ -135,7 +134,7 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	auction_model = LpProblem ("Forever_Fair_clearing_model", LpMaximize)
 
 	# Define bid variables with their upper bounds. Bid decision variables exist only for bid periods, but are constrained by allowed drawdown in later periods.
-	period_labels = [p.label for p in auction.periods]
+	period_labels = [p["label"] for p in auction["periods"]]
 	period_id_map = {label: effect_date_to_idx[label] for label in period_labels if label in effect_date_to_idx}
 	max_bid_steps = ffdata.get_max_bid_steps()
 	bid_variables: dict[tuple[int, int, int], LpVariable] = {}
@@ -168,8 +167,8 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 		auction_model += quantity_vars[(w, t)] == lpSum (bid_variables[key] for key in bid_variables.keys() if key[0] == w and key[1] == t), f"qtywt_{w}_{t}"
 
 	# Get the response matrix.
-	response_lookup: defaultdict[tuple[int, int], list[ResponseFactor]] = defaultdict (list)
-	for factor in ffdata.get_all_response_factors (): response_lookup [(factor.control_point_id, factor.effect_period)].append (factor)
+	response_lookup: defaultdict[tuple[int, int], list[dict[str, int | float]]] = defaultdict (list)
+	for factor in ffdata.get_all_response_factors (): response_lookup [(factor["control_point_id"], factor["effect_period"])].append (factor)
 
 	# Constrain all effect periods in the response matrix by iterating over all control_point_events. 
 	# CAREFUL WITH SIGNS. Response matrix coefficients are typically negative. Allowable head change is typically negative. qvars are positive.
@@ -184,13 +183,13 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	for row in cp_events:
 		cp_id = int(row["control_point_id"])
 		effect_period = effect_date_to_idx[str(row["effect_date"])]
-		auction_model += (lpSum (-1.0*factor.value * quantity_vars [(factor.well_id, factor.pumping_period)]
-				for factor in response_lookup.get ((cp_id, effect_period), []) if (factor.well_id, factor.pumping_period) in quantity_vars)
+		auction_model += (lpSum (-1.0*factor["value"] * quantity_vars [(factor["well_id"], factor["pumping_period"])]
+				for factor in response_lookup.get ((cp_id, effect_period), []) if (factor["well_id"], factor["pumping_period"]) in quantity_vars)
 					<= -1.0*float(row["allowable_head_change"]), f"cp_{cp_id}_{effect_period}")
 
 	lpt_dir = Path (__file__).parent.parent / "Auction_lpt_files"
 	lpt_dir.mkdir (exist_ok=True)
-	auction_model.writeLP (str (lpt_dir / f"Forever_Fair_auction_{auction.id}.lpt"))
+	auction_model.writeLP (str (lpt_dir / f"Forever_Fair_auction_{auction["id"]}.lpt"))
 	solve_status = LpStatus[auction_model.solve (PULP_CBC_CMD (msg=0))]
 	log(f"Solve status: {solve_status}")
 	if solve_status != "Optimal":

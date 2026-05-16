@@ -145,8 +145,10 @@ def doc_programmer(request: Request):
 @app.get("/auctionmanager", response_class=HTMLResponse)
 def doc_auctionmanager(request: Request):
 	next_auction = foreverFairData_instance.get_next_auction_info()
-	if next_auction is None: next_auction = foreverFairData_instance.add_auction()
-	
+	if next_auction is None:
+		AuctionController.create_auction(DATA_DIR / "foreverfair.db")
+		next_auction = foreverFairData_instance.get_next_auction_info()
+
 	next_real_bid_count, next_default_bid_count = foreverFairData_instance.get_bid_count(next_auction["auction_id"])
 	period_length_hours = foreverFairData_instance.latest_period_length_hours()
 	bidding_periods = foreverFairData_instance.get_number_of_bidding_periods()
@@ -199,12 +201,11 @@ def trader_page(request: Request):
 	next_auction = foreverFairData_instance.get_next_auction_info()
 	if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 	auction_id = next_auction["auction_id"]
-	auction_record = foreverFairData_instance.get_auction_info(auction_id)
-	auction_info = auction_record.model_dump()
+	auction_info = foreverFairData_instance.get_auction_info(auction_id)
 	current_wells = foreverFairData_instance.get_trader_wells(trader_id)
 	current_well = current_wells[0]
 	bid_history = foreverFairData_instance.get_bid_history(auction_id, trader_id)
-	quota_by_period = foreverFairData_instance.get_well_start_quota(well_id=current_well.id, auction_id=auction_id)
+	quota_by_period = foreverFairData_instance.get_well_start_quota(well_id=current_well["id"], auction_id=auction_id)
 	max_bid_steps = foreverFairData_instance.get_max_bid_steps()
 	period_rows: list[dict[str, Any]] = []
 	for period in auction_record.periods:
@@ -311,7 +312,7 @@ def catchment_page(request: Request, auction_id: int | None = None):
 		if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 		auction_id = next_auction["auction_id"]
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
-	context: dict[str, Any] = {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id).model_dump(), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	context: dict[str, Any] = {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 	context.update(_common_template_context())
 	notice = request.cookies.get("flash")
 	context["notice"] = notice
@@ -327,19 +328,19 @@ def system_state_api(auction_id: int | None = None) -> dict[str, Any]:
 		auction_id = next_auction["auction_id"]
 	latest_run = foreverFairData_instance.get_run_summary(auction_id)
 	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
-	return {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id).model_dump(), "rights_conversion": foreverFairData_instance.get_rights_conversion_dict(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	return {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id), "rights_conversion": foreverFairData_instance.get_rights_conversion_dict(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 
 @app.get("/api/open-auctions")
 def api_open_auctions():
 	import sqlite3 as _sqlite3
 	try:
-		conn = _sqlite3.connect(DATA_DIR / "foreverfair.db")
+		conn = _sqlite3.connect(DATA_DIR / "foreverfair.db") # TODO: change this SQL to an accessor.
 		rows = conn.execute("SELECT auction_id, closed_date FROM auctions WHERE status='OPEN' ORDER BY created_date DESC").fetchall()
 		conn.close()
 		return JSONResponse([{"id": r[0], "closed_date": r[1]} for r in rows])
 	except Exception as e: return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.get("/setup/db-status")
+@app.get("/setup/db-status") # TODO: this file should never know the db status.
 def setup_db_status(): return JSONResponse(SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db"), headers={"Cache-Control": "no-store"})
 
 @app.post("/setup/create-db")
@@ -373,7 +374,7 @@ def setup_delete_db():
 
 @app.post("/setup/import-decvar")
 async def setup_import_decvar(file: UploadFile = File(...),):
-	status = SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db")
+	status = SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db") # TODO: database name should not be hardwired.
 	tables = status.get("tables", {}) if isinstance(status, dict) else {}
 	if not status.get("exists") or "wells" not in tables:
 		return _flash_redirect("/programmer", "Create new dataase first")
@@ -440,7 +441,7 @@ async def setup_set_period_unit(request: Request) -> dict[str, Any]:
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('period_length_hours', ?)", (str(unit_hours),))
+		SetupForeverFairDB.save_catchment_info(conn, "period_length_hours", unit_hours)
 		conn.commit()
 	finally:
 		conn.close()
@@ -471,7 +472,7 @@ async def setup_set_rights_policy(request: Request) -> dict[str, Any]:
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('Rights_policy', ?)", (value,))
+		SetupForeverFairDB.save_catchment_info(conn, "Rights_policy", value)
 		conn.commit()
 	finally:
 		conn.close()
@@ -490,7 +491,7 @@ async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, integer_value) VALUES ('num_bidding_periods', ?)", (value,))
+		SetupForeverFairDB.save_catchment_info(conn, "num_bidding_periods", value)
 		conn.commit()
 	finally:
 		conn.close()
@@ -511,7 +512,7 @@ async def setup_set_max_bid_steps(request: Request) -> dict[str, Any]:
 	import sqlite3
 	conn = sqlite3.connect(db_path)
 	try:
-		conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, meta_value) VALUES ('MAX_BID_STEPS', ?)", (str(value),))
+		SetupForeverFairDB.save_catchment_info(conn, "MAX_BID_STEPS", value)
 		conn.commit()
 	finally:
 		conn.close()
