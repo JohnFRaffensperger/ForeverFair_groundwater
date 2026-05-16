@@ -29,48 +29,51 @@ def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: in
 
 	where denom_start(k,t) = sum_{v,r: r<=t} q_start(v,r) * F(v,r,t,k).
 	"""
-	# Control point events: dual prices and allowable head changes keyed by (cp_id, effect_period).
-	cp_events = ffdata.get_control_point_events(auction_id)
-	all_period_dates = ffdata.get_all_period_dates()  # global sequence aligned with response_matrix integers
-	effect_date_to_idx = {date: idx + 1 for idx, date in enumerate(all_period_dates)}
+	# Build auction-scoped indices over the active timeline: first pumping -> last constrained.
+	period_maps = ffdata.get_period_maps(auction_id)
+	effect_date_to_idx = period_maps["effect_iso_to_idx"]
 	dual_prices: dict[tuple[int, int], float] = {}
 	allowed_changes: dict[tuple[int, int], float] = {}
-	for row in cp_events:
-		ep = effect_date_to_idx[str(row["effect_date"])]
+	for row in ffdata.get_control_point_events(auction_id):
+		effect_date = str(row["effect_date"])
+		ep = effect_date_to_idx.get(effect_date, 0)
+		if ep <= 0: continue
 		cp_id = int(row["control_point_id"])
 		dual_prices[(cp_id, ep)] = float(row["dual_price"])
 		allowed_changes[(cp_id, ep)] = float(row["allowable_head_change"])
 
-	# Quota start and end for all (well_id, pumping_period) using global period indices.
-	# get_well_start/end_quota return local 1-based indices (enumerate over auction rows), but
-	# rf.pumping_period is global; map local → global via auction period labels and effect_date_to_idx.
-	auction = ffdata.get_auction_info(auction_id)
-	period_labels = [p["label"] for p in auction["periods"]]
-	local_to_global = {i + 1: effect_date_to_idx[label] for i, label in enumerate(period_labels) if label in effect_date_to_idx}
+	# Quota start/end keys already use auction-scoped pumping period indices.
 	quota_start: dict[tuple[int, int], float] = {}
 	quota_end: dict[tuple[int, int], float] = {}
 	for well_id in ffdata.get_wells():
-		for local_idx, q in ffdata.get_well_start_quota(well_id, auction_id).items():
-			if local_idx in local_to_global: quota_start[(well_id, local_to_global[local_idx])] = q
-		for local_idx, q in ffdata.get_well_end_quota(well_id, auction_id).items():
-			if local_idx in local_to_global: quota_end[(well_id, local_to_global[local_idx])] = q
+		for pumping_period, q in ffdata.get_well_start_quota(well_id, auction_id).items():
+			quota_start[(well_id, pumping_period)] = q
+		for pumping_period, q in ffdata.get_well_end_quota(well_id, auction_id).items():
+			quota_end[(well_id, pumping_period)] = q
 
 	# denom_start(k,t) = sum_{v,r: r<=t} q_start(v,r) * F(v,r,t,k).
 	all_factors = ffdata.get_all_response_factors()
 	denom_start: dict[tuple[int, int], float] = defaultdict(float)
 	for rf in all_factors:
-		if rf.pumping_period <= rf.effect_period:
-			denom_start[(rf.control_point_id, rf.effect_period)] += quota_start.get((rf.well_id, rf.pumping_period), 0.0) * rf.value
+		cp_id = int(rf["control_point_id"])
+		effect_period = int(rf["effect_period"])
+		pumping_period = int(rf["pumping_period"])
+		if (cp_id, effect_period) not in allowed_changes: continue
+		if pumping_period <= effect_period:
+			denom_start[(cp_id, effect_period)] += quota_start.get((int(rf["well_id"]), pumping_period), 0.0) * float(rf["value"])
 
 	revenue = 0.0
 	for rf in all_factors:
-		if rf.pumping_period > rf.effect_period: continue
-		key_cp = (rf.control_point_id, rf.effect_period)
-		key_well = (rf.well_id, rf.pumping_period)
+		cp_id = int(rf["control_point_id"])
+		effect_period = int(rf["effect_period"])
+		pumping_period = int(rf["pumping_period"])
+		if pumping_period > effect_period: continue
+		key_cp = (cp_id, effect_period)
+		key_well = (int(rf["well_id"]), pumping_period)
 		if key_cp not in dual_prices or key_well not in quota_start or key_well not in quota_end: continue
 		if denom_start[key_cp] == 0.0: continue
 		# Use quota scaled by constraint alpha.
-		revenue += (rf.value*dual_prices[key_cp]*(quota_start[key_well] - quota_end[key_well])
+		revenue += (float(rf["value"])*dual_prices[key_cp]*(quota_start[key_well] - quota_end[key_well])
 			*allowed_changes[key_cp] / denom_start[key_cp])
 		# Use raw initial quota.
 		# revenue += (rf.value*dual_prices[key_cp]*(quota_start[key_well] - quota_end[key_well]))	
@@ -123,13 +126,11 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	log(f"runCurrentAuction started: auction_id={auction_id}") 
 	auction = ffdata.get_auction_info (auction_id) # Should always be exactly one auction scheduled.
 
-	# effect_date_to_idx uses get_all_period_dates() — the complete global sequence from well_quota,
-	# which aligns with response_matrix.pumping_period / effect_period integers for all auctions.
-	# cp_events contains only this auction's dates; building the index from cp_events alone
-	# would give local (auction-relative) indices, breaking the LP constraint alignment.
+	# Use auction-scoped timeline maps: first pumping date -> last constrained date.
+	period_maps = ffdata.get_period_maps(auction_id)
 	cp_events = ffdata.get_control_point_events(auction_id)
-	all_period_dates = ffdata.get_all_period_dates()
-	effect_date_to_idx = {date: idx + 1 for idx, date in enumerate(all_period_dates)}
+	effect_date_to_idx = period_maps["effect_iso_to_idx"]
+	idx_to_pumping_iso = period_maps["idx_to_pumping_iso"]
 
 	auction_model = LpProblem ("Forever_Fair_clearing_model", LpMaximize)
 
@@ -198,7 +199,7 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 
 	# Save the resulting quota and prices.
 	for (well_id, period_id) in bid_periods:
-		ffdata.set_quota_auction_end (auction_id, well_id, all_period_dates[period_id - 1], 
+		ffdata.set_quota_auction_end (auction_id, well_id, idx_to_pumping_iso[period_id], 
 			quantity_vars [(well_id, period_id)].value (), 
 			auction_model.constraints [f"qtywt_{well_id}_{period_id}"].pi)
 
