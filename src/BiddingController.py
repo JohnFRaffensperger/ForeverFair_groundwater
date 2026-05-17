@@ -3,7 +3,7 @@
 # Purpose: Validate, submit, and manage trader bids.
 
 from __future__ import annotations
-from services.ForeverFairData import ForeverFairData
+from ForeverFairData import ForeverFairData
 
 def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: int, well_id: int) -> None:
 	quota_by_well_period = foreverFairData_instance.get_quota (auction_id) # sets a bid for each quota record.

@@ -124,71 +124,57 @@ class ForeverFairData:
 			idx += 1
 			current += timedelta(hours=period_length_hours)
 
+	# JFR: Claude wants to biuld maps on the basis that some period and date lookups are random rather than sequential.
 	def _get_period_maps(self, auction_id: int) -> dict[str, Any]:
 		auction = self.get_auction_info(auction_id)
-		first_iso = auction.get("first_water_take_date")
-		last_iso = auction.get("last_water_take_date")
-		last_constrained_iso = auction.get("last_constrained_date") or last_iso
 		period_length_hours = int(auction.get("period_length_hours") or 0)
-
-		first_dt = datetime.fromisoformat(str(first_iso))
-		last_dt = datetime.fromisoformat(str(last_iso))
-		last_constrained_dt = datetime.fromisoformat(str(last_constrained_iso)) if last_constrained_iso else last_dt
-		if last_constrained_dt < last_dt: last_constrained_dt = last_dt
-
-		pumping_labels: list[str] = []
-		effect_labels: list[str] = []
-		pumping_iso_to_idx: dict[str, int] = {}
-		effect_iso_to_idx: dict[str, int] = {}
-		pumping_ordinal_to_idx: dict[int, int] = {}
-		effect_ordinal_to_idx: dict[int, int] = {}
-		idx_to_pumping_iso: dict[int, str] = {}
-		idx_to_effect_iso: dict[int, str] = {}
-
-		for idx, ordinal, iso_label, _ in self._iter_period_axis(first_dt, last_dt, period_length_hours):
-			pumping_labels.append(iso_label)
-			pumping_iso_to_idx[iso_label] = idx
-			pumping_ordinal_to_idx[ordinal] = idx
-			idx_to_pumping_iso[idx] = iso_label
+		first_dt = datetime.fromisoformat(str(auction["first_water_take_date"]))
+		last_constrained_iso = auction.get("last_constrained_date") or auction["last_water_take_date"]
+		last_constrained_dt = datetime.fromisoformat(str(last_constrained_iso))
+		period_maps: dict[str, Any] = {"pumping_labels": [], "effect_labels": [], "pumping_iso_to_idx": {},
+			"effect_iso_to_idx": {}, "pumping_ordinal_to_idx": {}, "effect_ordinal_to_idx": {}, "idx_to_pumping_iso": {},
+			"idx_to_effect_iso": {},}
+		
+		for period in auction["periods"]:
+			idx, iso_label = period["id"], period["label"]
+			period_maps["pumping_labels"].append(iso_label)
+			period_maps["pumping_iso_to_idx"][iso_label] = idx
+			period_maps["pumping_ordinal_to_idx"][datetime.fromisoformat(iso_label).date().toordinal()] = idx
+			period_maps["idx_to_pumping_iso"][idx] = iso_label
 
 		for idx, ordinal, iso_label, _ in self._iter_period_axis(first_dt, last_constrained_dt, period_length_hours):
-			effect_labels.append(iso_label)
-			effect_iso_to_idx[iso_label] = idx
-			effect_ordinal_to_idx[ordinal] = idx
-			idx_to_effect_iso[idx] = iso_label
+			period_maps["effect_labels"].append(iso_label)
+			period_maps["effect_iso_to_idx"][iso_label] = idx
+			period_maps["effect_ordinal_to_idx"][ordinal] = idx
+			period_maps["idx_to_effect_iso"][idx] = iso_label
 
-		return {"pumping_labels": pumping_labels, "effect_labels": effect_labels,
-			"pumping_iso_to_idx": pumping_iso_to_idx, "effect_iso_to_idx": effect_iso_to_idx,
-			"pumping_ordinal_to_idx": pumping_ordinal_to_idx, "effect_ordinal_to_idx": effect_ordinal_to_idx, 
-			"idx_to_pumping_iso": idx_to_pumping_iso, "idx_to_effect_iso": idx_to_effect_iso,}
+		return period_maps
 
 	def get_period_maps(self, auction_id: int) -> dict[str, Any]:
 		return self._get_period_maps(auction_id)
 
 	# When you know the auction_id.
 	def get_auction_info(self, auction_id: int) -> dict[str, Any]:
+		auction_info_dict: dict[str, Any] = {"id": auction_id, "periods": []}
 		with self.connect_to_db() as conn:
 			row = conn.execute("SELECT a.auction_id, a.status, a.closed_date, a.firstWaterTakeDate, a.lastWaterTakeDate, a.period_length_hours, a.auction_type, a.created_date, a.solve_status, a.objective_value, (SELECT MAX(cpe.effect_date) FROM control_point_events cpe WHERE cpe.auction_id = a.auction_id) AS last_constrained_date FROM auctions a WHERE a.auction_id=?", (auction_id,)).fetchone()
-			if row is None: raise ValueError(f"Auction {auction_id} not found")
-			else:
-				status = str(row["status"])
-				closed_date = row["closed_date"]
-				first_water_take_date = row["firstWaterTakeDate"]
-				last_water_take_date = row["lastWaterTakeDate"]
-				raw_period_length = row["period_length_hours"]
-				period_length_hours = int(raw_period_length) if raw_period_length is not None else 0
-				auction_type = row["auction_type"]
-				created_date = row["created_date"]
-				solve_status = row["solve_status"]
-				objective_value = row["objective_value"]
-				last_constrained_date = str(row["last_constrained_date"]) if row["last_constrained_date"] is not None else None
-			periods: list[dict[str, int | str]] = []
-			if period_length_hours > 0 and first_water_take_date and last_water_take_date:
-				start_dt = datetime.fromisoformat(str(first_water_take_date))
-				end_dt = datetime.fromisoformat(str(last_water_take_date))
-				for idx, _, iso_label, _ in self._iter_period_axis(start_dt, end_dt, period_length_hours):
-					periods.append({"id": idx, "label": iso_label})
-			return {"id": auction_id, "status": status, "periods": periods, "closed_date": closed_date, "first_water_take_date": first_water_take_date, "last_water_take_date": last_water_take_date, "first_pumping_date": first_water_take_date, "last_pumping_date": last_water_take_date, "last_constrained_date": last_constrained_date, "period_length_hours": period_length_hours, "auction_type": auction_type, "created_date": created_date, "solve_status": solve_status, "objective_value": objective_value}
+			auction_info_dict["status"] = str(row["status"])
+			auction_info_dict["closed_date"] = row["closed_date"]
+			auction_info_dict["first_water_take_date"] = row["firstWaterTakeDate"]
+			auction_info_dict["last_water_take_date"] = row["lastWaterTakeDate"]
+			auction_info_dict["first_pumping_date"] = row["firstWaterTakeDate"]
+			auction_info_dict["last_pumping_date"] = row["lastWaterTakeDate"]
+			auction_info_dict["period_length_hours"] = int(row["period_length_hours"]) if row["period_length_hours"] is not None else 0
+			auction_info_dict["auction_type"] = row["auction_type"]
+			auction_info_dict["created_date"] = row["created_date"]
+			auction_info_dict["solve_status"] = row["solve_status"]
+			auction_info_dict["objective_value"] = row["objective_value"]
+			auction_info_dict["last_constrained_date"] = str(row["last_constrained_date"]) if row["last_constrained_date"] is not None else None
+		start_dt = datetime.fromisoformat(str(auction_info_dict["first_water_take_date"]))
+		end_dt = datetime.fromisoformat(str(auction_info_dict["last_water_take_date"]))
+		for idx, _, iso_label, _ in self._iter_period_axis(start_dt, end_dt, auction_info_dict["period_length_hours"]):
+			auction_info_dict["periods"].append({"id": idx, "label": iso_label})
+		return auction_info_dict
 
 	# When you don't know the auction_id.
 	def get_next_auction_info(self) -> dict[str, Any] | None:

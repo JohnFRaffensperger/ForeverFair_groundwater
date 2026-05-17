@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import AuctionController
 import BiddingController
-from services.ForeverFairData import ForeverFairData
+from ForeverFairData import ForeverFairData
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import SetupForeverFairDB
 

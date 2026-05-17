@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
 import BiddingController
-from services.ForeverFairData import ForeverFairData
+from ForeverFairData import ForeverFairData
 
 def create_auction(db_path: Path) -> int:
 	"""Create and initialize an auction."""

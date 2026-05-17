@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import sys
 sys.path.insert(0, 'src')
-from services.ForeverFairData import ForeverFairData
+from ForeverFairData import ForeverFairData
 from AuctionController import call_for_bids
 
 tmpdir = Path(tempfile.mkdtemp())

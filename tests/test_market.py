@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from AuctionController import create_auction, runCurrentAuction
 import SetupForeverFairDB
-from services.ForeverFairData import ForeverFairData
+from ForeverFairData import ForeverFairData
 
 def _make_repo(tmp_path: Path) -> ForeverFairData:
 	project_root = Path(__file__).resolve().parents[1]
