@@ -18,6 +18,9 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <h2>Installing the necessary Python libraries</h2>
 <p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
 <p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.ForeverFairPages:app --reload</pre>
+<p>2a. Before starting the server, create a file named <code>.env</code> in the project root folder (this file is gitignored and stays on your machine only). It tells the server which catchment to use:</p>
+<pre>FOREVER_FAIR_CATCHMENT=Tianqiao</pre>
+<p>Replace <code>Tianqiao</code> with the name of your catchment subdirectory under <code>Catchment_data/</code>. The server will not start if this variable is missing or names a directory that does not exist. A template is provided in <code>.env.example</code>.</p>
 <p>3. Open your browser to <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.</p>
 <p>4. Your hydrologist should run the hydrology model through USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> 
 	or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.

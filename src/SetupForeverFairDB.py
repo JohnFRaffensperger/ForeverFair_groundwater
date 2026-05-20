@@ -17,16 +17,20 @@ from pathlib import Path
 SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, text_value TEXT, integer_value INTEGER);
 CREATE TABLE IF NOT EXISTS control_points (control_point_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL);
-CREATE TABLE IF NOT EXISTS aquifer_head_limits (ahl_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, effect_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS aquifer_head_limits (control_point_event_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, effect_date TEXT, upload_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, license_demand REAL, FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id INTEGER NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT);
 CREATE TABLE IF NOT EXISTS wells (well_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, trader_id INTEGER, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id));
 
 CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_type TEXT, created_date TEXT NOT NULL, closed_date TEXT, status TEXT NOT NULL, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, solve_status TEXT, objective_value REAL);
-CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, alpha REAL, slack REAL, dual_price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, head_start_auction REAL, head_end_auction REAL, slack REAL, dual_price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS well_license (license_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, well_id INTEGER, license_quantity REAL, license_date TEXT, bid_period INTEGER);
 CREATE TABLE IF NOT EXISTS well_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, auction_id INTEGER, well_id INTEGER, quota_auction_start REAL, quota_adjusted REAL, quota_auction_end REAL, price REAL, take_date TEXT);
 CREATE TABLE IF NOT EXISTS well_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, effect_date TEXT, expiry_date TEXT, is_bid_default INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_control_point_effect_date ON aquifer_head_limits(control_point_id, effect_date);
+CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_effect_date ON aquifer_head_limits(effect_date);
+CREATE INDEX IF NOT EXISTS idx_response_matrix_well_pumping_effect_control ON response_matrix(well_id, pumping_period, effect_period, control_point_id);
+CREATE INDEX IF NOT EXISTS idx_well_license_well_bid_period ON well_license(well_id, bid_period);
 """
 
 # Programmer.html, section 0. 
@@ -173,6 +177,7 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 	cp_inserted = 0
 	bounds_inserted = 0
 	errors: list[str] = []
+	upload_date = datetime.now().isoformat(timespec="minutes")
 	period_length_hours = get_catchment_info(conn, "period_length_hours")
 	# if period_length_hours is None:
 	# 	conn.close()
@@ -218,7 +223,7 @@ def import_hedcon(db_path: Path, text: str, num_control_points: int | None = Non
 				effect_date = effect_dates[effect_period - 1] if 1 <= effect_period <= len(effect_dates) else None
 				if effect_date is None: errors.append(f"effect_period {effect_period} out of range (num_control_periods={num_control_periods})"); continue
 				conn.execute("DELETE FROM aquifer_head_limits WHERE control_point_id=? AND effect_date=?", (cp_id, effect_date))
-				conn.execute("INSERT INTO aquifer_head_limits(control_point_id, effect_date, minimum_head) VALUES (?, ?, ?)", (cp_id, effect_date, rhs_head))
+				conn.execute("INSERT INTO aquifer_head_limits(control_point_id, effect_date, upload_date, minimum_head) VALUES (?, ?, ?, ?)", (cp_id, effect_date, upload_date, rhs_head))
 				bounds_inserted += 1
 		except Exception as exc: errors.append(str(exc))
 	conn.commit()
@@ -263,7 +268,7 @@ def import_trader_names(db_path: Path, text: str) -> dict[str, Any]:
 	suffixes: list[str] = []
 	for _, last_name in parsed:
 		key = last_name.lower()
-		count = seen.get(key, 0)
+		count = seen.setdefault(key, 0)
 		suffixes.append("" if count == 0 else str(count))
 		seen[key] = count + 1
 
@@ -609,8 +614,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 			cp_id_by_num[cp_num] = cp_id
 
 	def _ensure_cp_id(cp_num: int) -> int:
-		cached = cp_id_by_num.get(cp_num)
-		if cached is not None: return cached
+		try: return cp_id_by_num[cp_num]
+		except KeyError: pass
 		cp_name = f"gwm-cp-{cp_num}"
 		row = conn.execute("SELECT control_point_id FROM control_points WHERE name=?", (cp_name,)).fetchone()
 		if row is None:
@@ -699,7 +704,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 				if well_id not in well_trader_map:
 					row = conn.execute("SELECT trader_id FROM wells WHERE well_id=?", (well_id,)).fetchone()
 					well_trader_map[well_id] = None if row is None or row[0] is None else int(row[0])
-				trader_id = well_trader_map.get(well_id)
+				trader_id = well_trader_map[well_id]
 				if trader_id is None:
 					if well_id not in unassigned_wells:
 						unassigned_wells.add(well_id)
@@ -766,7 +771,7 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	import AuctionController
 	import_mps(db_path, (data_dir / "tianqiao.mps").read_text(), period_length_hours=168)
 	print("Finished mps. Creating first auction ...")
-	auction_id = AuctionController.create_auction(db_path)
+	auction_id = AuctionController.set_up_auction_system(db_path)
 	print(f"Set up: first auction_id={auction_id}")
 
 if __name__ == "__main__":

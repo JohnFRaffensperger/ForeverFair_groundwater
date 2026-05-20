@@ -8,6 +8,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,27 +30,24 @@ def _available_catchment_dirs() -> list[Path]:
 	if not CATCHMENT_ROOT.exists(): return []
 	return sorted((path for path in CATCHMENT_ROOT.iterdir() if path.is_dir() and path.name != "Data_for_debugging"), key=lambda path: path.name.lower())
 
-def _resolve_initial_catchment_name() -> str:
-	configured = os.environ.get(ACTIVE_CATCHMENT_ENV_VAR, "").strip()
-	available = _available_catchment_dirs()
-	if configured and any(path.name == configured for path in available): return configured
-	if available: return available[0].name
-	return "Undefined"
-
-def _build_repository(catchment_name: str) -> tuple[Path, ForeverFairData]:
-	data_dir = CATCHMENT_ROOT / catchment_name
-	return data_dir, ForeverFairData(db_path=data_dir / "foreverfair.db", debug_db_path=DEBUG_DB_PATH,)
-
-_active_catchment_name = _resolve_initial_catchment_name()
-DATA_DIR, foreverFairData_instance = _build_repository(_active_catchment_name)
+load_dotenv()
+_configured = os.environ.get(ACTIVE_CATCHMENT_ENV_VAR, "").strip()
+if not _configured:
+	raise ValueError(f"{ACTIVE_CATCHMENT_ENV_VAR} is not set. Create a .env file in the project root with {ACTIVE_CATCHMENT_ENV_VAR}=<catchment name>.")
+_available = _available_catchment_dirs()
+if not any(path.name == _configured for path in _available):
+	raise ValueError(f"Catchment {_configured!r} not found in {CATCHMENT_ROOT}. Available: {[p.name for p in _available]}")
+_active_catchment_name = _configured
+del _configured, _available
+ffdata = ForeverFairData(db_path=CATCHMENT_ROOT / _active_catchment_name / "foreverfair.db", debug_db_path=DEBUG_DB_PATH)
 
 def set_active_catchment(catchment_name: str) -> None:
-	global DATA_DIR, foreverFairData_instance, _active_catchment_name
+	global ffdata, _active_catchment_name
 	selected_name = catchment_name.strip()
 	available_names = {path.name for path in _available_catchment_dirs()}
 	if selected_name not in available_names: raise ValueError(f"Unknown catchment: {selected_name}")
 	_active_catchment_name = selected_name
-	DATA_DIR, foreverFairData_instance = _build_repository(selected_name)
+	ffdata = ForeverFairData(db_path=CATCHMENT_ROOT / selected_name / "foreverfair.db", debug_db_path=DEBUG_DB_PATH)
 
 app = FastAPI(title="Forever Fair 2026")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -58,37 +56,32 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 _auctionmanager_debug_log: list[str] = []
 _auctionmanager_run_active = False
 
-def add_auctionmanager_debug(message: str) -> None:
-	_auctionmanager_debug_log.append(str(message))
+def add_auctionmanager_debug(message: str) -> None: _auctionmanager_debug_log.append(str(message))
 
-def clear_auctionmanager_debug() -> None:
-	_auctionmanager_debug_log.clear()
+def clear_auctionmanager_debug() -> None: _auctionmanager_debug_log.clear()
 
-def get_auctionmanager_debug_text() -> str:
-	return "\n".join(_auctionmanager_debug_log[-400:])
+def get_auctionmanager_debug_text() -> str: return "\n".join(_auctionmanager_debug_log[-400:])
 
 def set_auctionmanager_run_active(is_active: bool) -> None:
 	global _auctionmanager_run_active
 	_auctionmanager_run_active = is_active
 
-def get_auctionmanager_run_active() -> bool:
-	return _auctionmanager_run_active
+def get_auctionmanager_run_active() -> bool: return _auctionmanager_run_active
 
 def _flash_redirect(url: str, msg: str, status_code: int = 303) -> RedirectResponse:
 	r = RedirectResponse(url=url, status_code=status_code)
 	r.set_cookie("flash", msg, max_age=60, httponly=True, samesite="lax")
 	return r
 
-def _common_template_context() -> dict[str, Any]:
-	return {"active_catchment_name": _active_catchment_name}
+def _common_template_context() -> dict[str, Any]: return {"active_catchment_name": _active_catchment_name}
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-	traders = foreverFairData_instance.list_of_traders()
-	now_iso = foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")
-	upcoming = foreverFairData_instance.list_auctions()
-	next_final = next((a for a in reversed(upcoming) if a.get("status") == "OPEN" and a.get("auction_type") != "tentative" and (a.get("closed_date") or "") > now_iso), None)
-	next_tentative = next((a for a in reversed(upcoming) if a.get("status") == "OPEN" and a.get("auction_type") == "tentative" and (a.get("closed_date") or "") > now_iso), None)
+	traders = ffdata.list_of_traders()
+	now_iso = ffdata.the_time_at_the_tone_is().isoformat(timespec="minutes")
+	upcoming = ffdata.list_auctions()
+	next_final = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] != "tentative" and (a["closed_date"] or "") > now_iso), None)
+	next_tentative = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] == "tentative" and (a["closed_date"] or "") > now_iso), None)
 	context = _common_template_context()
 	context.update({"traders": traders, "next_final": next_final, "next_tentative": next_tentative, })
 	return templates.TemplateResponse(request, "LoginPage.html", context)
@@ -101,7 +94,7 @@ def do_login(trader_id: int = Form(...)):
 
 @app.get("/researcher", response_class=HTMLResponse)
 def researcher_page(request: Request):
-	traders = foreverFairData_instance.list_of_traders()
+	traders = ffdata.list_of_traders()
 	context = _common_template_context()
 	context.update({"traders": traders})
 	return templates.TemplateResponse(request, "Researcher.html", context)
@@ -112,53 +105,52 @@ def database_documentation_page(request: Request):
 
 @app.get("/hydrologist", response_class=HTMLResponse)
 def doc_hydrologist(request: Request):
-	notice = request.cookies.get("flash")
+	notice = request.cookies.get("flash", "")
 	context = _common_template_context()
-	context.update({"bounds_imported_at": foreverFairData_instance.bounds_imported_at(), "notice": notice, })
+	context.update({"bounds_imported_at": ffdata.bounds_imported_at(), "notice": notice, })
 	resp = templates.TemplateResponse(request, "Hydrologist.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
 
 @app.get("/programmer", response_class=HTMLResponse)
 def doc_programmer(request: Request):
-	report = SetupForeverFairDB.missing_import_data_report(DATA_DIR / "foreverfair.db")
-	notice = request.cookies.get("flash")
+	report = SetupForeverFairDB.missing_import_data_report(ffdata.db_path)
+	notice = request.cookies.get("flash", "")
 	context = _common_template_context()
-	period_length_hours = foreverFairData_instance.latest_period_length_hours()
-	bidding_periods = foreverFairData_instance.get_number_of_bidding_periods()
-	now_dt = foreverFairData_instance.the_time_at_the_tone_is()
+	period_length_hours = ffdata.latest_period_length_hours()
+	bidding_periods = ffdata.get_number_of_bidding_periods()
+	now_dt = ffdata.the_time_at_the_tone_is()
 	context["today_display"] = now_dt.strftime("%d %b %Y")
 	context["today_weekday"] = now_dt.strftime("%A")
 	context["period_length_hours"] = period_length_hours
 	context["bidding_periods"] = bidding_periods
 	if period_length_hours is not None:
-		close_dt, _, _ = foreverFairData_instance.get_auction_close_first_last_dates(now_dt, period_length_hours, bidding_periods)
+		close_dt, _, _ = ffdata.get_auction_close_first_last_dates(now_dt, period_length_hours, bidding_periods)
 		period_td = timedelta(hours=period_length_hours)
 		context["first_three_closes"] = [( close_dt + i * period_td).strftime("%d %b %Y %H:%M") for i in range(3)]
-	else:
-		context["first_three_closes"] = None
-	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": foreverFairData_instance.get_max_bid_steps(), })
+	else: context["first_three_closes"] = None
+	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": ffdata.get_max_bid_steps(), })
 	resp = templates.TemplateResponse(request, "Programmer.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
 
 @app.get("/auctionmanager", response_class=HTMLResponse)
 def doc_auctionmanager(request: Request):
-	next_auction = foreverFairData_instance.get_next_auction_info()
+	next_auction = ffdata.get_next_auction_info()
 	if next_auction is None:
-		AuctionController.create_auction(DATA_DIR / "foreverfair.db")
-		next_auction = foreverFairData_instance.get_next_auction_info()
+		AuctionController.create_auction(ffdata.db_path)
+		next_auction = ffdata.get_next_auction_info()
 
-	next_real_bid_count, next_default_bid_count = foreverFairData_instance.get_bid_count(next_auction["auction_id"])
-	period_length_hours = foreverFairData_instance.latest_period_length_hours()
-	bidding_periods = foreverFairData_instance.get_number_of_bidding_periods()
-	now_dt = foreverFairData_instance.the_time_at_the_tone_is()
-	close_dt, default_first, default_last = foreverFairData_instance.get_auction_close_first_last_dates(now_dt, period_length_hours or 168, bidding_periods)
+	next_real_bid_count, next_default_bid_count = ffdata.get_bid_count(next_auction["auction_id"])
+	period_length_hours = ffdata.latest_period_length_hours()
+	bidding_periods = ffdata.get_number_of_bidding_periods()
+	now_dt = ffdata.the_time_at_the_tone_is()
+	close_dt, default_first, default_last = ffdata.get_auction_close_first_last_dates(now_dt, period_length_hours or 168, bidding_periods)
 
-	response_period_count = foreverFairData_instance.response_matrix_period_count()
-	auctions = foreverFairData_instance.list_auctions()
+	response_period_count = ffdata.response_matrix_period_count()
+	auctions = ffdata.list_auctions()
 	context: dict[str, Any] = {"auction": next_auction, "auctions": auctions, "period_length_hours": period_length_hours, "response_period_count": response_period_count, "bidding_periods": bidding_periods, "next_auction_id": next_auction["auction_id"], "next_real_bid_count": next_real_bid_count, "next_default_bid_count": next_default_bid_count,}
-	notice = request.cookies.get("flash")
+	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context["now"] = now_dt.isoformat(timespec="minutes")
 	context["today_display"] = now_dt.strftime("%d %b %Y")
@@ -169,14 +161,15 @@ def doc_auctionmanager(request: Request):
 	context["default_close_time"] = close_dt.isoformat(timespec="minutes")
 	context["default_first_water_take"] = default_first.isoformat(timespec="minutes")
 	context["default_last_water_take"] = default_last.isoformat(timespec="minutes")
-	context["debug_text"] = get_auctionmanager_debug_text()
 	context.update(_common_template_context())
 	constraint_revenues: dict[int, float] = {}
 	for a in auctions:
-		if a.get("solve_status") == "Optimal":
-			try: constraint_revenues[int(a["auction_id"])] = AuctionController.compute_revenue_on_constraint_quota(foreverFairData_instance, int(a["auction_id"]))
-			except Exception as e: add_auctionmanager_debug(f"Constraint revenue error for auction {a.get('auction_id')}: {e}")
+		if a["solve_status"] == "Optimal":
+			# TODO: I think I want foreverfairpages.py to call settle_accounts rather than compute_revenue_on_constraint_quota.
+			try: constraint_revenues[int(a["auction_id"])] = AuctionController.compute_revenue_on_constraint_quota(ffdata, int(a["auction_id"]))
+			except Exception as e: add_auctionmanager_debug(f"Constraint revenue error for auction {a['auction_id']}: {e}")
 	context["constraint_revenues"] = constraint_revenues
+	context["debug_text"] = get_auctionmanager_debug_text()
 	if period_length_hours is not None and response_period_count:
 		context["default_last_constrained"] = (default_first + timedelta(hours=period_length_hours * response_period_count)).strftime("%d %b %Y")
 	else: context["default_last_constrained"] = ""
@@ -193,26 +186,26 @@ def home(): return RedirectResponse(url="/researcher", status_code=303)
 @app.get("/trader", response_class=HTMLResponse)
 def trader_page(request: Request):
 
-	trader_cookie = request.cookies.get("trader_id")
+	trader_cookie = request.cookies.get("trader_id", "")
 	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
 	try: trader_id = int(trader_cookie)
 	except ValueError: return RedirectResponse(url="/login", status_code=303)
 
-	next_auction = foreverFairData_instance.get_next_auction_info()
+	next_auction = ffdata.get_next_auction_info()
 	if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 	auction_id = next_auction["auction_id"]
-	auction_info = foreverFairData_instance.get_auction_info(auction_id)
-	current_wells = foreverFairData_instance.get_trader_wells(trader_id)
+	auction_info = ffdata.get_auction_info(auction_id)
+	current_wells = ffdata.get_trader_wells(trader_id)
 	current_well = current_wells[0]
-	bid_history = foreverFairData_instance.get_bid_history(auction_id, trader_id)
-	quota_by_period = foreverFairData_instance.get_well_start_quota(well_id=current_well["id"], auction_id=auction_id)
-	max_bid_steps = foreverFairData_instance.get_max_bid_steps()
+	bid_history = ffdata.get_bid_history(auction_id, trader_id)
+	quota_by_period = ffdata.get_well_start_quota(well_id=current_well["id"], auction_id=auction_id)
+	max_bid_steps = ffdata.get_max_bid_steps()
 	period_rows: list[dict[str, Any]] = []
-	for period in auction_record.periods:
-		period_rows.append({"period_id": period.id, "period_key": period.id, "period_label": period.label, "allocation": quota_by_period.get(period.id, 0.0),})
-	current_trader = next((t for t in foreverFairData_instance.list_of_traders() if t["id"] == trader_id), {"id": trader_id, "name": ""})
+	for period in auction_record.periods: period_rows.append({"period_id": period.id, "period_key": period.id, "period_label": period.label, "allocation": quota_by_period[period.id],})
+	
+	current_trader = next((t for t in ffdata.list_of_traders() if t["id"] == trader_id), {"id": trader_id, "name": ""})
 	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)),}
-	notice = request.cookies.get("flash")
+	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context.update(_common_template_context())
 	resp = templates.TemplateResponse(request, "Trader.html", context)
@@ -223,74 +216,67 @@ def trader_page(request: Request):
 async def create_bid(request: Request):
 	form = await request.form()
 	try:
-		auction_id = int(str(form.get("auction_id", "")).strip())
-		well_id = int(str(form.get("well_id", "")).strip())
-		period_id = int(str(form.get("period_id", "")).strip())
-		quantity = float(str(form.get("quantity", "")).strip())
-		price = float(str(form.get("price", "")).strip())
-	except Exception:
-		return _flash_redirect("/trader", "Error: invalid bid form values")
-	is_default = str(form.get("is_default", "")).strip().lower() in {"true", "on", "1", "yes"}
+		auction_id = int(str(form["auction_id"]).strip())
+		well_id = int(str(form["well_id"]).strip())
+		period_id = int(str(form["period_id"]).strip())
+		quantity = float(str(form["quantity"]).strip())
+		price = float(str(form["price"]).strip())
+	except Exception: return _flash_redirect("/trader", "Error: invalid bid form values")
+	is_default = str(form["is_default"]).strip().lower() in {"true", "on", "1", "yes"}
 
-	trader_cookie = request.cookies.get("trader_id")
+	trader_cookie = request.cookies.get("trader_id", "")
 	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
 	try: trader_id = int(trader_cookie)
 	except ValueError: return RedirectResponse(url="/login", status_code=303)
 
 	bid_steps: list[tuple[float, float]] = [(quantity, price)]
-	for step_num in range(2, foreverFairData_instance.get_max_bid_steps() + 1):
-		quantity_text = str(form.get(f"quantity{step_num}", "") or "").strip()
-		price_text = str(form.get(f"price{step_num}", "") or "").strip()
-		if not quantity_text and not price_text:
-			continue
-		if not quantity_text or not price_text:
-			return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} requires both quantity and price")
-		try:
-			bid_steps.append((float(quantity_text), float(price_text)))
-		except ValueError:
-			return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} has invalid quantity or price")
-	try: BiddingController.submitBid(foreverFairData_instance, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps,)
-	except ValueError as e:
-		return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: {e}")
+	for step_num in range(2, ffdata.get_max_bid_steps() + 1):
+		quantity_text = str(form[f"quantity{step_num}"] or "").strip()
+		price_text = str(form[f"price{step_num}"] or "").strip()
+		if not quantity_text and not price_text: continue
+		if not quantity_text or not price_text: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} requires both quantity and price")
+		try: bid_steps.append((float(quantity_text), float(price_text)))
+		except ValueError: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} has invalid quantity or price")
+	try: BiddingController.submitBid(ffdata, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps,)
+	except ValueError as e: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: {e}")
 	return _flash_redirect(f"/trader?auction_id={auction_id}", "Bid saved")
 
 @app.post("/bids/{bid_id}/delete")
 def delete_bid(request: Request, bid_id: int):
-	trader_cookie = request.cookies.get("trader_id")
+	trader_cookie = request.cookies.get("trader_id", "")
 	trader_id = int(trader_cookie) if trader_cookie and trader_cookie.isdigit() else 0
-	deleted = BiddingController.deleteBid(foreverFairData_instance, bid_id, trader_id)
+	deleted = BiddingController.deleteBid(ffdata, bid_id, trader_id)
 	return _flash_redirect("/trader", "Bid deleted" if deleted else "Bid not found")
 
 @app.post("/auctionmanager/run-auction")
 async def manager_run_auction(request: Request):
 	try:
 		form = await request.form()
-		auction_id = int(str(form.get("auction_id", "")).strip())
-	except (ValueError, KeyError):
-		return JSONResponse({"ok": False, "message": "Error: Missing or invalid auction_id"}, status_code=400)
+		auction_id = int(str(form["auction_id"]).strip())
+	except (ValueError, KeyError): return JSONResponse({"ok": False, "message": "Error: Missing or invalid auction_id"}, status_code=400)
 	
 	# Guard: do not run an auction that has already closed by time.
-	target = next((a for a in foreverFairData_instance.list_auctions() if a.get("auction_id") == auction_id), None)
+	target = next((a for a in ffdata.list_auctions() if a["auction_id"] == auction_id), None)
 	if target is None:
-		if request.headers.get("x-requested-with") == "fetch": return JSONResponse({"ok": False, "message": "Error: Auction not found"}, status_code=404)
+		if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": False, "message": "Error: Auction not found"}, status_code=404)
 		return _flash_redirect("/auctionmanager", "Error: Auction not found")
 
-	bid_close = target.get("closed_date") or ""
-	if target.get("status") == "CLOSED" or (bid_close and bid_close < foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")):
-		if request.headers.get("x-requested-with") == "fetch": return JSONResponse({"ok": False, "message": "Error: Cannot run a closed auction"}, status_code=400)
+	bid_close = target["closed_date"] or ""
+	if target["status"] == "CLOSED" or (bid_close and bid_close < ffdata.the_time_at_the_tone_is().isoformat(timespec="minutes")):
+		if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": False, "message": "Error: Cannot run a closed auction"}, status_code=400)
 		return _flash_redirect("/auctionmanager", "Error: Cannot run a closed auction")
 	try:
 		clear_auctionmanager_debug()
 		set_auctionmanager_run_active(True)
 		add_auctionmanager_debug(f"Run requested for auction_id={auction_id}")
 		# Apply the latest default head-constraint bounds before running.
-		# try: AuctionController.apply_default_bounds(foreverFairData_instance, auction_id)
+		# try: AuctionController.apply_default_bounds(ffdata, auction_id)
 		# except Exception: pass  # No default bounds yet; continue.
-		AuctionController.runCurrentAuction(foreverFairData_instance, auction_id=auction_id, debug_log=add_auctionmanager_debug)
+		AuctionController.runCurrentAuction(ffdata, auction_id=auction_id, debug_log=add_auctionmanager_debug)
 		add_auctionmanager_debug("Auction run completed")
 	except Exception as e:
 		add_auctionmanager_debug(f"Error: {e}")
-		if request.headers.get("x-requested-with") == "fetch":
+		if request.headers["x-requested-with"] == "fetch":
 			set_auctionmanager_run_active(False)
 			if str(e) == "The auction cannot run because it has no bids.": return JSONResponse({"ok": False, "message": "The auction cannot run because it has no bids."}, status_code=400)
 			return JSONResponse({"ok": False, "message": f"Error: {e}"}, status_code=500)
@@ -298,23 +284,22 @@ async def manager_run_auction(request: Request):
 		if str(e) == "The auction cannot run because it has no bids.": return _flash_redirect("/auctionmanager", "The auction cannot run because it has no bids.")
 		return _flash_redirect("/auctionmanager", f"Error: {e}")
 	set_auctionmanager_run_active(False)
-	if request.headers.get("x-requested-with") == "fetch": return JSONResponse({"ok": True, "message": "Auction run completed"})
+	if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": True, "message": "Auction run completed"})
 	return _flash_redirect("/auctionmanager", "Auction run completed")
 
 @app.get("/api/auctionmanager-debug")
-def api_auctionmanager_debug() -> JSONResponse:
-	return JSONResponse({"debug_text": get_auctionmanager_debug_text(), "run_active": get_auctionmanager_run_active()}, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
+def api_auctionmanager_debug() -> JSONResponse: return JSONResponse({"debug_text": get_auctionmanager_debug_text(), "run_active": get_auctionmanager_run_active()}, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
 
 @app.get("/catchment", response_class=HTMLResponse)
 def catchment_page(request: Request, auction_id: int | None = None):
 	if auction_id is None:
-		next_auction = foreverFairData_instance.get_next_auction_info()
+		next_auction = ffdata.get_next_auction_info()
 		if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 		auction_id = next_auction["auction_id"]
-	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
-	context: dict[str, Any] = {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	well_price_rows, control_point_rows = ffdata.catchment_price_rows(auction_id)
+	context: dict[str, Any] = {"catchment_name": ffdata.get_catchment_name(), "auction": ffdata.get_auction_info(auction_id), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 	context.update(_common_template_context())
-	notice = request.cookies.get("flash")
+	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	resp = templates.TemplateResponse(request, "CatchmentPage.html", context)
 	if notice: resp.delete_cookie("flash")
@@ -323,30 +308,26 @@ def catchment_page(request: Request, auction_id: int | None = None):
 @app.get("/api/system-state")
 def system_state_api(auction_id: int | None = None) -> dict[str, Any]:
 	if auction_id is None:
-		next_auction = foreverFairData_instance.get_next_auction_info()
+		next_auction = ffdata.get_next_auction_info()
 		if next_auction is None: return {"error": "No open auction. Ask the auction manager to create one."}
 		auction_id = next_auction["auction_id"]
-	latest_run = foreverFairData_instance.get_run_summary(auction_id)
-	well_price_rows, control_point_rows = foreverFairData_instance.catchment_price_rows(auction_id)
-	return {"catchment_name": foreverFairData_instance.get_catchment_name(), "auction": foreverFairData_instance.get_auction_info(auction_id), "rights_conversion": foreverFairData_instance.get_rights_conversion_dict(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	latest_run = ffdata.get_run_summary(auction_id)
+	well_price_rows, control_point_rows = ffdata.catchment_price_rows(auction_id)
+	return {"catchment_name": ffdata.get_catchment_name(), "auction": ffdata.get_auction_info(auction_id), "rights_conversion": ffdata.get_rights_conversion_dict(), "latest_run": latest_run, "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
 
 @app.get("/api/open-auctions")
 def api_open_auctions():
-	import sqlite3 as _sqlite3
 	try:
-		conn = _sqlite3.connect(DATA_DIR / "foreverfair.db") # TODO: change this SQL to an accessor.
-		rows = conn.execute("SELECT auction_id, closed_date FROM auctions WHERE status='OPEN' ORDER BY created_date DESC").fetchall()
-		conn.close()
-		return JSONResponse([{"id": r[0], "closed_date": r[1]} for r in rows])
+		return JSONResponse([{"id": a["auction_id"], "closed_date": a["closed_date"]} for a in ffdata.list_open_auctions()])
 	except Exception as e: return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/setup/db-status") # TODO: this file should never know the db status.
-def setup_db_status(): return JSONResponse(SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db"), headers={"Cache-Control": "no-store"})
+def setup_db_status(): return JSONResponse(SetupForeverFairDB.db_status(ffdata.db_path), headers={"Cache-Control": "no-store"})
 
 @app.post("/setup/create-db")
 def setup_create_db():
 	try:
-		SetupForeverFairDB.create_empty_db(DATA_DIR / "foreverfair.db")
+		SetupForeverFairDB.create_empty_db(ffdata.db_path)
 		return _flash_redirect("/programmer", "Empty database created")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error creating database: {e}")
@@ -361,11 +342,10 @@ def setup_select_catchment(catchment_name: str = Form(...)):
 
 @app.post("/setup/delete-db")
 def setup_delete_db():
-	db_path = DATA_DIR / "foreverfair.db"
 	try:
-		SetupForeverFairDB.delete_db(db_path)
-		if db_path.exists(): return _flash_redirect("/programmer", "Error deleting database: database file still exists")
-		SetupForeverFairDB.create_empty_db(db_path)
+		SetupForeverFairDB.delete_db(ffdata.db_path)
+		if ffdata.db_path.exists(): return _flash_redirect("/programmer", "Error deleting database: database file still exists")
+		SetupForeverFairDB.create_empty_db(ffdata.db_path)
 		return _flash_redirect("/programmer", "Database deleted")
 	except Exception as e:
 		import logging
@@ -374,12 +354,12 @@ def setup_delete_db():
 
 @app.post("/setup/import-decvar")
 async def setup_import_decvar(file: UploadFile = File(...),):
-	status = SetupForeverFairDB.db_status(DATA_DIR / "foreverfair.db") # TODO: database name should not be hardwired.
-	tables = status.get("tables", {}) if isinstance(status, dict) else {}
-	if not status.get("exists") or "wells" not in tables:
+	status = SetupForeverFairDB.db_status(ffdata.db_path)
+	tables = status["tables"]
+	if not status["exists"] or "wells" not in tables:
 		return _flash_redirect("/programmer", "Create new dataase first")
 	text = (await file.read()).decode("utf-8", errors="replace")
-	result = SetupForeverFairDB.import_decvar(DATA_DIR / "foreverfair.db", text)
+	result = SetupForeverFairDB.import_decvar(ffdata.db_path, text)
 	notice = (f"DECVAR import complete: {result['wells_inserted']} wells inserted"
 	          f" (inferred: {result['num_wells']} wells, {result['num_pump_periods']} pump periods)")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
@@ -389,7 +369,7 @@ async def setup_import_decvar(file: UploadFile = File(...),):
 async def setup_import_hedcon(file: UploadFile = File(...),):
 	try:
 		text = (await file.read()).decode("utf-8", errors="replace")
-		result = SetupForeverFairDB.import_hedcon(DATA_DIR / "foreverfair.db", text)
+		result = SetupForeverFairDB.import_hedcon(ffdata.db_path, text)
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing HEDCON: {e}")
 	notice = (f"HEDCON import complete: {result['control_points_inserted']} control points,"
@@ -401,11 +381,11 @@ async def setup_import_hedcon(file: UploadFile = File(...),):
 @app.post("/setup/import-mps")
 async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form(...),):
 	try:
-		unit_hours = {"hour": 1, "day": 24, "week": 168}.get(str(period_unit).strip().lower())
-		if unit_hours is None: return _flash_redirect("/programmer", "Error importing MPS: invalid period unit")
+		unit_hours = {"hour": 1, "day": 24, "week": 168}[str(period_unit).strip().lower()]
 		text = (await file.read()).decode("utf-8", errors="replace")
-		db_path = DATA_DIR / "foreverfair.db"
-		result = SetupForeverFairDB.import_mps(db_path, text, period_length_hours=unit_hours)
+		result = SetupForeverFairDB.import_mps(ffdata.db_path, text, period_length_hours=unit_hours)
+	except KeyError:
+		return _flash_redirect("/programmer", "Error importing MPS: invalid period unit")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error importing MPS: {e}")
 	notice = (f"MPS import complete: {result['response_matrix_inserted']} response factors,"
@@ -420,9 +400,8 @@ async def setup_import_mps(file: UploadFile = File(...), period_unit: str = Form
 
 @app.get("/setup/current-period-unit")
 def setup_current_period_unit() -> dict[str, Any]:
-	db_path = DATA_DIR / "foreverfair.db"
-	if not db_path.exists(): return {"period_unit": None, "period_length_hours": None}
-	hours = foreverFairData_instance.latest_period_length_hours()
+	if not ffdata.db_path.exists(): return {"period_unit": None, "period_length_hours": None}
+	hours = ffdata.latest_period_length_hours()
 	if hours is None: return {"period_unit": None, "period_length_hours": None}
 	if hours == 1: unit = "hour"
 	elif hours == 24: unit = "day"
@@ -433,13 +412,12 @@ def setup_current_period_unit() -> dict[str, Any]:
 @app.post("/setup/set-period-unit")
 async def setup_set_period_unit(request: Request) -> dict[str, Any]:
 	body = await request.json()
-	unit = str(body.get("period_unit", "")).strip().lower()
-	unit_hours = {"hour": 1, "day": 24, "week": 168}.get(unit)
-	if unit_hours is None: return {"ok": False, "error": "invalid period unit"}
-	db_path = DATA_DIR / "foreverfair.db"
-	if not db_path.exists(): return {"ok": False, "error": "database does not exist"}
+	unit = str(body["period_unit"]).strip().lower()
+	try: unit_hours = {"hour": 1, "day": 24, "week": 168}[unit]
+	except KeyError: return {"ok": False, "error": "invalid period unit"}
+	if not ffdata.db_path.exists(): return {"ok": False, "error": "database does not exist"}
 	import sqlite3
-	conn = sqlite3.connect(db_path)
+	conn = sqlite3.connect(ffdata.db_path)
 	try:
 		SetupForeverFairDB.save_catchment_info(conn, "period_length_hours", unit_hours)
 		conn.commit()
@@ -449,28 +427,27 @@ async def setup_set_period_unit(request: Request) -> dict[str, Any]:
 
 @app.get("/setup/current-bidding-periods")
 def setup_current_bidding_periods():
-	return {"num_bidding_periods": foreverFairData_instance.get_number_of_bidding_periods()}
+	return {"num_bidding_periods": ffdata.get_number_of_bidding_periods()}
 
 @app.get("/setup/current-max-bid-steps")
 def setup_current_max_bid_steps() -> dict[str, Any]:
-	return {"max_bid_steps": foreverFairData_instance.get_max_bid_steps()}
+	return {"max_bid_steps": ffdata.get_max_bid_steps()}
 
 @app.get("/setup/current-rights-policy")
 def setup_current_rights_policy() -> dict[str, Any]:
-	return {"rights_policy": foreverFairData_instance.get_rights_policy()}
+	return {"rights_policy": ffdata.get_rights_policy()}
 
 @app.post("/setup/set-rights-policy")
 async def setup_set_rights_policy(request: Request) -> dict[str, Any]:
 	VALID_POLICIES = {"Users_pay", "Auction_manager_pays", "Quota_scaled"}
 	body = await request.json()
-	value = body.get("rights_policy", "")
+	value = body["rights_policy"]
 	if value not in VALID_POLICIES:
 		return {"ok": False, "error": f"invalid rights policy: {value}"}
-	db_path = DATA_DIR / "foreverfair.db"
-	if not db_path.exists():
+	if not ffdata.db_path.exists():
 		return {"ok": False, "error": "database does not exist"}
 	import sqlite3
-	conn = sqlite3.connect(db_path)
+	conn = sqlite3.connect(ffdata.db_path)
 	try:
 		SetupForeverFairDB.save_catchment_info(conn, "Rights_policy", value)
 		conn.commit()
@@ -482,14 +459,13 @@ async def setup_set_rights_policy(request: Request) -> dict[str, Any]:
 async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
 	body = await request.json()
 	try:
-		value = int(body.get("num_bidding_periods", 4)) # TODO: Why "4"? Why int?
+		value = int(body["num_bidding_periods"])
 	except Exception:
 		return {"ok": False, "error": "invalid number of bidding periods"}
 	if value < 1 or value > 52: return {"ok": False, "error": "number of bidding periods must be 1..52"}
-	db_path = DATA_DIR / "foreverfair.db"
-	if not db_path.exists(): return {"ok": False, "error": "database does not exist"}
+	if not ffdata.db_path.exists(): return {"ok": False, "error": "database does not exist"}
 	import sqlite3
-	conn = sqlite3.connect(db_path)
+	conn = sqlite3.connect(ffdata.db_path)
 	try:
 		SetupForeverFairDB.save_catchment_info(conn, "num_bidding_periods", value)
 		conn.commit()
@@ -501,16 +477,15 @@ async def setup_set_bidding_periods(request: Request) -> dict[str, Any]:
 async def setup_set_max_bid_steps(request: Request) -> dict[str, Any]:
 	body = await request.json()
 	try:
-		value = int(body.get("max_bid_steps", 3))
+		value = int(body["max_bid_steps"])
 	except Exception:
 		return {"ok": False, "error": "invalid maximum bid steps"}
 	if value < 1 or value > 5:
 		return {"ok": False, "error": "maximum bid steps must be 1..5"}
-	db_path = DATA_DIR / "foreverfair.db"
-	if not db_path.exists():
+	if not ffdata.db_path.exists():
 		return {"ok": False, "error": "database does not exist"}
 	import sqlite3
-	conn = sqlite3.connect(db_path)
+	conn = sqlite3.connect(ffdata.db_path)
 	try:
 		SetupForeverFairDB.save_catchment_info(conn, "MAX_BID_STEPS", value)
 		conn.commit()
@@ -521,7 +496,7 @@ async def setup_set_max_bid_steps(request: Request) -> dict[str, Any]:
 @app.post("/setup/import-trader-names")
 async def setup_import_trader_names(file: UploadFile = File(...)):
 	text = (await file.read()).decode("utf-8", errors="replace")
-	result = SetupForeverFairDB.import_trader_names(DATA_DIR / "foreverfair.db", text)
+	result = SetupForeverFairDB.import_trader_names(ffdata.db_path, text)
 	notice = (f"Trader names import: {result['traders_inserted']} inserted,"
 	          f" {result['traders_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
@@ -530,7 +505,7 @@ async def setup_import_trader_names(file: UploadFile = File(...)):
 @app.post("/setup/import-trader-wells")
 async def setup_import_trader_wells(file: UploadFile = File(...)):
 	text = (await file.read()).decode("utf-8", errors="replace")
-	result = SetupForeverFairDB.import_trader_wells(DATA_DIR / "foreverfair.db", text)
+	result = SetupForeverFairDB.import_trader_wells(ffdata.db_path, text)
 	notice = f"Trader-well assignments: {result['wells_assigned']} wells assigned"
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
@@ -538,7 +513,7 @@ async def setup_import_trader_wells(file: UploadFile = File(...)):
 @app.post("/setup/import-well-lat-lon")
 async def setup_import_well_lat_lon(file: UploadFile = File(...)):
 	text = (await file.read()).decode("utf-8", errors="replace")
-	result = SetupForeverFairDB.import_well_lat_lon(DATA_DIR / "foreverfair.db", text)
+	result = SetupForeverFairDB.import_well_lat_lon(ffdata.db_path, text)
 	notice = (f"Well lat-lon import: {result['wells_updated']} updated,"
 		f" {result['rows_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
@@ -547,7 +522,7 @@ async def setup_import_well_lat_lon(file: UploadFile = File(...)):
 @app.post("/setup/import-control-point-lat-lon")
 async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 	text = (await file.read()).decode("utf-8", errors="replace")
-	result = SetupForeverFairDB.import_control_point_lat_lon(DATA_DIR / "foreverfair.db", text)
+	result = SetupForeverFairDB.import_control_point_lat_lon(ffdata.db_path, text)
 	notice = (f"Control-point lat-lon import: {result['control_points_updated']} updated,"
 		f" {result['rows_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
@@ -556,7 +531,7 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 @app.post("/setup/setup-first-auction")
 def setup_first_auction():
 	try:
-		auction_id = AuctionController.create_auction(DATA_DIR / "foreverfair.db")
+		auction_id = AuctionController.set_up_auction_system(ffdata.db_path)
 		return _flash_redirect("/programmer", f"Auction system set up: auction_id={auction_id}")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error setting up auction system: {e}")

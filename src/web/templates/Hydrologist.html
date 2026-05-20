@@ -35,6 +35,8 @@ Therefore, this version treats the response matrix timing as relative, i.e., the
 This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has response coefficients for each required control point and period.
 Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>
 
+<p><b>Period indexing convention:</b> period 1 in the response matrix always means the first pumping period in the hydrology model, not a fixed calendar date. During auction clearing, these model periods are remapped to the auction's local timeline.</p>
+
 <h2>Units convention</h2>
 
 <p>Careful with units! Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>

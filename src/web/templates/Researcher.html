@@ -63,6 +63,8 @@ The market distinguishes those different periods by different rights and differe
 	This MPS file includes the response matrix and head constraints, which specifies the main structure of the auction clearing model. 
 	The hydrologist is responsible for ensuring the validity of the response matrix.</p>
 
+<p><b>Timing assumption:</b> the response matrix is treated as calendar-independent. Period 1 in the response matrix is always the first pumping period of the groundwater model. Auction code remaps those model periods onto each auction's current calendar dates.</p>
+
 <h2>Legal authority</h2>
 <p>Legally, the auction manager must have legal authority to run this auction. The auction manager must have legal authority to prescribe traders' rights.
 	As a result, the water market probably should be run by the government water authority, not a private organization. Private organizations do not usually have authority to allocate water and 
@@ -203,6 +205,7 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Constraint quota</b>. Constraint quota is quota translated from well-take units into drawdown rights at control points and periods for scaling in drought conditions.</p>
 <p><b>Constraint quota scaling</b>. Constraint quota scaling is the adjustment of those translated head-impact rights so aggregate use matches available water.</p>
 <p><b>Control point</b>. A control point is a monitored location where groundwater head must satisfy hydrologic constraints.</p>
+<p><b>Control point event</b>. A control point at a specific time.</p>
 <p><b>Default bid</b>. A default bid is a standing bid that the system can carry forward into later auctions when marked as default.</p>
 <p><b>Drought adjustment</b>. Drought adjustment is the process of scaling users' quota to match available water while following license rules.</p>
 <p><b>Environmental constraint</b>. An environmental constraint is a non-negotiable model limit, typically minimum head, that protects streams, wetlands, or aquifer health.</p>

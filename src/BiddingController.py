@@ -13,7 +13,7 @@ def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: in
 	created_bids: list[dict] = []
 	for (quota_well_id, period_id), _quota_auction_start in quota_by_well_period.items():
 		if quota_well_id != well_id: continue
-		license_quantity = license_by_period.get(period_id, 0.0)
+		license_quantity = license_by_period[period_id]
 		step_size = 2.0 * license_quantity / len(price_steps)
 		# Bid step quantities are all the same.
 		bid_steps = [(step_size, price_steps[step_num - 1]) for step_num in range(1, len(price_steps) + 1)]

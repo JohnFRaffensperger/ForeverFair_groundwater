@@ -122,4 +122,15 @@ def test_open_auction_has_default_bids_before_run(tmp_path):
 	assert latest["solve_status"] == "Optimal"
 	assert foreverFairData_instance.has_default_bids(auction_id)
 
+def test_set_license_demand_populates_aquifer_limits(tmp_path):
+	foreverFairData_instance = _make_repo(tmp_path)
+	changes = foreverFairData_instance.set_license_demand_on_aquifer()
+	assert changes > 0
+	with foreverFairData_instance.connect_to_db() as conn:
+		row = conn.execute("SELECT COUNT(*) AS total_rows, SUM(CASE WHEN license_demand IS NOT NULL THEN 1 ELSE 0 END) AS populated_rows, MAX(license_demand) AS max_license_demand FROM aquifer_head_limits").fetchone()
+		assert row is not None
+		assert row["total_rows"] > 0
+		assert row["populated_rows"] == row["total_rows"]
+		assert row["max_license_demand"] > 0.0
+
 
