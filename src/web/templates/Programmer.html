@@ -27,6 +27,10 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 	This code here reads those files to get the response matrix, the number of wells, the number of control points, and the number of time periods.
 	In principle, then, this code will work with any groundwater model that works with GWM. Buttons below allow you to import these files.</p>
 
+<h2>Open-source desktop tools</h2>
+<p>1. LP model files: Forever Fair writes auction models as <code>.lpt</code> files in <code>Auction_lpt_files/</code>. A programmer can open, edit, and solve these files with the open-source <a href="https://sourceforge.net/projects/lpsolveide/">LP Solve IDE</a>.</p>
+<p>2. Database files: Forever Fair uses SQLite databases (for example, <code>Catchment_data/Tianqiao/foreverfair.db</code>). A programmer can open and edit these files with the open-source <a href="https://sqlitebrowser.org/">DB Browser for SQLite</a>.</p>
+
 <h2>Database status</h2>
 {% if notice %}<p id="flash-notice"><strong>{{ notice }}</strong></p>{% endif %}
 

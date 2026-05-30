@@ -35,7 +35,7 @@
 <h2>Run the auction</h2>
 <p><strong>Next auction {{ next_auction_id }}:</strong> {{ next_real_bid_count }} real bids, {{ next_default_bid_count }} default bids.</p>
 
-<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th>Constraint revenue</th><th></th><th></th></tr></thead>
+<table><thead><tr><th>Auction id</th><th>Closes</th><th>Type</th><th>Status</th><th>Solve status</th><th>Objective value</th><th>Auction revenue</th><th></th><th></th></tr></thead>
 <tbody>{% for auction in auctions %}
 {% set is_tentative = auction.auction_type == 'tentative' %}
 {% set is_closed = auction.status == 'CLOSED' or (auction.closed_date and auction.closed_date < now) %}
@@ -46,7 +46,7 @@
 	<td>{% if is_closed %}Closed{% else %}Open{% endif %}</td>
 	<td>{{ auction.solve_status or '—' }}</td>
 	<td>{% if auction.objective_value is not none %}${{ '{:,.2f}'.format(auction.objective_value) }}{% else %}—{% endif %}</td>
-	<td>{% if auction.auction_id in constraint_revenues %}${{ '{:,.2f}'.format(constraint_revenues[auction.auction_id]) }}{% else %}—{% endif %}</td>
+	<td>{% if auction.auction_revenue is not none %}${{ '{:,.2f}'.format(auction.auction_revenue) }}{% else %}—{% endif %}</td>
 	<td>{% if not is_closed %}<form method="post" action="/auctionmanager/run-auction" class="run-auction-form"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Run</button></form>{% endif %}</td>
 	<!-- Unnecessarily complicated. td>{% if not is_closed %}<form method="post" action="/auctionmanager/delete-auction" onsubmit="return confirm('Delete auction {{ auction.auction_id }}?');"><input type="hidden" name="auction_id" value="{{ auction.auction_id }}"><button type="submit">Delete</button></form>{% endif %}</td-->
 </tr>
@@ -105,7 +105,8 @@ for (const form of document.querySelectorAll('.run-auction-form')) {
 			});
 			const payload = await response.json();
 			await refreshAuctionDebug();
-			window.setTimeout(() => window.location.reload(), 400);
+			if (payload.redirect_url) window.setTimeout(() => window.location.assign(payload.redirect_url), 400);
+			else window.setTimeout(() => window.location.reload(), 400);
 		} catch (error) {
 			await refreshAuctionDebug();
 		} finally {

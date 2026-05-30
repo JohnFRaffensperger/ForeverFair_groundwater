@@ -32,10 +32,14 @@ The hydrologist must define environmental limits as control points with head lim
 
 <p>This software version assumes that the physics of the aquifer do not change with the auction schedule.
 Therefore, this version treats the response matrix timing as relative, i.e., the effects in a relative number of periods after pumping occurs. 
-This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has response coefficients for each required control point and period.
+This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has the required nonzero response coefficients for relevant control points and periods.
 Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>
 
 <p><b>Period indexing convention:</b> period 1 in the response matrix always means the first pumping period in the hydrology model, not a fixed calendar date. During auction clearing, these model periods are remapped to the auction's local timeline.</p>
+
+<p><b>Response-matrix sparsity note:</b> Forever Fair does not require a full dense response matrix. If a response coefficient is not provided for a tuple (control point, effect period, well, pumping period), the model treats that missing entry as zero response.</p>
+
+<p><b>Causality rule for inputs:</b> do not enter response coefficients where pumping period is later than effect period (pumping_period &gt; effect_period). Enter only physically causal terms where pumping can affect the same or a later effect period.</p>
 
 <h2>Units convention</h2>
 

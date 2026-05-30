@@ -66,6 +66,28 @@ def test_setup_and_reset_auction_data(tmp_path):
 	reset_data = _make_repo(tmp_path / "reset")
 	assert len(reset_data.list_auctions()) == initial_count
 
+def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
+	db_path = tmp_path / "demo" / "foreverfair.db"
+	summary = SetupForeverFairDB.create_demonstration_db(db_path, period_length_hours=168)
+	assert summary["response_matrix_inserted"] == 60
+	with sqlite3.connect(db_path) as conn:
+		conn.row_factory = sqlite3.Row
+		noncausal = conn.execute(
+			"SELECT COUNT(*) AS n FROM response_matrix WHERE pumping_period > effect_period"
+		).fetchone()
+		assert noncausal is not None
+		assert noncausal["n"] == 0
+
+		period_counts = conn.execute(
+			"SELECT pumping_period, COUNT(*) AS row_count FROM response_matrix GROUP BY pumping_period ORDER BY pumping_period"
+		).fetchall()
+		assert [row["row_count"] for row in period_counts] == [24, 18, 12, 6]
+		sample_rows = conn.execute(
+			"SELECT pumping_period, factor_value FROM response_matrix WHERE well_id=1 AND control_point_id=1 AND effect_period=4 ORDER BY pumping_period"
+		).fetchall()
+		assert [row["pumping_period"] for row in sample_rows] == [1, 2, 3, 4]
+		assert [row["factor_value"] for row in sample_rows] == [-1.0, -1.4, -2.1, -3.0]
+
 def test_manager_run_persists_results(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)
 	auction_id = _seed_auction_id(foreverFairData_instance)
@@ -121,6 +143,37 @@ def test_open_auction_has_default_bids_before_run(tmp_path):
 	assert latest is not None
 	assert latest["solve_status"] == "Optimal"
 	assert foreverFairData_instance.has_default_bids(auction_id)
+
+def test_new_auction_copies_previous_well_bids_before_generating_defaults(tmp_path):
+	foreverFairData_instance = _make_repo(tmp_path)
+	auction_1_id = _seed_auction_id(foreverFairData_instance)
+	manual_well_id, fallback_well_id = sorted(foreverFairData_instance.get_wells())[:2]
+	manual_bid_steps = [(11.0, 21.0), (7.0, 15.0), (3.0, 9.0)]
+	for period_id in sorted(foreverFairData_instance.get_well_start_quota(manual_well_id, auction_1_id)):
+		foreverFairData_instance.add_bid(auction_id=auction_1_id, well_id=manual_well_id, period_id=period_id, quantity=manual_bid_steps[0][0], price=manual_bid_steps[0][1], bid_steps=manual_bid_steps)
+	with foreverFairData_instance.connect_to_db() as conn:
+		conn.execute("UPDATE well_bids SET deleted=1 WHERE auction_id=? AND well_id=?", (auction_1_id, fallback_well_id))
+	auction_2_id = create_auction(foreverFairData_instance.db_path)
+	auction_2_dates = [period["label"] for period in foreverFairData_instance.get_auction_info(auction_2_id)["periods"]]
+	with foreverFairData_instance.connect_to_db() as conn:
+		source_rows = conn.execute(
+			"SELECT pumping_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5 FROM well_bids WHERE auction_id=? AND well_id=? AND deleted=0 AND pumping_date IN ({}) ORDER BY pumping_date".format(", ".join("?" for _ in auction_2_dates)),
+			(auction_1_id, manual_well_id, *auction_2_dates),
+		).fetchall()
+		target_rows = conn.execute(
+			"SELECT pumping_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default FROM well_bids WHERE auction_id=? AND well_id=? AND deleted=0 ORDER BY pumping_date",
+			(auction_2_id, manual_well_id),
+		).fetchall()
+		fallback_source_count = conn.execute("SELECT COUNT(*) AS n FROM well_bids WHERE auction_id=? AND well_id=? AND deleted=0", (auction_1_id, fallback_well_id)).fetchone()["n"]
+		fallback_target_rows = conn.execute(
+			"SELECT pumping_date, is_bid_default FROM well_bids WHERE auction_id=? AND well_id=? AND deleted=0 ORDER BY pumping_date",
+			(auction_2_id, fallback_well_id),
+		).fetchall()
+	assert [tuple(row[:-1]) for row in target_rows] == [tuple(row) for row in source_rows]
+	assert all(row["is_bid_default"] == 1 for row in target_rows)
+	assert fallback_source_count == 0
+	assert len(fallback_target_rows) == len(auction_2_dates)
+	assert all(row["is_bid_default"] == 1 for row in fallback_target_rows)
 
 def test_set_license_demand_populates_aquifer_limits(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)

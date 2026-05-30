@@ -8,7 +8,7 @@ for r in con.execute("SELECT auction_id, COUNT(*) as n, COUNT(DISTINCT well_id) 
     print(dict(r))
 
 print("\n=== well_bids rows per auction (not deleted) ===")
-for r in con.execute("SELECT auction_id, COUNT(*) as n, COUNT(DISTINCT well_id) as wells, COUNT(DISTINCT effect_date) as periods FROM well_bids WHERE deleted=0 GROUP BY auction_id ORDER BY auction_id"):
+for r in con.execute("SELECT auction_id, COUNT(*) as n, COUNT(DISTINCT well_id) as wells, COUNT(DISTINCT pumping_date) as periods FROM well_bids WHERE deleted=0 GROUP BY auction_id ORDER BY auction_id"):
     print(dict(r))
 
 print("\n=== Auction 1 take_dates (distinct) ===")
@@ -19,12 +19,12 @@ print("\n=== Auction 2 take_dates (distinct) ===")
 for r in con.execute("SELECT DISTINCT take_date FROM well_quota WHERE auction_id=2 ORDER BY take_date"):
     print(r[0])
 
-print("\n=== Auction 1 effect_dates in bids (distinct) ===")
-for r in con.execute("SELECT DISTINCT effect_date FROM well_bids WHERE auction_id=1 AND deleted=0 ORDER BY effect_date"):
+print("\n=== Auction 1 pumping_dates in bids (distinct) ===")
+for r in con.execute("SELECT DISTINCT pumping_date FROM well_bids WHERE auction_id=1 AND deleted=0 ORDER BY pumping_date"):
     print(r[0])
 
-print("\n=== Auction 2 effect_dates in bids (distinct) ===")
-for r in con.execute("SELECT DISTINCT effect_date FROM well_bids WHERE auction_id=2 AND deleted=0 ORDER BY effect_date"):
+print("\n=== Auction 2 pumping_dates in bids (distinct) ===")
+for r in con.execute("SELECT DISTINCT pumping_date FROM well_bids WHERE auction_id=2 AND deleted=0 ORDER BY pumping_date"):
     print(r[0])
 
 print("\n=== well_license bid_period range ===")

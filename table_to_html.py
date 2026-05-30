@@ -177,9 +177,40 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 # WHERE rm.well_id=22 AND rm.pumping_period=1 AND rm.effect_period=1
 # """)
 
-tableToHtml("""WITH effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=2)),
-  cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.dual_price FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date=cp.effect_date WHERE cp.auction_id=2),
-  base AS (SELECT rm.*, rm.factor_value * cpe.dual_price AS factor_x_dual_price
-    FROM response_matrix rm JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period WHERE rm.well_id=1)
-SELECT well_id, pumping_period, SUM(factor_x_dual_price) AS factor_x_dual_price
-FROM base GROUP BY well_id, pumping_period""")
+# tableToHtml("""WITH effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=2)),
+#   cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.dual_price FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date=cp.effect_date WHERE cp.auction_id=2),
+#   base AS (SELECT rm.*, rm.factor_value * cpe.dual_price AS factor_x_dual_price
+#     FROM response_matrix rm JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period WHERE rm.well_id=1)
+# SELECT well_id, pumping_period, SUM(factor_x_dual_price) AS factor_x_dual_price
+# FROM base GROUP BY well_id, pumping_period""")
+
+# with sqlite3.connect(str(DEFAULT_DB_FILE)) as conn:
+#     pairs = conn.execute("""
+#         SELECT DISTINCT control_point_id, effect_period
+#         FROM response_matrix
+#         ORDER BY control_point_id, effect_period
+#     """).fetchall()
+
+# col_expr = ",\n  ".join(
+#     f"MAX(CASE WHEN control_point_id={cp} AND effect_period={ep} THEN factor_value END) AS cp_{cp}_e_{ep}"
+#     for cp, ep in pairs
+# )
+
+# query = f"""
+# SELECT
+#   well_id,
+#   pumping_period,
+#   {col_expr}
+# FROM response_matrix
+# GROUP BY well_id, pumping_period
+# ORDER BY well_id, pumping_period
+# """
+
+query = """
+SELECT well_id, control_point_id, pumping_period, effect_period, factor_value
+FROM response_matrix
+WHERE control_point_id = 1 AND well_id IN (1) and pumping_period = effect_period
+ORDER BY well_id, pumping_period, effect_period
+"""
+
+tableToHtml(query)

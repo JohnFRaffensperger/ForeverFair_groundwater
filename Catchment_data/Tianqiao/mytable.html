@@ -1,114 +1,113 @@
-<html><script src="sorttable.js" type="text/javascript"></script><title>(SELECT</title><body><p>WITH effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=2 AND effect_date IS NOT NULL)),
-  cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.dual_price FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date=cp.effect_date WHERE cp.auction_id=2),
-  base AS (SELECT rm.*, rm.factor_value * cpe.dual_price AS factor_x_dual_price
-    FROM response_matrix rm JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
-    WHERE rm.well_id=1)
-SELECT well_id, pumping_period, SUM(factor_x_dual_price) AS factor_x_dual_price
-FROM base GROUP BY well_id, pumping_period, 52 rows. </p><TABLE border="1" style="border: 1px solid #000000; border-collapse: collapse;" cellpadding="4" class="sortable">
+<html><script src="sorttable.js" type="text/javascript"></script><title>query</title><body><p>
+SELECT well_id, control_point_id, pumping_period, effect_period, factor_value
+FROM response_matrix
+WHERE control_point_id = 1 AND well_id IN (1) and pumping_period = effect_period
+ORDER BY well_id, pumping_period, effect_period
+, 52 rows. </p><TABLE border="1" style="border: 1px solid #000000; border-collapse: collapse;" cellpadding="4" class="sortable">
  <TR>
-<TH>well_id</TH><TH>pumping_period</TH><TH>factor_x_dual_price</TH> </TR>
+<TH>well_id</TH><TH>control_point_id</TH><TH>pumping_period</TH><TH>effect_period</TH><TH>factor_value</TH> </TR>
  <TR>
-<TD>1</TD><TD>1</TD><TD>-0.0275752819895385</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>1</TD><TD>1</TD><TD>-6.046e-09</TD> </TR>
  <TR>
-<TD>1</TD><TD>2</TD><TD>-0.041499742108834996</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>2</TD><TD>2</TD><TD>-1.973e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>3</TD><TD>-0.056570519757302005</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>3</TD><TD>3</TD><TD>-1.926e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>4</TD><TD>-0.057891327111224</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>4</TD><TD>4</TD><TD>-1.668e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>5</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>5</TD><TD>5</TD><TD>-4.26e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>6</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>6</TD><TD>6</TD><TD>2.997e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>7</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>7</TD><TD>7</TD><TD>2.806e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>8</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>8</TD><TD>8</TD><TD>1.758e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>9</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>9</TD><TD>9</TD><TD>5.676e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>10</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>10</TD><TD>10</TD><TD>5.294e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>11</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>11</TD><TD>11</TD><TD>3.822e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>12</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>12</TD><TD>12</TD><TD>3.924e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>13</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>13</TD><TD>13</TD><TD>2.302e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>14</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>14</TD><TD>14</TD><TD>2.41e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>15</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>15</TD><TD>15</TD><TD>2.184e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>16</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>16</TD><TD>16</TD><TD>2.305e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>17</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>17</TD><TD>17</TD><TD>2.009e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>18</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>18</TD><TD>18</TD><TD>3.75e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>19</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>19</TD><TD>19</TD><TD>3.517e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>20</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>20</TD><TD>20</TD><TD>5.726e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>21</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>21</TD><TD>21</TD><TD>4.892e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>22</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>22</TD><TD>22</TD><TD>2.403e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>23</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>23</TD><TD>23</TD><TD>2.332e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>24</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>24</TD><TD>24</TD><TD>2.501e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>25</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>25</TD><TD>25</TD><TD>1.955e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>26</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>26</TD><TD>26</TD><TD>3.036e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>27</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>27</TD><TD>27</TD><TD>2.437e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>28</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>28</TD><TD>28</TD><TD>1.113e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>29</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>29</TD><TD>29</TD><TD>1.156e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>30</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>30</TD><TD>30</TD><TD>2.709e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>31</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>31</TD><TD>31</TD><TD>-1.608e-09</TD> </TR>
  <TR>
-<TD>1</TD><TD>32</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>32</TD><TD>32</TD><TD>-9.623e-10</TD> </TR>
  <TR>
-<TD>1</TD><TD>33</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>33</TD><TD>33</TD><TD>1.923e-09</TD> </TR>
  <TR>
-<TD>1</TD><TD>34</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>34</TD><TD>34</TD><TD>9.199e-10</TD> </TR>
  <TR>
-<TD>1</TD><TD>35</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>35</TD><TD>35</TD><TD>2.925e-09</TD> </TR>
  <TR>
-<TD>1</TD><TD>36</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>36</TD><TD>36</TD><TD>1.63e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>37</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>37</TD><TD>37</TD><TD>-5.93e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>38</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>38</TD><TD>38</TD><TD>-4.361e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>39</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>39</TD><TD>39</TD><TD>-2.897e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>40</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>40</TD><TD>40</TD><TD>-3.274e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>41</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>41</TD><TD>41</TD><TD>-1.505e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>42</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>42</TD><TD>42</TD><TD>-2.737e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>43</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>43</TD><TD>43</TD><TD>-1.906e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>44</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>44</TD><TD>44</TD><TD>-1.676e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>45</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>45</TD><TD>45</TD><TD>-1.28e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>46</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>46</TD><TD>46</TD><TD>-1.683e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>47</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>47</TD><TD>47</TD><TD>5.121e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>48</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>48</TD><TD>48</TD><TD>3.124e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>49</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>49</TD><TD>49</TD><TD>1.529e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>50</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>50</TD><TD>50</TD><TD>1.426e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>51</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>51</TD><TD>51</TD><TD>1.206e-08</TD> </TR>
  <TR>
-<TD>1</TD><TD>52</TD><TD>0.0</TD> </TR>
+<TD>1</TD><TD>1</TD><TD>52</TD><TD>52</TD><TD>4.548e-08</TD> </TR>
 </TABLE></body></html>

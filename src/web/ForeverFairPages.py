@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 import AuctionController
 import BiddingController
 from ForeverFairData import ForeverFairData
@@ -162,13 +163,6 @@ def doc_auctionmanager(request: Request):
 	context["default_first_water_take"] = default_first.isoformat(timespec="minutes")
 	context["default_last_water_take"] = default_last.isoformat(timespec="minutes")
 	context.update(_common_template_context())
-	constraint_revenues: dict[int, float] = {}
-	for a in auctions:
-		if a["solve_status"] == "Optimal":
-			# TODO: I think I want foreverfairpages.py to call settle_accounts rather than compute_revenue_on_constraint_quota.
-			try: constraint_revenues[int(a["auction_id"])] = AuctionController.compute_revenue_on_constraint_quota(ffdata, int(a["auction_id"]))
-			except Exception as e: add_auctionmanager_debug(f"Constraint revenue error for auction {a['auction_id']}: {e}")
-	context["constraint_revenues"] = constraint_revenues
 	context["debug_text"] = get_auctionmanager_debug_text()
 	if period_length_hours is not None and response_period_count:
 		context["default_last_constrained"] = (default_first + timedelta(hours=period_length_hours * response_period_count)).strftime("%d %b %Y")
@@ -269,10 +263,9 @@ async def manager_run_auction(request: Request):
 		clear_auctionmanager_debug()
 		set_auctionmanager_run_active(True)
 		add_auctionmanager_debug(f"Run requested for auction_id={auction_id}")
-		# Apply the latest default head-constraint bounds before running.
-		# try: AuctionController.apply_default_bounds(ffdata, auction_id)
-		# except Exception: pass  # No default bounds yet; continue.
-		AuctionController.runCurrentAuction(ffdata, auction_id=auction_id, debug_log=add_auctionmanager_debug)
+
+		# Run the auction,
+		revenue = await run_in_threadpool(AuctionController.runCurrentAuction, ffdata, auction_id, add_auctionmanager_debug)
 		add_auctionmanager_debug("Auction run completed")
 	except Exception as e:
 		add_auctionmanager_debug(f"Error: {e}")
@@ -284,8 +277,9 @@ async def manager_run_auction(request: Request):
 		if str(e) == "The auction cannot run because it has no bids.": return _flash_redirect("/auctionmanager", "The auction cannot run because it has no bids.")
 		return _flash_redirect("/auctionmanager", f"Error: {e}")
 	set_auctionmanager_run_active(False)
-	if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": True, "message": "Auction run completed"})
-	return _flash_redirect("/auctionmanager", "Auction run completed")
+	redirect_url = "/auctionmanager"
+	if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": True, "message": "Auction run completed", "redirect_url": redirect_url, "revenue": float(revenue or 0.0)})
+	return RedirectResponse(url=redirect_url, status_code=303)
 
 @app.get("/api/auctionmanager-debug")
 def api_auctionmanager_debug() -> JSONResponse: return JSONResponse({"debug_text": get_auctionmanager_debug_text(), "run_active": get_auctionmanager_run_active()}, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})

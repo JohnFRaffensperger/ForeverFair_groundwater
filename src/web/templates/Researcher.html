@@ -197,6 +197,8 @@ For example, the auction manager runs each auction with four week-long bidding p
 
 <p><b>Auction</b>. An auction is one market-clearing event that allocates water quota across wells and bid periods using the optimization model.</p>
 <p><b>Auction manager</b>. The auction manager is the role that sets auction timing, checks setup, runs clearing, and publishes outcomes through AuctionManager.html.</p>
+<p><b>Auction period</b>. This is the current period, the period for which the auction plans actual pumping, and for which the auction manager commits to allowing traders to take actual water.
+	For periods future to the auction period, quota is planned, so traders have the opportunity to change their quota, and the auction manager may revisit initial quota based on forecasted inflows.</p>
 <p><b>Bid</b>. A bid is a trader's quantity-and-price offer for a specific well and period, entered through Trader.html.</p>
 <p><b>Bid period</b>. A bid period is the time unit traded in the market, such as hour, day, or week, depending on catchment setup. See also <i>period length</i>.</p>
 <p><b>Bidding history</b>. Bidding history is the list of submitted bids and outcomes shown to each trader for transparency and review.</p>
@@ -212,7 +214,8 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Final auction</b>. A final auction is the binding auction run that determines enforceable allocations and traded prices.</p>
 <p><b>First water take date</b>. First water take date is the start date-time of the first tradable period in an auction schedule.</p>
 <p><b>Groundwater model</b>. A groundwater model is the scientific model used to derive response factors and constraint rows imported into Forever Fair.</p>
-<p><b>Head</b>. Head is groundwater level in meters and is the core state variable constrained at control points in each period.</p>
+<p><b>Head</b>. Head is groundwater level in meters and is the core state variable constrained at control points in each period.
+	Like quota, the auction manager commits to the actual head for the auction period. For periods future to the auction period, actual head is planned and subject to change.</p>
 <p><b>Hydrologist</b>. A hydrologist is the specialist who prepares and updates response matrix and head-constraint inputs for the auction model.</p>
 <p><b>License</b>. A license is the upgraded user right per bid period before market trading changes the user's final quota.</p>
 <p><b>MPS file</b>. An MPS file is the optimization-model export format used to import response factors, bounds, and related structure.</p>
@@ -220,9 +223,16 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Open auction</b>. An open auction is an auction that still accepts bids until its close time.</p>
 <p><b>Period length</b>. Period length is the configured duration of each trading period, stored as hours and interpreted as hour/day/week in setup. See also <i>bid period</i>.</p>
 <p><b>Programmer</b>. A programmer is the role that maintains code and database imports using Programmer.html and SetupForeverFairDB tools.</p>
-<p><b>Quota</b>. Quota is the approved amount of water a user may take in a period after rights setup and market clearing.</p>
+<p><b>Quota</b>. Quota is the approved amount of water a user may take in a period after rights setup and market clearing.
+	For the auction period, the auction manager commits to letting traders take their quota. For periods future to the auction period,
+	all participants must understand that quota is only a plan. This allows traders to change their positions and the auction manager to scale initial quota to forecasted inflows.</p>
 <p><b>Response matrix</b>. A response matrix is the table of coefficients that maps pumping at wells to head changes at control points over time.</p>
-<p><b>Scaling</b>. Scaling is the pre-auction process that proportionally adjusts quota to satisfy hydrologic availability and legal priority rules.</p>
+<p><b>Scaling</b>. Scaling is the pre-auction process that adjusts quota to satisfy hydrologic availability and legal priority rules.
+	When the hydrologist uploads new actual aquifer head values and new aquifer head limits, the auction manager scales quota based on each control point event constraint. 
+	If the total of those rights exceed the allowable change in head, the auction manager scales all well rights to to the allowable change in head.
+	The auction manager calculates each well's right to change the head at each control point and each future period.
+	The trader then has a portfolio of rights to control point events. Following this scaling, the auction manager can schedule an auction, and can calculate
+	an adjusted well quota that is cost-equivalent to the initial portfolio of constraint rights.</p>
 <p><b>Settlement</b>. Settlement is the post-solution accounting step that converts accepted quantities and initial allocations into net buy/sell outcomes.</p>
 <p><b>Solve status</b>. Solve status records whether the optimizer run succeeded and stores run-state information for each auction.</p>
 <p><b>Standing bid</b>. A standing bid is an default bid carried forward into future auctions unless the trader replaces it.</p>

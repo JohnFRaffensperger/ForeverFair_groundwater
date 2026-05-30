@@ -16,6 +16,6 @@ for r in con.execute("SELECT well_id, COUNT(*) as n, MIN(take_date) as first_d, 
     print(dict(r))
 
 print("\n=== well_bids auction 2 per well (first 5 wells) ===")
-for r in con.execute("SELECT well_id, COUNT(*) as n, MIN(effect_date) as first_d, MAX(effect_date) as last_d FROM well_bids WHERE auction_id=2 AND deleted=0 GROUP BY well_id ORDER BY well_id LIMIT 5"):
+for r in con.execute("SELECT well_id, COUNT(*) as n, MIN(pumping_date) as first_d, MAX(pumping_date) as last_d FROM well_bids WHERE auction_id=2 AND deleted=0 GROUP BY well_id ORDER BY well_id LIMIT 5"):
     print(dict(r))
 con.close()

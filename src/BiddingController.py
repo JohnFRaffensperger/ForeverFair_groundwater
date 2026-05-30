@@ -5,6 +5,7 @@
 from __future__ import annotations
 from ForeverFairData import ForeverFairData
 
+# Assumes nonzero initial license!
 def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: int, well_id: int) -> None:
 	quota_by_well_period = foreverFairData_instance.get_quota (auction_id) # sets a bid for each quota record.
 	license_by_period = foreverFairData_instance.get_well_license_quantity(well_id)
@@ -13,8 +14,7 @@ def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: in
 	created_bids: list[dict] = []
 	for (quota_well_id, period_id), _quota_auction_start in quota_by_well_period.items():
 		if quota_well_id != well_id: continue
-		license_quantity = license_by_period[period_id]
-		step_size = 2.0 * license_quantity / len(price_steps)
+		step_size = 2.0 * license_by_period[period_id] / len(price_steps)
 		# Bid step quantities are all the same.
 		bid_steps = [(step_size, price_steps[step_num - 1]) for step_num in range(1, len(price_steps) + 1)]
 		created_bids.append (foreverFairData_instance.add_bid (auction_id = auction_id, well_id=well_id, period_id=period_id, quantity=bid_steps[0][0], price=bid_steps[0][1], is_default=True, bid_steps=bid_steps))
