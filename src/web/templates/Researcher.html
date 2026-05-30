@@ -40,14 +40,13 @@ Adding security is probably pretty easy to vibe-code in.</p>
 	It can work for hydrology of any complexity, groundwater, surface water, both, with reservoirs and hydropower, etc.
 	A catchment manager sets up each auction, opens it for bidding, runs the clearing model, and publishes results. 
 	Traders who hold water rights submit bids stating how much water they want to buy or sell in each period, and at what price. 
-	The software clears the market by solving  an optimization model. The optimization accepts or rejects bids to maximise the value of water while keeping pumping 
+	The software clears the market by solving  an optimization model. The optimization accepts or rejects bids to maximize the value of water while keeping pumping 
 	within the environmental limits set by the hydrologist.
 The market distinguishes those different periods by different rights and different prices. In return, people can change these quantities easily through the market rather than go through a laborious application process.</p>
 
-<p>Your old way of thinking of water trading as once per season or per year is out of date. It kind of should blow your mind. Everyone -- hydrologists, farmers, government water managers, water lawyers, resource economists -- think of water rights in terms of seasons, years, decades.
+<p>It should blow your mind. Everyone &ndash;  hydrologists, farmers, government water managers, water lawyers, resource economists &ndash; think of water rights in terms of seasons, years, decades.
 	That has to change and that <i>can</i> change to near real-time allocation, highly dynamic and precision water management.
-    Now you can trade water by the hour, even in a complex catchment. 
-	</p>
+    Forever Fair means that the old way of thinking is out of date. Now you can trade water by the hour, even in a complex catchment.</p>
 <p>Water users would get many benefits from Forever Fair. Most importantly, the transaction costs of changing allocations disappear. 
 	Users don't need to write a long application to the water authority and wait weeks for a response. Users can trade water simply by going on a website.</p>
 <p>Water authorities would benefit from Forever Fair. 
@@ -56,11 +55,13 @@ The market distinguishes those different periods by different rights and differe
 	Instead, they have a go-to market where they can easily buy water to refill lakes and wetlands.
 	They can buy water with surgical precision, like ensuring stream flows for a couple specific weeks to help fish spawn.</p>
 
-<p>This version of the software is focused on <b>groundwater</b>. The hydrologist sets hard bounds on head at control points around the catchment. These bounds cannot be overridden by high bids.
-	The catchment has control points where head must be constrained, such as to ensure a wetland does not run dry. The model must have a head limit for each control point.
-	You can choose to include some or all wells in the list of control points to make sure those wells have sufficient head. 
-	It all starts with a groundwater model. Standard groundwater software like USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> can create a linear program file in MPS format. 
+<p>This version of the software is focused on <b>groundwater</b>. 
+	Forever Fair all starts with a groundwater model. 
+	Standard groundwater software like USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> can create a linear program file in MPS format. 
 	This MPS file includes the response matrix and head constraints, which specifies the main structure of the auction clearing model. 
+	The hydrologist sets hard bounds on head at control points around the catchment, such as to ensure a wetland does not run dry.
+	The model has a head limit for each control point. These bounds cannot be overridden by high bids.
+	The hydrologist can include wells in the list of control points to make sure those wells have sufficient head.	
 	The hydrologist is responsible for ensuring the validity of the response matrix.</p>
 
 <p><b>Timing assumption:</b> the response matrix is treated as calendar-independent. Period 1 in the response matrix is always the first pumping period of the groundwater model. Auction code remaps those model periods onto each auction's current calendar dates.</p>
@@ -140,7 +141,7 @@ The market distinguishes those different periods by different rights and differe
 			<tr><td>Piggy's Stream, 3 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.015 m/m^3</td><td>&ndash;2*0.015 = &ndash;0.03 meters</td><td>&ndash;0.03 meters</td></tr>
 	</tr></table>
 
-<p>The scaling problem is at its worst when the new market is implemented. It occurs to a much lesser degree when the forecast of inflows changes.
+<p>The scaling problem is most critical when the new market is implemented. It occurs to a much lesser degree when the forecast of inflows changes.
 	It will occur with new data about the catchment. And it will occur when the desired environmental flows change.
 	In short, the auction manager should scale users' quota when the smart market begins and whenever the hydrologist uploads new hydrological head data.</p>
 

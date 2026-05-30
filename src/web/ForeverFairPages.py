@@ -137,20 +137,23 @@ def doc_programmer(request: Request):
 
 @app.get("/auctionmanager", response_class=HTMLResponse)
 def doc_auctionmanager(request: Request):
+	bidding_periods = ffdata.get_number_of_bidding_periods()
 	next_auction = ffdata.get_next_auction_info()
 	if next_auction is None:
-		AuctionController.create_auction(ffdata.db_path)
-		next_auction = ffdata.get_next_auction_info()
-
-	next_real_bid_count, next_default_bid_count = ffdata.get_bid_count(next_auction["auction_id"])
+		auctions = ffdata.list_auctions()
+		next_auction_id = max((int(auction["auction_id"]) for auction in auctions), default=0) + 1
+		if next_auction_id <= bidding_periods:
+			AuctionController.create_auction(ffdata.db_path)
+			next_auction = ffdata.get_next_auction_info()
+	auctions = ffdata.list_auctions()
+	remaining_auctions = ffdata.get_remaining_auctions_for_auction(int(next_auction["auction_id"])) if next_auction is not None else 0
+	next_real_bid_count, next_default_bid_count = ffdata.get_bid_count(next_auction["auction_id"]) if next_auction is not None else (0, 0)
 	period_length_hours = ffdata.latest_period_length_hours()
-	bidding_periods = ffdata.get_number_of_bidding_periods()
 	now_dt = ffdata.the_time_at_the_tone_is()
 	close_dt, default_first, default_last = ffdata.get_auction_close_first_last_dates(now_dt, period_length_hours or 168, bidding_periods)
 
 	response_period_count = ffdata.response_matrix_period_count()
-	auctions = ffdata.list_auctions()
-	context: dict[str, Any] = {"auction": next_auction, "auctions": auctions, "period_length_hours": period_length_hours, "response_period_count": response_period_count, "bidding_periods": bidding_periods, "next_auction_id": next_auction["auction_id"], "next_real_bid_count": next_real_bid_count, "next_default_bid_count": next_default_bid_count,}
+	context: dict[str, Any] = {"auction": next_auction, "auctions": auctions, "period_length_hours": period_length_hours, "response_period_count": response_period_count, "bidding_periods": bidding_periods, "remaining_auctions": remaining_auctions, "next_auction_id": next_auction["auction_id"] if next_auction is not None else "none", "next_real_bid_count": next_real_bid_count, "next_default_bid_count": next_default_bid_count,}
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context["now"] = now_dt.isoformat(timespec="minutes")
@@ -248,6 +251,9 @@ async def manager_run_auction(request: Request):
 		form = await request.form()
 		auction_id = int(str(form["auction_id"]).strip())
 	except (ValueError, KeyError): return JSONResponse({"ok": False, "message": "Error: Missing or invalid auction_id"}, status_code=400)
+	if ffdata.get_remaining_auctions_for_auction(auction_id) <= 0:
+		if request.headers["x-requested-with"] == "fetch": return JSONResponse({"ok": False, "message": "Error: No auctions remain in this schedule."}, status_code=400)
+		return _flash_redirect("/auctionmanager", "Error: No auctions remain in this schedule.")
 	
 	# Guard: do not run an auction that has already closed by time.
 	target = next((a for a in ffdata.list_auctions() if a["auction_id"] == auction_id), None)

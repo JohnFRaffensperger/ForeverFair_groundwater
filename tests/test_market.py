@@ -4,6 +4,7 @@
 
 import sqlite3
 from pathlib import Path
+import pytest
 from AuctionController import create_auction, runCurrentAuction
 import SetupForeverFairDB
 from ForeverFairData import ForeverFairData
@@ -34,7 +35,7 @@ def _seed_auction_id(foreverFairData_instance: ForeverFairData) -> int:
 
 def _first_period_trader_well(foreverFairData_instance: ForeverFairData, auction_id: int) -> tuple[int, int, int]:
 	auction = foreverFairData_instance.get_auction_info(auction_id)
-	period_key = auction.periods[0]["id"]
+	period_key = auction["periods"][0]["id"]
 	for trader in foreverFairData_instance.list_of_traders():
 		wells = foreverFairData_instance.get_trader_wells(trader["id"])
 		if wells:
@@ -65,6 +66,16 @@ def test_setup_and_reset_auction_data(tmp_path):
 
 	reset_data = _make_repo(tmp_path / "reset")
 	assert len(reset_data.list_auctions()) == initial_count
+
+def test_auction_creation_stops_after_schedule_limit(tmp_path):
+	foreverFairData_instance = _make_repo(tmp_path)
+	with foreverFairData_instance.connect_to_db() as conn:
+		conn.execute("UPDATE Catchment_info SET integer_value=1 WHERE meta_key='num_bidding_periods'")
+	assert len(foreverFairData_instance.list_auctions()) == 1
+	assert foreverFairData_instance.get_remaining_auctions_for_auction(1) == 1
+	assert foreverFairData_instance.get_remaining_auctions_for_auction(2) == 0
+	with pytest.raises(ValueError, match="No auctions remain in this schedule."):
+		create_auction(foreverFairData_instance.db_path)
 
 def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
 	db_path = tmp_path / "demo" / "foreverfair.db"
@@ -103,7 +114,7 @@ def test_multistep_bid_creates_multiple_lp_variables(tmp_path):
 	period_key, _, well_id = _first_period_trader_well(foreverFairData_instance, auction_id)
 
 	first_step = foreverFairData_instance.add_bid(auction_id=auction_id, well_id=well_id, period_id=period_key, quantity=6.0, price=20.0, bid_steps=[(6.0, 20.0), (4.0, 14.0), (2.0, 9.0)],)
-	base_id = first_step.id[:-3]  # strip trailing "-s1"
+	base_id = first_step["id"][:-3]  # strip trailing "-s1"
 	expected_ids = {f"{base_id}-s1", f"{base_id}-s2", f"{base_id}-s3"}
 
 	rows = foreverFairData_instance.get_bids(auction_id)

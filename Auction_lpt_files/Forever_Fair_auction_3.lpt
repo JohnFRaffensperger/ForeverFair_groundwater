@@ -1,0 +1,50 @@
+\* Forever_Fair_clearing_model *\
+Maximize
+OBJ: bidwtb_1_1_1 + 2 bidwtb_1_1_2 + 4 bidwtb_1_1_3 + bidwtb_1_2_1
+ + 2 bidwtb_1_2_2 + 4 bidwtb_1_2_3 + bidwtb_2_1_1 + 2 bidwtb_2_1_2
+ + 4 bidwtb_2_1_3 + bidwtb_2_2_1 + 2 bidwtb_2_2_2 + 4 bidwtb_2_2_3
+ + bidwtb_3_1_1 + 2 bidwtb_3_1_2 + 4 bidwtb_3_1_3 + bidwtb_3_2_1
+ + 1.8 bidwtb_3_2_2 + 4 bidwtb_3_2_3
+Subject To
+cp_1_1: 3 qty_1_1 + 2 qty_2_1 + qty_3_1 <= 7.266666668
+cp_1_2: 2.1 qty_1_1 + 3 qty_1_2 + 1.4 qty_2_1 + 2 qty_2_2 + 0.7 qty_3_1
+ + qty_3_2 <= 11.33333333
+cp_1_3: 1.4 qty_1_1 + 2.1 qty_1_2 + qty_2_1 + 1.4 qty_2_2 + 0.5 qty_3_1
+ + 0.7 qty_3_2 <= 14.366666672
+cp_2_1: 2 qty_1_1 + 2 qty_2_1 + 0.7 qty_3_1 <= 5.833333335
+cp_2_2: qty_1_1 + 2 qty_1_2 + qty_2_1 + 2 qty_2_2 + 0.35 qty_3_1 + 0.7 qty_3_2
+ <= 8.7500000025
+cp_2_3: 0.5 qty_1_1 + qty_1_2 + 0.5 qty_2_1 + qty_2_2 + 0.2 qty_3_1
+ + 0.35 qty_3_2 <= 10.7266666647
+qtywt_1_1: - bidwtb_1_1_1 - bidwtb_1_1_2 - bidwtb_1_1_3 + qty_1_1 = 0
+qtywt_1_2: - bidwtb_1_2_1 - bidwtb_1_2_2 - bidwtb_1_2_3 + qty_1_2 = 0
+qtywt_2_1: - bidwtb_2_1_1 - bidwtb_2_1_2 - bidwtb_2_1_3 + qty_2_1 = 0
+qtywt_2_2: - bidwtb_2_2_1 - bidwtb_2_2_2 - bidwtb_2_2_3 + qty_2_2 = 0
+qtywt_3_1: - bidwtb_3_1_1 - bidwtb_3_1_2 - bidwtb_3_1_3 + qty_3_1 = 0
+qtywt_3_2: - bidwtb_3_2_1 - bidwtb_3_2_2 - bidwtb_3_2_3 + qty_3_2 = 0
+Bounds
+ bidwtb_1_1_1 <= 3.3333333
+ bidwtb_1_1_2 <= 3.3333333
+ bidwtb_1_1_3 <= 3.3333333
+ bidwtb_1_2_1 <= 3.3333333
+ bidwtb_1_2_2 <= 3.3333333
+ bidwtb_1_2_3 <= 3.3333333
+ bidwtb_2_1_1 <= 3.3333333
+ bidwtb_2_1_2 <= 3.3333333
+ bidwtb_2_1_3 <= 3.3333333
+ bidwtb_2_2_1 <= 3.3333333
+ bidwtb_2_2_2 <= 3.3333333
+ bidwtb_2_2_3 <= 3.3333333
+ bidwtb_3_1_1 <= 3.3333333
+ bidwtb_3_1_2 <= 3.3333333
+ bidwtb_3_1_3 <= 3.3333333
+ bidwtb_3_2_1 <= 3.3333333
+ bidwtb_3_2_2 <= 3.3333333
+ bidwtb_3_2_3 <= 3.3333333
+ qty_1_1 free
+ qty_1_2 free
+ qty_2_1 free
+ qty_2_2 free
+ qty_3_1 free
+ qty_3_2 free
+End

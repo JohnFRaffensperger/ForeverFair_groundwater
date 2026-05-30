@@ -95,6 +95,8 @@ class ForeverFairData:
 		period_length_hours = self.latest_period_length_hours()
 		with self.connect_to_db() as conn:
 			next_auction_id = int(conn.execute("SELECT COALESCE(MAX(auction_id), 0) + 1 FROM auctions").fetchone()[0])
+			if next_auction_id > self.get_number_of_bidding_periods():
+				raise ValueError("No auctions remain in this schedule.")
 			bidding_periods = self.get_bidding_periods_for_auction(next_auction_id)
 			close_dt, first_take_dt, last_take_dt = self.get_auction_close_first_last_dates(now_dt, period_length_hours, bidding_periods)
 			cursor = conn.execute("INSERT INTO auctions(status, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, auction_type) VALUES ('OPEN', ?, ?, ?, ?, ?, ?)", (now_dt.isoformat(timespec="minutes"), close_dt.isoformat(timespec="minutes"), first_take_dt.isoformat(timespec="minutes"), last_take_dt.isoformat(timespec="minutes"), period_length_hours, auction_type),)
@@ -124,6 +126,9 @@ class ForeverFairData:
 		window = timedelta(hours=period_length_hours * bidding_periods) - timedelta(minutes=1)
 		last_take_dt = first_take_dt + window
 		return close_dt, first_take_dt, last_take_dt
+
+	def get_remaining_auctions_for_auction(self, auction_id: int) -> int:
+		return max(0, self.get_number_of_bidding_periods() - auction_id + 1)
 
 	def get_bidding_periods_for_auction(self, auction_id: int) -> int:
 		return max(1, self.get_number_of_bidding_periods() - max(0, auction_id - 1))
@@ -165,7 +170,7 @@ class ForeverFairData:
 
 		return period_maps
 
-	def get_period_maps(self, auction_id: int) -> dict[str, Any]:
+	def get_auction_calendar(self, auction_id: int) -> dict[str, Any]:
 		return self._get_period_maps(auction_id)
 
 	def get_auction_effect_periods(self, auction_id: int) -> list[int]:
@@ -220,7 +225,7 @@ class ForeverFairData:
 			rows = conn.execute("SELECT auction_id, closed_date FROM auctions WHERE status='OPEN' ORDER BY created_date DESC").fetchall()
 			return [dict(row) for row in rows]
 
-	# UNUSED
+	# TODO: UNUSED?
 	def make_auction_final(self) -> int:
 		next_auction = self.get_next_auction_info()
 		if next_auction is None: raise ValueError("No open auction available")
@@ -229,7 +234,7 @@ class ForeverFairData:
 			conn.execute("UPDATE auctions SET auction_type='final' WHERE auction_id=?", (auction_id,))
 		return auction_id
 
-	# UNUSED
+	# TODO: UNUSED?
 	def make_auction_tentative(self) -> int:
 		next_auction = self.get_next_auction_info()
 		if next_auction is None: raise ValueError("No open auction available")
