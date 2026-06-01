@@ -19,14 +19,14 @@ SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, text_value TEXT, integer_value INTEGER);
 CREATE TABLE IF NOT EXISTS control_points (control_point_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL);
 CREATE TABLE IF NOT EXISTS aquifer_head_limits (control_point_event_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, effect_date TEXT, upload_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, license_demand REAL, FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
-CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id INTEGER NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, factor_value REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id INTEGER NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, response REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT);
 CREATE TABLE IF NOT EXISTS wells (well_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, trader_id INTEGER, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id));
 
 CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_type TEXT, created_date TEXT NOT NULL, closed_date TEXT, status TEXT NOT NULL, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, solve_status TEXT, objective_value REAL, auction_revenue REAL);
-CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, committed_head_auction_start REAL, committed_head_auction_end REAL, planned_head_auction_start REAL, planned_head_auction_end REAL, slack REAL, dual_price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
+CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, auction_id INTEGER, effect_date TEXT, committed_head_auction_start REAL, committed_head_auction_end REAL, committed_allowable_head_change REAL, planned_head_auction_start REAL, planned_head_auction_end REAL, slack REAL, dual_price REAL, alpha REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS well_license (license_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, well_id INTEGER, bid_period INTEGER, license_quantity REAL, license_date TEXT);
-CREATE TABLE IF NOT EXISTS well_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, auction_id INTEGER, well_id INTEGER, quota_auction_start REAL, quota_adjusted REAL, quota_auction_end REAL, price REAL, take_date TEXT);
+CREATE TABLE IF NOT EXISTS well_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id INTEGER, trader_id INTEGER, well_id INTEGER, take_date TEXT, quota_auction_start REAL, quota_scaled_start REAL, quota_auction_end REAL, price REAL);
 CREATE TABLE IF NOT EXISTS well_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, pumping_date TEXT, expiry_date TEXT, is_bid_default INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_control_point_effect_date ON aquifer_head_limits(control_point_id, effect_date);
 CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_effect_date ON aquifer_head_limits(effect_date);
@@ -46,146 +46,6 @@ def create_empty_db(db_path: Path) -> None:
 	save_catchment_info(conn, "Rights_policy", "Quota_scaled") # or "Auction_manager_pays" or "Users_pay"
 	conn.commit()
 	conn.close()
-
-def create_demonstration_db(db_path: Path, lp_path: Path | None = None, period_length_hours: int = 168) -> dict[str, Any]:
-	"""Create a fresh demonstration DB matching tests/test.txt scenario values.
-	3 traders A, B, and C, each with a well, i.e., well_A, well_B, and well_C, each with initial license of 5.
-	2 control points, Coast and Stream.
-
-	Response matrix base vectors (pumping period 1, effect periods 1..5)
-			period  	1		2 		3	 	4		5
-	well_A to Coast: 	-3.0	-2.1	-1.4	-1.0	-0.5
-	well_B to Coast: 	-2.0	-1.4	-1.0	-0.7	-0.5
-	well_C to Coast: 	-1.0	-0.7	-0.5	-0.3	-0.2
-	well_A to Stream: 	-2.0	-1.0	-0.5	-0.25	-0.13
-	well_B to Stream: 	-2.0	-1.0	-0.5	-0.25	-0.12
-	well_C to Stream: 	-0.7	-0.35	-0.2	-0.1	0.0
-
-	Control point	Now		Lower limit
-	Coast			100		80
-	Stream			120		90
-	"""
-	_ = lp_path
-
-	# Create the database.
-	if db_path.exists(): delete_db(db_path)
-	create_empty_db(db_path)
-	conn = sqlite3.connect(db_path)
-	upload_date = datetime.now().isoformat(timespec="minutes")
-
-	# Add traders, wells, control points.
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (1, 'A','A','A')")
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (2, 'B','B','B')")
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (3, 'C','C','C')")
-
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (1, 'well_A', 1)")
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (2, 'well_B', 2)")
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (3, 'well_C', 3)")
-
-	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (1, 'Coast')")
-	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (2, 'Stream')")
-
-	# Add the response matrix.
-	conn.execute("DELETE FROM response_matrix")
-	# Base vectors for pumping period 1 with effect periods 1..5.
-	# For pumping periods 2..4, shift right by (pumping_period-1); overflow drops off.
-	# Store values as negative response coefficients.
-	base_response_vectors: dict[tuple[int, int], list[float]] = {
-		(1, 1): [-3.0, -2.1, -1.4, -1.0, -0.5],
-		(2, 1): [-2.0, -1.4, -1.0, -0.7, -0.5],
-		(3, 1): [-1.0, -0.7, -0.5, -0.3, -0.2],
-		(1, 2): [-2.0, -1.0, -0.5, -0.25, -0.12],
-		(2, 2): [-2.0, -1.0, -0.5, -0.25, -0.12],
-		(3, 2): [-0.7, -0.35, -0.2, -0.1, 0.0],}
-	response_rows: list[tuple[int, int, int, int, float]] = []
-	num_pumping_periods = 4
-	num_effect_periods = 5
-
-	for pumping_period in range(1, num_pumping_periods + 1):
-		shift = pumping_period - 1
-		for (well_id, control_point_id), vector in base_response_vectors.items():
-			for effect_period in range(1, num_effect_periods + 1):
-				idx = effect_period - shift - 1
-				if idx < 0 or idx >= len(vector): continue
-				factor_value = vector[idx]
-				if 0.0 == factor_value: continue
-				response_rows.append((well_id, control_point_id, pumping_period, effect_period, factor_value))
-	conn.executemany("INSERT INTO response_matrix(well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?,?,?,?,?)", response_rows)
-
-	# Add meta data.
-	synthetic_current_date = "2030-01-04T16:00"
-	save_catchment_info(conn, "synthetic_current_date", synthetic_current_date)
-	save_catchment_info(conn, "period_length_hours", int(period_length_hours))
-	save_catchment_info(conn, "num_bidding_periods", num_pumping_periods)
-	save_catchment_info(conn, "gwm_num_wells", 3)
-	save_catchment_info(conn, "gwm_num_pump_periods", num_pumping_periods)
-	save_catchment_info(conn, "gwm_num_control_points", 2)
-	save_catchment_info(conn, "gwm_num_control_periods", num_effect_periods)
-
-	base = datetime.fromisoformat(synthetic_current_date)
-	days_ahead = (0 - base.weekday()) % 7
-	start_dt = (base + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
-	if start_dt <= base: start_dt += timedelta(days=7)
-	step = timedelta(hours=int(period_length_hours))
-	pumping_date = [(start_dt + i * step).isoformat(timespec="minutes") for i in range(num_effect_periods)]
-
-	# Add head limits.
-	conn.execute("DELETE FROM aquifer_head_limits")
-	aquifer_rows: list[tuple[int, str, str, float, float]] = []
-	for effect_date in pumping_date:
-		aquifer_rows.append((1, effect_date, upload_date, 100.0, 80.0))
-		aquifer_rows.append((2, effect_date, upload_date, 120.0, 108.0))
-	conn.executemany ("INSERT INTO aquifer_head_limits(control_point_id, effect_date, upload_date, actual_start_head, minimum_head) VALUES (?,?,?,?,?)", aquifer_rows,)
-
-	# Add well license and bids.
-	conn.execute("DELETE FROM well_license")
-	license_rows: list[tuple[int, int, int, float, None]] = []
-	for bid_period in range(1, 5): # All 3 wells start with license of 5 m^3 per period.
-		license_rows.append((1, 1, bid_period, 5.0, None))
-		license_rows.append((2, 2, bid_period, 5.0, None))
-		license_rows.append((3, 3, bid_period, 5.0, None))
-	conn.executemany("INSERT INTO well_license(trader_id, well_id, bid_period, license_quantity, license_date) VALUES (?,?,?,?,?)", license_rows,)
-
-	conn.execute("DELETE FROM well_bids")
-	bid_rows: list[tuple[Any, ...]] = []
-	#        well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default,
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	# Changing step 2 from $2 to $1.8 to eliminate a dual optima.
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 1.8, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	conn.executemany("INSERT INTO well_bids(well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", bid_rows)
-
-	conn.commit()
-	conn.close()
-	return {"db_path": str(db_path), "traders_inserted": 3, "wells_inserted": 3, "control_points_inserted": 2, "response_matrix_inserted": len(response_rows),
-		"aquifer_head_limits_inserted": len(aquifer_rows), "well_license_inserted": len(license_rows), "well_bids_inserted": len(bid_rows), }
-
-def setup_demonstration() -> Path:
-	"""Create a demonstration DB for the tests/test.txt scenario.
-	In your directory ...\ForeverFair2026, edit your ".env" file to read:
-		FOREVER_FAIR_CATCHMENT=Tiny_demonstration
-	"""
-	
-	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tiny_demonstration"
-	db_path = data_dir / "foreverfair.db"
-	summary = create_demonstration_db(db_path, period_length_hours=168)
-	import AuctionController
-	auction_id = AuctionController.set_up_auction_system(db_path)
-	print(f"Created demonstration db: {db_path}")
-	print(summary)
-	print(f"Set up: first auction_id={auction_id}")
-	return db_path
 
 # Populates database status table on Programmer.html.
 def db_status(db_path: Path) -> dict[str, Any]:
@@ -685,11 +545,18 @@ def get_mps_indices(text: str) -> tuple[int, int]:
 
 	return max_well_idx, max_row_idx
 
-def Modify_license_for_your_scenario(raw_license: float, well_id: int, bid_period: int) -> float:
-	"""Scale raw per-well license for scenario analysis before writing to well_license.
-	"""
-	Fudge = 0.0 # Should have large auction revenue. Fix function create_default_bid in BiddingController so you don't have zero bids.
-	return raw_license * Fudge
+# A responsible hydrologist should censor the bad data. The Tianqiao data has dodgy response matrix values for lags over 22 periods.
+# Those values are relatively big and positive. In fact, the largest response matrix value is 9.533e-0.7 with lag 50 periods, absurd. 
+# 	select (effect_period - pumping_period) as lag, max(response) from response_matrix
+# Here, I clip response values for lags of 23+ weeks to the largest response over 22 weeks. Now the largest lag is 4.377e-0.7 with lag 1. Still weird.
+# Anyways, this code lets you censor the response matrix. You should really fix your MODFLOW model, though.
+RESPONSE_STATS: dict[str, float] = {"max": 0.0}
+def reset_response_stats() -> None: RESPONSE_STATS["max"] = 0.0
+def censor_the_response_matrix(well_id: int, control_point_id: int, pumping_period: int, effect_period: int, response: float) -> float:
+	if effect_period - pumping_period <= 22: 
+		RESPONSE_STATS["max"] = max (RESPONSE_STATS["max"], response)
+	else: response = min (response, RESPONSE_STATS["max"])
+	return response
 
 def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, Any]:
 	"""Parse a GWM2K .mps file; insert response_matrix, aquifer_head_limits, and well_license.
@@ -710,6 +577,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 	conn.execute("PRAGMA foreign_keys = OFF")
 	imported_at = datetime.now().isoformat()
 	conn.execute("DELETE FROM well_license")
+	reset_response_stats()
 
 	max_well_idx, max_row_idx = get_mps_indices(text)
 	num_wells = get_catchment_info(conn, "gwm_num_wells")
@@ -809,7 +677,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 				cp_num, effect_period = mps_control_pt_decoding(row_token, num_control_periods)
 				well_id = int(well_num)
 				cp_id = _ensure_cp_id(cp_num)
-				conn.execute("INSERT OR REPLACE INTO response_matrix (well_id, control_point_id, pumping_period, effect_period, factor_value) VALUES (?,?,?,?,?)", (well_id, cp_id, pump_period, effect_period, coef))
+				response = censor_the_response_matrix(well_id, cp_id, pump_period, effect_period, coef)
+				conn.execute("INSERT OR REPLACE INTO response_matrix (well_id, control_point_id, pumping_period, effect_period, response) VALUES (?,?,?,?,?)", (well_id, cp_id, pump_period, effect_period, response))
 				rf_count += 1
 			except Exception as exc:
 				errors.append(f"COLUMNS {col_token} row {row_token}: {exc}")
@@ -894,8 +763,164 @@ def missing_import_data_report(db_path: Path) -> dict[str, Any]:
 	finally:
 		conn.close()
 
+# Demonstrations -----------------------------------------------------
+
+def Modify_license_for_your_scenario(raw_license: float, well_id: int, bid_period: int) -> float:
+	"""Scale raw per-well license for scenario analysis before writing to well_license.
+	"""
+	Fudge = 1.0
+	return raw_license * Fudge
+
+def create_tiny_demonstration (db_path: Path, lp_path: Path | None = None, period_length_hours: int = 168) -> dict[str, Any]:
+	"""Create a fresh demonstration DB matching tests/test.txt scenario values.
+	3 traders A, B, and C, each with a well, i.e., well_A, well_B, and well_C, each with initial license of 5.
+	2 control points, Coast and Stream.
+
+	Response matrix base vectors (pumping period 1, effect periods 1..5)
+			period  	1		2 		3	 	4		5
+	well_A to Coast: 	-3.0	-2.1	-1.4	-1.0	-0.5
+	well_B to Coast: 	-2.0	-1.4	-1.0	-0.7	-0.5
+	well_C to Coast: 	-1.0	-0.7	-0.5	-0.3	-0.2
+	well_A to Stream: 	-2.0	-1.0	-0.5	-0.25	-0.13
+	well_B to Stream: 	-2.0	-1.0	-0.5	-0.25	-0.12
+	well_C to Stream: 	-0.7	-0.35	-0.2	-0.1	0.0
+
+	Control point	Now		Lower limit
+	Coast			100		80
+	Stream			120		90
+	"""
+	_ = lp_path
+
+	# Create the database.
+	if db_path.exists(): delete_db(db_path)
+	create_empty_db(db_path)
+	conn = sqlite3.connect(db_path)
+	upload_date = datetime.now().isoformat(timespec="minutes")
+
+	# Add traders, wells, control points.
+	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (1, 'A','A','A')")
+	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (2, 'B','B','B')")
+	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (3, 'C','C','C')")
+
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (1, 'well_A', 1)")
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (2, 'well_B', 2)")
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (3, 'well_C', 3)")
+
+	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (1, 'Coast')")
+	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (2, 'Stream')")
+
+	# Add the response matrix.
+	conn.execute("DELETE FROM response_matrix")
+	# Base vectors for pumping period 1 with effect periods 1..5.
+	# For pumping periods 2..4, shift right by (pumping_period-1); overflow drops off.
+	# Store values as negative response coefficients.
+	base_response_vectors: dict[tuple[int, int], list[float]] = {
+		(1, 1): [-3.0, -2.1, -1.4, -1.0, -0.5],
+		(2, 1): [-2.0, -1.4, -1.0, -0.7, -0.5],
+		(3, 1): [-1.0, -0.7, -0.5, -0.3, -0.2],
+		(1, 2): [-2.0, -1.0, -0.5, -0.25, -0.12],
+		(2, 2): [-2.0, -1.0, -0.5, -0.25, -0.12],
+		(3, 2): [-0.7, -0.35, -0.2, -0.1, 0.0],}
+	response_rows: list[tuple[int, int, int, int, float]] = []
+	num_pumping_periods = 4
+	num_effect_periods = 5
+
+	for pumping_period in range(1, num_pumping_periods + 1):
+		shift = pumping_period - 1
+		for (well_id, control_point_id), vector in base_response_vectors.items():
+			for effect_period in range(1, num_effect_periods + 1):
+				idx = effect_period - shift - 1
+				if idx < 0 or idx >= len(vector): continue
+				response = vector[idx]
+				if 0.0 == response: continue
+				response_rows.append((well_id, control_point_id, pumping_period, effect_period, response))
+	conn.executemany("INSERT INTO response_matrix(well_id, control_point_id, pumping_period, effect_period, response) VALUES (?,?,?,?,?)", response_rows)
+
+	# Add meta data.
+	synthetic_current_date = "2030-01-04T16:00"
+	save_catchment_info(conn, "synthetic_current_date", synthetic_current_date)
+	save_catchment_info(conn, "period_length_hours", int(period_length_hours))
+	save_catchment_info(conn, "num_bidding_periods", num_pumping_periods)
+	save_catchment_info(conn, "gwm_num_wells", 3)
+	save_catchment_info(conn, "gwm_num_pump_periods", num_pumping_periods)
+	save_catchment_info(conn, "gwm_num_control_points", 2)
+	save_catchment_info(conn, "gwm_num_control_periods", num_effect_periods)
+
+	base = datetime.fromisoformat(synthetic_current_date)
+	days_ahead = (0 - base.weekday()) % 7
+	start_dt = (base + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
+	if start_dt <= base: start_dt += timedelta(days=7)
+	step = timedelta(hours=int(period_length_hours))
+	pumping_date = [(start_dt + i * step).isoformat(timespec="minutes") for i in range(num_effect_periods)]
+
+	# Add head limits.
+	conn.execute("DELETE FROM aquifer_head_limits")
+	aquifer_rows: list[tuple[int, str, str, float, float, float]] = []
+	for effect_date in pumping_date:
+		aquifer_rows.append((1, effect_date, upload_date, 100.0, 80.0, 80.0 - 100.0))
+		aquifer_rows.append((2, effect_date, upload_date, 120.0, 108.0, 108.0 - 120.0))
+	conn.executemany ("INSERT INTO aquifer_head_limits(control_point_id, effect_date, upload_date, actual_start_head, minimum_head, allowable_head_change) VALUES (?,?,?,?,?,?)", aquifer_rows,)
+
+	# Assert consistency for demonstration data: stored allowable_head_change must match minimum_head - actual_start_head.
+	row = conn.execute("""SELECT COUNT(*) FROM aquifer_head_limits
+		WHERE ABS(COALESCE(allowable_head_change, 0.0) - (minimum_head - actual_start_head)) > 1.0e-9""").fetchone()
+	assert row is not None and int(row[0]) == 0, "Tiny demonstration aquifer_head_limits has inconsistent allowable_head_change values"
+
+	# Add well license and bids.
+	conn.execute("DELETE FROM well_license")
+	license_rows: list[tuple[int, int, int, float, None]] = []
+	for bid_period in range(1, 5): # All 3 wells start with license of 5 m^3 per period.
+		license_rows.append((1, 1, bid_period, 5.0, None))
+		license_rows.append((2, 2, bid_period, 5.0, None))
+		license_rows.append((3, 3, bid_period, 5.0, None))
+	conn.executemany("INSERT INTO well_license(trader_id, well_id, bid_period, license_quantity, license_date) VALUES (?,?,?,?,?)", license_rows,)
+
+	conn.execute("DELETE FROM well_bids")
+	bid_rows: list[tuple[Any, ...]] = []
+	#        well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default,
+	bid_rows.append((1, 1, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, 1, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, 1, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, 1, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+
+	bid_rows.append((2, 2, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, 2, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, 2, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, 2, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+
+	bid_rows.append((3, 3, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, 3, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, 3, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	# Changing step 2 from $2 to $1.8 to eliminate a dual optima.
+	bid_rows.append((3, 3, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 1.8, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	conn.executemany("INSERT INTO well_bids(well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", bid_rows)
+
+	conn.commit()
+	conn.close()
+	return {"db_path": str(db_path), "traders_inserted": 3, "wells_inserted": 3, "control_points_inserted": 2, "response_matrix_inserted": len(response_rows),
+		"aquifer_head_limits_inserted": len(aquifer_rows), "well_license_inserted": len(license_rows), "well_bids_inserted": len(bid_rows), }
+
+def setup_tiny_demonstration() -> Path:
+	"""Create a demonstration DB for the tests/test.txt scenario.
+	In your directory ../ForeverFair2026, edit your ".env" file to read:
+		FOREVER_FAIR_CATCHMENT=Tiny_demonstration
+	"""
+	
+	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tiny_demonstration"
+	db_path = data_dir / "foreverfair.db"
+	summary = create_tiny_demonstration(db_path, period_length_hours=168)
+	import AuctionController
+	auction_id = AuctionController.set_up_auction_system(db_path)
+	print(f"Created demonstration db: {db_path}")
+	print(summary)
+	print(f"Set up: first auction_id={auction_id}")
+	return db_path
+
 def setup_tianqiao(): # When you don't feel like using Programmer.html.
-	"""Delete foreverfair.db and reload from Tianqiao data files, replicating the Programmer.html workflow."""
+	"""Delete foreverfair.db and reload from Tianqiao data files, replicating the Programmer.html workflow.
+	In your directory ../ForeverFair2026, edit your ".env" file to read:
+		FOREVER_FAIR_CATCHMENT=Tiny_demonstration
+	"""
 	data_dir = Path(__file__).resolve().parents[1] / "Catchment_data" / "Tianqiao"
 	db_path = data_dir / "foreverfair.db"
 	delete_db(db_path)
@@ -924,5 +949,11 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 
 if __name__ == "__main__":
 	# if len(sys.argv) > 1 and sys.argv[1].lower() == "demo":
-	setup_demonstration()
-	# setup_tianqiao()
+
+	# In your directory ../ForeverFair2026, edit your ".env" file to read:
+	# 	FOREVER_FAIR_CATCHMENT=Tiny_demonstration
+	# setup_tiny_demonstration()
+
+	# In your directory ../ForeverFair2026, edit your ".env" file to read:
+	# 	FOREVER_FAIR_CATCHMENT=Tiny_demonstration
+	setup_tianqiao()

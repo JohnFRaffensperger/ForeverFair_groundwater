@@ -17,19 +17,8 @@ def set_up_auction_system(db_path: Path) -> int:
 	auction_id = create_auction(db_path)
 	ffdata.set_control_point_events_for_auction(auction_id)
 	ffdata.set_quota_for_auction(auction_id)
-	ffdata.set_first_auction_adjusted_quota()
+	# ffdata.set_first_auction_adjusted_quota()
 	call_for_bids(ffdata, auction_id)
-		# Should depend on rights policy.
-	# if ffdata.get_rights_policy() == "Quota_scaled": # not "Auction_manager_pays" nor "Users_pay"
-		# estimate quota based on minimum constraint alpha; tell trader "this is an estimate".
-		# Problem is that the database needs a fourth quota: starting quota, estimated scaled start quota, true scaled start quota, end quota.
-		# Unless I can show that the estimated scaled start quota == true scaled start quota.
-		# write estimated quota to quota_scaled
-	# elif traders have zero rights:
-	#		write zero quota.
-	# else (auction manager compensates traders for lost quota) copy license to quota.
-	# End with create first auction.
-	
 	return auction_id
 
 def create_auction(db_path: Path) -> int:
@@ -170,77 +159,139 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 def settle_accounts (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float:
 	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
 	log("In function settle_accounts")
-	
-	revenue = compute_revenue_on_constraint_quota (ffdata, auction_id, debug_log=log)
-	# else:
-	# revenue = compute_revenue_on_well_quota (ffdata, auction_id, debug_log=log)
-	# TODO: if auction_id==1 and rights policy is scaling, 
-	#		convert starting constraint quota to cash-equivalent starting well quota.
-	# Update ending quota and payments.
-	# Update ending constraint aquifer head.
+
+	revenue = 0.0
+	if ffdata.get_rights_policy() == "Quota_scaled": # revenue neutral
+		ffdata.calculate_and_set_constraint_alphas(auction_id)
+		set_quota_scaled_start(ffdata, auction_id, debug_log=log)
+		revenue = compute_revenue_on_constraint_quota (ffdata, auction_id, debug_log=log)
+
+	elif ffdata.get_rights_policy() == "Auction_manager_pays": # likely revenue negative, please please don't do this.
+		# In the first auction of the season, the auction manager reimburses traders for lost quota to bring over-allocation to match the environmental constraints.
+		if 1 == auction_id: revenue = compute_revenue_on_well_quota (ffdata, auction_id, debug_log)
+
+		# If the hydrologist upload new head constraints, the auction manager is not responsible for a change in weather. Quota will get scaled.
+		# If the hydrologist does not upload new head constraints, later auctions should be revenue neutral anyway.
+		else: 
+			ffdata.calculate_and_set_constraint_alphas(auction_id)
+			set_quota_scaled_start(ffdata, auction_id, debug_log=log)
+			revenue = compute_revenue_on_constraint_quota (ffdata, auction_id, debug_log=log) 
+
+	elif ffdata.get_rights_policy() == "Users_pay": # revenue positive, great policy but users hate it.
+		# Hydrologist and programmer are responsible for loading initial rights of zero for each well.
+		revenue = compute_revenue_on_well_quota (ffdata, auction_id, debug_log)
+
+	# TODO: Update payments on traders' pages.
 	return revenue
 
-# 3 rights policies. Most important for the first auction of the season.
-# User pays: should be revenue positive for the first auction.
-# Auction manager pays: negative with overallocation.
-# Auction manager scales: should always be zero. 
+# Especially for auction 1, the auction manager scales quota (or license) to the available water by control point event.
+# The auction manager calculates an alpha for each control point event, then calculates constraint quota for each well.
+# To have this make sense to the traders after auction clearing, the auction manager converts that portfolio of constraint quota
+# to a cash-equivalent well quota called quota_scaled_start. 
+# The auction manager calculates cash settlement based on (quota_scaled_start - quota_auction_end)*well_quota.price for the take_date.
+# Again, this should matter only with a new aquifer head. After a scaling exercise, all future quota_auction_start should equal the quota_scaled_start.
+def set_quota_scaled_start(ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> dict[tuple[int, int], float]:
+	"""Set well_quota.quota_scaled_start using response factors, alpha, and clearing prices."""
+	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
+	log("In function set_quota_scaled_start")
+
+	auction_calendar = ffdata.get_auction_calendar(auction_id)
+	effect_date_to_idx = auction_calendar["effect_iso_to_idx"]
+	response_factors = ffdata.get_response_factors_for_auction(auction_id)
+	quota_auction_start = ffdata.get_quota(auction_id)
+	dual_prices = ffdata.get_well_dual_prices(auction_id)
+	alpha: dict[tuple[int, int], float] = {}
+	cp_dual_prices: dict[tuple[int, int], float] = {}
+	for cpe in ffdata.get_control_point_events(auction_id):
+		if cpe["alpha"] is None: continue
+		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
+		control_point_id = int(cpe["control_point_id"])
+		alpha[(effect_period, control_point_id)] = float(cpe["alpha"])
+		cp_dual_prices[(effect_period, control_point_id)] = float(cpe["dual_price"] or 0.0)
+
+	quota_scaled_start: dict[tuple[int, int], float] = {}
+	for (well_id, pumping_period), start_quota in quota_auction_start.items():
+		scaled_demand = 0.0
+		for (effect_period, control_point_id), alpha_value in alpha.items():
+			response = response_factors.get((well_id, pumping_period, effect_period, control_point_id))
+			if response is None: continue
+			constraint_dual_price = cp_dual_prices[(effect_period, control_point_id)]
+			# Typically, but not always, start_quota >= 0, response <= 0, alpha >= 0, constraint_dual_price <= 0. Scaled_demand should be positive.
+			# Tianqiao has positive response factors and negative alpha_values.
+			scaled_demand += start_quota * response * alpha_value * constraint_dual_price
+
+		# Typically, scaled demand < 0 (it is demand for change in head) and dual_price < 0, so quota_scaled_start > 0.
+		# But this is not guaranteed. Sometimes response_factors > 0, so demand > 0. Worse with large alpha.
+		dual_price = dual_prices[(well_id, pumping_period)]
+		quota_scaled_start[(well_id, pumping_period)] = 0.0 if 0.0 == dual_price else scaled_demand / dual_price
+
+	ffdata.set_quota_scaled_start_bulk(auction_id, quota_scaled_start)
+	return quota_scaled_start
+
 def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float:
 	"""Compute revenue from constraint quota bought and sold.
+	
 	Revenue = sum over all causal response factors (pumping_period <= effect_period) of:
 	    dual_price(k,t) * F(w,u,t,k) * allowed_change(k,t) * (q_start(w,u) - q_end(w,u)) / denom_start(k,t)
 		where denom_start(k,t) = sum_{v,r: r<=t} q_start(v,r) * F(v,r,t,k).
+	SQL like SUM(-1.0 * rm.response * cpe.dual_price * (q.quota_end - cpe.alpha * q.quota_start)), 0.0) AS revenue FROM response_matrix.
 	"""
 	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
 	log("In function compute_revenue_on_constraint_quota")
+	return ffdata.compute_constraint_quota_revenue_sql(auction_id)
 
-	# Build auction-scoped indices over the active timeline: from first pumping period through the last constrained period.
-	auction_calendar = ffdata.get_auction_calendar(auction_id)
-	effect_date_to_idx = auction_calendar["effect_iso_to_idx"]
-	dual_prices: dict[tuple[int, int], float] = {}
-	allowable_drawdown: dict[tuple[int, int], float] = {}
+# Here is an old version of compute_revenue_on_constraint_quota. I'll leave it here for explanation, since Claude's SQL is inscrutable.
+# def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float:
+# 	"""Compute revenue from constraint quota bought and sold.
+# 	Revenue = sum over all causal response factors (pumping_period <= effect_period) of:
+# 	    dual_price(k,t) * F(w,u,t,k) * allowed_change(k,t) * (q_start(w,u) - q_end(w,u)) / denom_start(k,t)
+# 		where denom_start(k,t) = sum_{v,r: r<=t} q_start(v,r) * F(v,r,t,k).
+# 	"""
+# 	log: Callable[[str], None] = debug_log if debug_log is not None else (lambda _message: None)
+# 	log("In function compute_revenue_on_constraint_quota")
 
-	# Retrieve dual prices for control_point_events in this auction.
-	for cpe in ffdata.get_control_point_events(auction_id):
-		if cpe["dual_price"] is None or cpe["allowable_head_change"] is None: continue
-		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
-		control_point_id = int(cpe["control_point_id"])
-		dual_prices[(effect_period, control_point_id)] = float(cpe["dual_price"])
-		allowable_drawdown[(effect_period, control_point_id)] = float(cpe["allowable_head_change"])
+# 	# Build auction-scoped indices over the active timeline: from first pumping period through the last constrained period.
+# 	auction_calendar = ffdata.get_auction_calendar(auction_id)
+# 	effect_date_to_idx = auction_calendar["effect_iso_to_idx"]
+# 	dual_prices: dict[tuple[int, int], float] = {}
 
-	# Quota start/end keys have pumping period indices scoped to the auction.
-	quota_start: dict[tuple[int, int], float] = {}
-	quota_end: dict[tuple[int, int], float] = {}
-	for well_id in ffdata.get_wells():
-		for pumping_period, q1 in ffdata.get_well_start_quota(well_id, auction_id).items(): quota_start[(well_id, pumping_period)] = q1
-		for pumping_period, q2 in ffdata.get_well_end_quota(well_id, auction_id).items(): quota_end[(well_id, pumping_period)] = q2
+# 	# Retrieve dual prices for control_point_events in this auction.
+# 	for cpe in ffdata.get_control_point_events(auction_id):
+# 		if cpe["dual_price"] is None or cpe["allowable_head_change"] is None: continue
+# 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
+# 		control_point_id = int(cpe["control_point_id"])
+# 		dual_prices[(effect_period, control_point_id)] = float(cpe["dual_price"])
 
-	# THIS IS ALPHA. It is (allowable drawdown at control point in effect period)/(total licensed demand on control point in effect period).
-	# Demand is derived from starting quota quantities and the response matrix.
-	alpha: dict[tuple[int, int], float] = {}
-	response_factors = ffdata.get_response_factors_for_auction(auction_id)
-	for effect_period in ffdata.get_auction_effect_periods(auction_id):
-		for control_point_id in ffdata.get_control_point_ids():
-			demand = 0.0 # summing demand over wells and pumping periods for a given effect period and control point.
-			for well_id in ffdata.get_wells():
-				start_quota_by_period = ffdata.get_well_start_quota(well_id, auction_id)
-				for pumping_period, start_quota_quantity in start_quota_by_period.items():
-					if pumping_period <= effect_period:
-						factor_value = response_factors.get((well_id, pumping_period, effect_period, control_point_id))
-						if factor_value is None: continue # We don't assume the response matrix is dense.
-						demand += start_quota_quantity * factor_value
-			alpha[(effect_period, control_point_id)] = 1.0 if 0.0 == demand else allowable_drawdown[(effect_period, control_point_id)] / demand
+# 	# Quota start/end keys have pumping period indices scoped to the auction.
+# 	quota_start = ffdata.get_quota(auction_id)
+# 	quota_end: dict[tuple[int, int], float] = {}
+# 	for well_id in ffdata.get_wells():
+# 		for pumping_period, q2 in ffdata.get_well_end_quota(well_id, auction_id).items(): quota_end[(well_id, pumping_period)] = q2
+
+# 	alpha: dict[tuple[int, int], float] = {}
+# 	for cpe in ffdata.get_control_point_events(auction_id):
+# 		if cpe["alpha"] is None: continue
+# 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
+# 		control_point_id = int(cpe["control_point_id"])
+# 		alpha[(effect_period, control_point_id)] = float(cpe["alpha"])
+
+# 	response_factors = ffdata.get_response_factors_for_auction(auction_id)
 			
-	revenue = 0.0
-	for well_id in ffdata.get_wells():
-		for pumping_period in range(1, len(auction_calendar["pumping_labels"]) + 1):
-			for effect_period in ffdata.get_auction_effect_periods(auction_id):
-				for control_point_id in ffdata.get_control_point_ids():
-					factor_value = response_factors.get((well_id, pumping_period, effect_period, control_point_id))
-					if factor_value is None: continue
-					revenue -= factor_value * dual_prices[(effect_period, control_point_id)] * (quota_end[(well_id, pumping_period)] - alpha[(effect_period, control_point_id)] * quota_start[(well_id, pumping_period)])
-	return revenue
+# 	revenue = 0.0
+# 	for well_id in ffdata.get_wells():
+# 		for pumping_period in range(1, len(auction_calendar["pumping_labels"]) + 1):
+# 			for effect_period in ffdata.get_auction_effect_periods(auction_id):
+# 				for control_point_id in ffdata.get_control_point_ids():
+# 					response = response_factors.get((well_id, pumping_period, effect_period, control_point_id))
+# 					if response is None: continue
+# 					dual_price = dual_prices.get((effect_period, control_point_id))
+# 					if dual_price is None: continue
+# 					alpha_value = alpha.get((effect_period, control_point_id), 1.0)
+# 					start_quota = quota_start.get((well_id, pumping_period), 0.0)
+# 					end_quota = quota_end.get((well_id, pumping_period), 0.0)
+# 					revenue -= response * dual_price * (end_quota - alpha_value * start_quota)
+# 	return revenue
 
-# TODO: Unused. compute_revenue_on_constraint_quota should always work.
 def compute_revenue_on_well_quota (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float:
 	"""Compute revenue from well quota bought and sold.
 	Revenue = sum over wells w and pumping periods t: dual_price(w,t)*(q_end(w,t)- q_start(w,t))

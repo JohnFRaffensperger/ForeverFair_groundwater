@@ -124,14 +124,14 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 	result = tableToHtml(query, optionalFileName="NUL", talk=False, databaseFileName=databaseFileName)
 	print(result[1] if result else [])
 
-# For well_id=1, control_point_id=1, creates a table well_id, take_period, effect_period, quota_auction_start, factor_value, constraint_quota.
+# For well_id=1, control_point_id=1, creates a table well_id, take_period, effect_period, quota_auction_start, response, constraint_quota.
 # tableToHtml("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=0 AND take_date IS NOT NULL)),
 #   effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=0 AND effect_date IS NOT NULL)),
 #   q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
 #   cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
-#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.response) AS total_load FROM response_matrix rm
 #     JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
-# SELECT rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+# SELECT rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.response, q.quota_auction_start * rm.response * cpe.allowable_head_change / denom.total_load AS constraint_quota
 # FROM response_matrix rm
 # JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
 # JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
@@ -147,15 +147,15 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 #
 # constraint_quota formula used in SELECT:
 # constraint_quota(w,u,t,k) = q(w,u) * F(w,u,t,k) * allowable_head_change(t,k) / denom(k,t)
-# where q(w,u)=quota_auction_start, F(w,u,t,k)=response_matrix.factor_value,
+# where q(w,u)=quota_auction_start, F(w,u,t,k)=response_matrix.response,
 # and denom(k,t)=SUM(q(v,r)*F(v,r,t,k)) over all v and r<=t.
 # tableToHtml("""WITH take_date_idx AS (SELECT take_date, ROW_NUMBER() OVER (ORDER BY take_date) AS pumping_period FROM (SELECT DISTINCT take_date FROM well_quota WHERE auction_id=0 AND take_date IS NOT NULL)),
 #   effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=0 AND effect_date IS NOT NULL)),
 #   q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
 # 	cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change, cp.alpha AS alpha_db FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
-#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.response) AS total_load FROM response_matrix rm
 #     JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
-# SELECT rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+# SELECT rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.response, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.response * cpe.allowable_head_change / denom.total_load AS constraint_quota
 # FROM response_matrix rm
 # JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
 # JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
@@ -167,9 +167,9 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 #   effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=0 AND effect_date IS NOT NULL)),
 #   q AS (SELECT wq.well_id, tdi.pumping_period, wq.quota_auction_start FROM well_quota wq JOIN take_date_idx tdi ON tdi.take_date = wq.take_date WHERE wq.auction_id=0),
 # 	cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.allowable_head_change, cp.alpha AS alpha_db FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date = cp.effect_date WHERE cp.auction_id=0),
-#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.factor_value) AS total_load FROM response_matrix rm
+#   denom AS (SELECT rm.control_point_id, rm.effect_period, SUM(q.quota_auction_start * rm.response) AS total_load FROM response_matrix rm
 #     JOIN q ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period WHERE rm.pumping_period <= rm.effect_period GROUP BY rm.control_point_id, rm.effect_period)
-# SELECT cpe.control_point_id, rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.factor_value, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.factor_value * cpe.allowable_head_change / denom.total_load AS constraint_quota
+# SELECT cpe.control_point_id, rm.well_id, rm.pumping_period AS take_period, rm.effect_period, q.quota_auction_start, rm.response, denom.total_load AS denominator, cpe.allowable_head_change / denom.total_load AS alpha_computed, cpe.alpha_db AS alpha_db, q.quota_auction_start * rm.response * cpe.allowable_head_change / denom.total_load AS constraint_quota
 # FROM response_matrix rm
 # JOIN q     ON q.well_id=rm.well_id AND q.pumping_period=rm.pumping_period
 # JOIN cpe   ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period
@@ -179,7 +179,7 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 
 # tableToHtml("""WITH effect_date_idx AS (SELECT effect_date, ROW_NUMBER() OVER (ORDER BY effect_date) AS effect_period FROM (SELECT DISTINCT effect_date FROM control_point_events WHERE auction_id=2)),
 #   cpe AS (SELECT cp.control_point_id, edi.effect_period, cp.dual_price FROM control_point_events cp JOIN effect_date_idx edi ON edi.effect_date=cp.effect_date WHERE cp.auction_id=2),
-#   base AS (SELECT rm.*, rm.factor_value * cpe.dual_price AS factor_x_dual_price
+#   base AS (SELECT rm.*, rm.response * cpe.dual_price AS factor_x_dual_price
 #     FROM response_matrix rm JOIN cpe ON cpe.control_point_id=rm.control_point_id AND cpe.effect_period=rm.effect_period WHERE rm.well_id=1)
 # SELECT well_id, pumping_period, SUM(factor_x_dual_price) AS factor_x_dual_price
 # FROM base GROUP BY well_id, pumping_period""")
@@ -192,7 +192,7 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 #     """).fetchall()
 
 # col_expr = ",\n  ".join(
-#     f"MAX(CASE WHEN control_point_id={cp} AND effect_period={ep} THEN factor_value END) AS cp_{cp}_e_{ep}"
+#     f"MAX(CASE WHEN control_point_id={cp} AND effect_period={ep} THEN response END) AS cp_{cp}_e_{ep}"
 #     for cp, ep in pairs
 # )
 
@@ -207,7 +207,7 @@ def printQueryRows(query: str, databaseFileName: str | Path = DEFAULT_DB_FILE) -
 # """
 
 query = """
-SELECT well_id, control_point_id, pumping_period, effect_period, factor_value
+SELECT well_id, control_point_id, pumping_period, effect_period, response
 FROM response_matrix
 WHERE control_point_id = 1 AND well_id IN (1) and pumping_period = effect_period
 ORDER BY well_id, pumping_period, effect_period

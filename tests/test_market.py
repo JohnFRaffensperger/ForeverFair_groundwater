@@ -79,7 +79,7 @@ def test_auction_creation_stops_after_schedule_limit(tmp_path):
 
 def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
 	db_path = tmp_path / "demo" / "foreverfair.db"
-	summary = SetupForeverFairDB.create_demonstration_db(db_path, period_length_hours=168)
+	summary = SetupForeverFairDB.create_tiny_demonstration(db_path, period_length_hours=168)
 	assert summary["response_matrix_inserted"] == 60
 	with sqlite3.connect(db_path) as conn:
 		conn.row_factory = sqlite3.Row
@@ -94,10 +94,10 @@ def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
 		).fetchall()
 		assert [row["row_count"] for row in period_counts] == [24, 18, 12, 6]
 		sample_rows = conn.execute(
-			"SELECT pumping_period, factor_value FROM response_matrix WHERE well_id=1 AND control_point_id=1 AND effect_period=4 ORDER BY pumping_period"
+			"SELECT pumping_period, response FROM response_matrix WHERE well_id=1 AND control_point_id=1 AND effect_period=4 ORDER BY pumping_period"
 		).fetchall()
 		assert [row["pumping_period"] for row in sample_rows] == [1, 2, 3, 4]
-		assert [row["factor_value"] for row in sample_rows] == [-1.0, -1.4, -2.1, -3.0]
+		assert [row["response"] for row in sample_rows] == [-1.0, -1.4, -2.1, -3.0]
 
 def test_manager_run_persists_results(tmp_path):
 	foreverFairData_instance = _make_repo(tmp_path)

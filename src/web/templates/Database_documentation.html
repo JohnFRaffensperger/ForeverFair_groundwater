@@ -62,7 +62,7 @@
 <p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Affected control point.</p>
 <p><strong>pumping_period (INTEGER, NOT NULL):</strong> Pumping period index in response matrix dimension.</p>
 <p><strong>effect_period (INTEGER, NOT NULL):</strong> Effect period index in response matrix dimension.</p>
-<p><strong>factor_value (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect. 
+<p><strong>response (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect. 
 	A NULL value is treated as zero when read. The hydrologist may choose to omit rows with very small coefficients to keep the database compact; 
 	however, the rounding threshold must be chosen very carefully, because omitting small-but-numerous coefficients can systematically undercount 
 	the total hydrological effect at a control point and cause the market to accept more pumping than the aquifer can safely sustain. 
@@ -88,7 +88,7 @@
 <p><strong>auction_id (INTEGER):</strong> Auction that produced this quota row.</p>
 <p><strong>well_id (INTEGER):</strong> Well context for this quota row.</p>
 <p><strong>quota_auction_start (REAL):</strong> Initial/starting quantity prior to market adjustment.</p>
-<p><strong>quota_adjusted (REAL):</strong> Quantity adjustment from clearing outcome.</p>
+<p><strong>quota_scaled_start (REAL):</strong> Quantity adjustment from clearing outcome.</p>
 <p><strong>quota_auction_end (REAL):</strong> Final quantity after adjustment.</p>
 <p><strong>price (REAL):</strong> Price associated with the row's auction-period settlement.</p>
 <p><strong>take_date (TEXT):</strong> Period/date key for the quota row.</p>

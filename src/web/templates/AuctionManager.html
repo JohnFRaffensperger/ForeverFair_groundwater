@@ -81,7 +81,7 @@ async function refreshAuctionDebug() {
 
 async function pollAuctionDebugUntilDone() {
 	const payload = await refreshAuctionDebug();
-	if (payload.run_active) {debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 1000); return;}
+	if (payload.run_active) {debugPollTimer = window.setTimeout(pollAuctionDebugUntilDone, 2000); return;}
 	debugPollTimer = null;
 }
 
