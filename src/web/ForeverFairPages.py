@@ -180,9 +180,8 @@ def doc_auctionmanager(request: Request):
 @app.get("/", response_class=HTMLResponse)
 def home(): return RedirectResponse(url="/researcher", status_code=303)
 
-@app.get("/trader", response_class=HTMLResponse)
-def trader_page(request: Request):
 
+def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse:
 	trader_cookie = request.cookies.get("trader_id", "")
 	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
 	try: trader_id = int(trader_cookie)
@@ -193,33 +192,79 @@ def trader_page(request: Request):
 	auction_id = next_auction["auction_id"]
 	auction_info = ffdata.get_auction_info(auction_id)
 	current_wells = ffdata.get_trader_wells(trader_id)
-	current_well = current_wells[0]
+	current_well = current_wells[0] if current_wells else None
 	bid_history = ffdata.get_bid_history(auction_id, trader_id)
-	quota_by_period = ffdata.get_well_start_quota(well_id=current_well["id"], auction_id=auction_id)
+	current_well_id = current_well["id"] if current_well else None
+	quota_by_period = ffdata.get_well_start_quota(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
+	clearing_price_by_period = ffdata.get_well_clearing_price_for_current_rows(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
 	max_bid_steps = ffdata.get_max_bid_steps()
+	latest_bids_by_period: dict[int, list[dict[str, Any]]] = {}
+	for bid in bid_history:
+		period_id = bid["period_id"]
+		if period_id not in latest_bids_by_period: latest_bids_by_period[period_id] = []
+		if latest_bids_by_period[period_id] and latest_bids_by_period[period_id][0]["bid_id"] != bid["bid_id"]: continue
+		latest_bids_by_period[period_id].append(bid)
 	period_rows: list[dict[str, Any]] = []
-	for period in auction_record.periods: period_rows.append({"period_id": period.id, "period_key": period.id, "period_label": period.label, "allocation": quota_by_period[period.id],})
+	for period in auction_info["periods"]: period_rows.append({"period_id": period["id"], "period_key": period["id"], "period_label": period["label"], "allocation": quota_by_period.get(period["id"], 0.0), "clearing_price": clearing_price_by_period.get(period["id"]), "latest_bids": latest_bids_by_period.get(period["id"], []),})
+	period_label_by_id = {int(period["id"]): str(period["label"]).split("T")[0] for period in auction_info["periods"]}
+	history_rows: list[dict[str, Any]] = []
+	history_row_by_bid_id: dict[int, dict[str, Any]] = {}
+	for bid in bid_history:
+		bid_id = int(bid["bid_id"])
+		if bid_id not in history_row_by_bid_id:
+			period_id = int(bid["period_id"])
+			history_row_by_bid_id[bid_id] = {
+				"submitted_at": bid["submitted_at"],
+				"period_label": period_label_by_id.get(period_id, str(period_id)),
+				"bid_id": bid_id,
+				"allocation": quota_by_period.get(period_id, 0.0),
+				"clearing_price": clearing_price_by_period.get(period_id),
+				"steps": [],
+				"final_allocation": bid["final_allocation"],
+				"traded_price": bid["traded_price"],
+			}
+			history_rows.append(history_row_by_bid_id[bid_id])
+		history_row_by_bid_id[bid_id]["steps"].append({"quantity": bid["quantity"], "price": bid["price"]})
+	manual_submitted_at = [str(bid["submitted_at"]) for bid in bid_history if not bool(bid.get("is_default", False)) and bid.get("submitted_at")]
+	bid_entry_status_message = f"Last submitted on {max(manual_submitted_at)}." if manual_submitted_at else "Not yet submitted. An automatic bid is in place."
 	
-	current_trader = next((t for t in ffdata.list_of_traders() if t["id"] == trader_id), {"id": trader_id, "name": ""})
-	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "bid_history": bid_history, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)),}
+	matching_traders = [t for t in ffdata.list_of_traders() if t["id"] == trader_id]
+	current_trader: dict[str, Any] = matching_traders[0] if matching_traders else {"id": trader_id, "name": ""}
+	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "bid_history": bid_history, "bid_history_rows": history_rows, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)), "bid_entry_status_message": bid_entry_status_message,}
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context.update(_common_template_context())
+	return context
+
+@app.get("/trader", response_class=HTMLResponse)
+def trader_page(request: Request):
+	context = _build_trader_context(request)
+	if isinstance(context, RedirectResponse): return context
 	resp = templates.TemplateResponse(request, "Trader.html", context)
-	if notice: resp.delete_cookie("flash")
+	if context["notice"]: resp.delete_cookie("flash")
 	return resp
 
 @app.post("/bids/new")
 async def create_bid(request: Request):
 	form = await request.form()
+	return_to = str(form.get("return_to", "/trader")).strip()
+	if return_to != "/trader": return_to = "/trader"
+	period_text = ""
 	try:
 		auction_id = int(str(form["auction_id"]).strip())
 		well_id = int(str(form["well_id"]).strip())
 		period_id = int(str(form["period_id"]).strip())
 		quantity = float(str(form["quantity"]).strip())
 		price = float(str(form["price"]).strip())
-	except Exception: return _flash_redirect("/trader", "Error: invalid bid form values")
-	is_default = str(form["is_default"]).strip().lower() in {"true", "on", "1", "yes"}
+		auction_info = ffdata.get_auction_info(auction_id)
+		period_lookup = {int(p["id"]): str(p["label"]).split("T")[0] for p in auction_info["periods"]}
+		period_text = period_lookup.get(period_id, str(period_id))
+	except Exception:
+		q_text = str(form.get("quantity", "")).strip()
+		p_text = str(form.get("price", "")).strip()
+		pid_text = str(form.get("period_id", "")).strip()
+		return _flash_redirect(return_to, f"Error: invalid bid form values for pumping period {pid_text} (quantity='{q_text}', price='{p_text}')")
+	is_default = str(form.get("is_default", "")).strip().lower() in {"true", "on", "1", "yes"}
 
 	trader_cookie = request.cookies.get("trader_id", "")
 	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
@@ -231,19 +276,24 @@ async def create_bid(request: Request):
 		quantity_text = str(form[f"quantity{step_num}"] or "").strip()
 		price_text = str(form[f"price{step_num}"] or "").strip()
 		if not quantity_text and not price_text: continue
-		if not quantity_text or not price_text: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} requires both quantity and price")
+		if not quantity_text or not price_text:
+			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_text}, step {step_num} requires both quantity and price (quantity='{quantity_text}', price='{price_text}')")
 		try: bid_steps.append((float(quantity_text), float(price_text)))
-		except ValueError: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: Step {step_num} has invalid quantity or price")
+		except ValueError:
+			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_text}, step {step_num} has invalid quantity or price (quantity='{quantity_text}', price='{price_text}')")
 	try: BiddingController.submitBid(ffdata, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps,)
-	except ValueError as e: return _flash_redirect(f"/trader?auction_id={auction_id}", f"Error: {e}")
-	return _flash_redirect(f"/trader?auction_id={auction_id}", "Bid saved")
+	except ValueError as e: return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: {e}")
+	return _flash_redirect(f"{return_to}?auction_id={auction_id}", "Bid saved")
 
 @app.post("/bids/{bid_id}/delete")
-def delete_bid(request: Request, bid_id: int):
+async def delete_bid(request: Request, bid_id: int):
+	form = await request.form()
+	return_to = str(form.get("return_to", "/trader")).strip()
+	if return_to != "/trader": return_to = "/trader"
 	trader_cookie = request.cookies.get("trader_id", "")
 	trader_id = int(trader_cookie) if trader_cookie and trader_cookie.isdigit() else 0
 	deleted = BiddingController.deleteBid(ffdata, bid_id, trader_id)
-	return _flash_redirect("/trader", "Bid deleted" if deleted else "Bid not found")
+	return _flash_redirect(return_to, "Bid deleted" if deleted else "Bid not found")
 
 @app.post("/auctionmanager/run-auction")
 async def manager_run_auction(request: Request):

@@ -26,14 +26,9 @@ def create_auction(db_path: Path) -> int:
 	ffdata = ForeverFairData(db_path)
 	auction_id = ffdata.add_auction()["auction_id"]
 
-	# set_control_point_events_for_auction should now set the aquifer limits for each next auction
-	# based on the original limits and the previous auction.
 	ffdata.set_control_point_events_for_auction(auction_id)
-
-	# Should dep
 	ffdata.set_quota_for_auction(auction_id)
-	# Scale license to quota only on the first auction. TODO: Should also scale quota on reload of aquifer head limits, and for a new period in a rolling auction horizon.
-	# if 1 == auction_id: ffdata.calculate_and_set_constraint_alphas(auction_id)
+	
 	call_for_bids(ffdata, auction_id)
 	return auction_id
 

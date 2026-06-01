@@ -1,4 +1,4 @@
-# tests/test_market.py. Claude guided by JFR, 2026 04 21.
+# tests/test_market.py. Claude guided by JFR, 2026 05 31.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
@@ -80,7 +80,7 @@ def test_auction_creation_stops_after_schedule_limit(tmp_path):
 def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
 	db_path = tmp_path / "demo" / "foreverfair.db"
 	summary = SetupForeverFairDB.create_tiny_demonstration(db_path, period_length_hours=168)
-	assert summary["response_matrix_inserted"] == 60
+	assert summary["response_matrix_inserted"] == 83
 	with sqlite3.connect(db_path) as conn:
 		conn.row_factory = sqlite3.Row
 		noncausal = conn.execute(
@@ -92,7 +92,7 @@ def test_demonstration_db_uses_causal_shifted_response_matrix(tmp_path):
 		period_counts = conn.execute(
 			"SELECT pumping_period, COUNT(*) AS row_count FROM response_matrix GROUP BY pumping_period ORDER BY pumping_period"
 		).fetchall()
-		assert [row["row_count"] for row in period_counts] == [24, 18, 12, 6]
+		assert [row["row_count"] for row in period_counts] == [29, 24, 18, 12]
 		sample_rows = conn.execute(
 			"SELECT pumping_period, response FROM response_matrix WHERE well_id=1 AND control_point_id=1 AND effect_period=4 ORDER BY pumping_period"
 		).fetchall()

@@ -1,89 +1,101 @@
 <!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Forever Fair Trader's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/site.css') }}"></head>
-<body>
+	<title>Forever Fair Trader Console</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
+<body data-max-bid-steps="{{ max_bid_steps }}">
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <strong>Trader console</strong> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
-<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader's Page</h1>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader Console</h1>
 
-{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
-
-<p>Welcome, <strong>{{ current_trader.name }}</strong>.
-{% if current_well %}
-  Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
-{% else %}
-  No well is registered for your account.
-{% endif %}
+<p>Welcome, <strong>{{ current_trader.name }}</strong>.{% if current_well %}Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
+	{% else %}No well is registered for your account.{% endif %}
+	You are bidding in auction {{ auction_case.auction.id }}, which is <strong>{% if auction_case.auction.auction_type == 'tentative' %}tentative, so you will be able to bid again this period{% else %}final, so you will not be able to bid again this period{% endif %}</strong>.
+	Bidding for this auction {% if auction_case.auction.status == 'CLOSED' %} is closed{% else %} is open now, and closes {{ auction_case.auction.closed_date }}. <span id="bid-time-remaining" data-close-date="{{ auction_case.auction.closed_date }}"></span>{% endif %}
 </p>
 
-<h2>Auction {{ auction_case.auction.id }}
-  — {% if auction_case.auction.auction_type == 'tentative' %}<em>Tentative</em>{% else %}Final{% endif %}
-  — {% if auction_case.auction.status == 'CLOSED' %}Closed{% else %}Open, closes {{ auction_case.auction.closed_date }}{% endif %}
-</h2>
+{% if auction_case.auction.status == 'OPEN' and current_well %}
 
-{% if auction_case.auction.status == 'OPEN' %}
-<h2>Enter new bid</h2>
-<form method="post" action="/bids/new">
-	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
-	<input type="hidden" name="well_id" value="{{ current_well.id }}">
+<h2>Bid entry console <button type="button" id="submit-bid-btn">Submit your bid</button> <span role="alert">{{ bid_entry_status_message }}</span></h2>
+<p>Press submit as often as you like. Each submission simply overwrites the previous bid until auction closing.</p>
+<p>The bid table has SPEED entry: change any value and the values below it change, too. NOTE: you are not likely to get bids under the clearing price.</p>
 
-	<label>Period:
-		<select name="period_id" required>
-		{%- for row in period_rows %}
-			<option value="{{ row.period_key }}">{{ row.period_label }}</option>
-		{%- endfor %}
-		</select>
-	</label>
-	<label>Quantity requested (ML): <input type="number" name="quantity" min="0.1" step="0.1" required></label>
-	<label>Bid price ($/ML): <input type="number" name="price" min="0.01" step="0.01" required></label>
-	<p><strong>Optional additional steps</strong> (up to {{ max_bid_steps }} total):</p>
-	{% for step_num in optional_bid_step_numbers %}
-	<label>Step {{ step_num }} quantity (ML): <input type="number" name="quantity{{ step_num }}" min="0.1" step="0.1"></label>
-	<label>Step {{ step_num }} bid price ($/ML): <input type="number" name="price{{ step_num }}" min="0.01" step="0.01"></label>
-	{% endfor %}
-	<label><input type="checkbox" name="is_default" value="true"> Standing bid — carry forward defaultally to future auctions</label>
-	<button type="submit">Submit bid</button>
-</form>
-<script>
-document.querySelector('form[action="/bids/new"]').addEventListener('submit', function(e) {
-	for (var i = 2; i <= {{ max_bid_steps }}; i++) {
-		var q = (document.querySelector('[name="quantity' + i + '"]').value || '').trim();
-		var p = (document.querySelector('[name="price' + i + '"]').value || '').trim();
-		if ((q && !p) || (!q && p)) { e.preventDefault(); alert('Step ' + i + ': quantity and price must both be provided.'); return; }
-	}
-});
-</script>
+<table data-console-table="true" style="table-layout: auto; border-collapse: collapse;">
+<colgroup><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}<col style="width: 10em;"></colgroup>
+
+<thead><tr>
+		<th rowspan="2">Start of pumping period</th>
+		<th rowspan="2" style="text-align: right;">Cubic meters quota from auction {{ auction_case.auction.id - 1 }}</th>
+		<th rowspan="2" style="text-align: right;">Clearing price, $/m3, from auction {{ auction_case.auction.id - 1 }}</th>
+
+		{% for step_num in range(1, max_bid_steps + 1) %}
+			<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
+			<th rowspan="2">Bid steps with last clearing price</th>
+		{# <th rowspan="2">Standing</th> #}
+	</tr>
+	<tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: center;">Cubic meters</th><th style="text-align: center;">$/m3</th>{% endfor %}</tr></thead>
+
+	<tbody>{% for row in period_rows %}{% set latest_bids = row.latest_bids %}
+	<tr data-console-row="true" data-auction-id="{{ auction_case.auction.id }}" data-well-id="{{ current_well.id }}" data-period-id="{{ row.period_key }}" data-clearing-price="{% if row.clearing_price is not none %}{{ row.clearing_price }}{% endif %}"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
+		<input type="hidden" name="well_id" value="{{ current_well.id }}">
+		<input type="hidden" name="period_id" value="{{ row.period_key }}">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>{{ row.period_label.split('T')[0] }}</td>
+		<td style="text-align: right;">{{ '{:,.1f}'.format(row.allocation) }}</td>
+		<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="{% if latest_bids|length >= 1 %}{{ '{:,.1f}'.format(latest_bids[0].quantity) }}{% endif %}" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="{% if latest_bids|length >= 1 %}{{ latest_bids[0].price }}{% endif %}" required></td>
+		
+		{% for step_num in optional_bid_step_numbers %}
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity{{ step_num }}" inputmode="decimal" placeholder="" value="{% if latest_bids|length >= step_num %}{{ '{:,.1f}'.format(latest_bids[step_num - 1].quantity) }}{% endif %}"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price{{ step_num }}" inputmode="decimal" placeholder="" value="{% if latest_bids|length >= step_num %}{{ latest_bids[step_num - 1].price }}{% endif %}"></td>
+		{% endfor %}
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		{# <td><input type="checkbox" name="is_default" value="true" {% if latest_bids and latest_bids[0].is_default %}checked{% endif %}></td> #}</form></tr>
+	{% endfor %}</tbody>
+</table>
+
+{% elif not current_well %}
+<p><em>Bid entry is unavailable until a well is assigned to your trader account.</em></p>
 {% else %}
 <p><em>Bidding is closed for this auction.</em></p>
 {% endif %}
 
-<h2>Allocations from auction {{ auction_case.auction.id }}</h2>
-<table><thead><tr><th>Period</th><th>Allocated quantity</th></tr></thead>
-	<tbody>{% for row in period_rows %}<tr><td>{{ row.period_label }}</td><td>{{ '%.2f'|format(row.allocation) }} ML</td></tr>{% endfor %}</tbody>
-</table>
-
 <h2>Bidding history</h2>
-<table>
-	<thead><tr><th>Bid id</th><th>Period</th><th>Quantity</th><th>Bid price</th><th>Final allocation</th><th>Traded price</th><th>Submitted</th><th></th><th></th></tr>
-	</thead>
-	<tbody>
-		{% for bid in bid_history %}
-		<tr><td>{{ bid.bid_id }}</td>
-			<td>{{ bid.period_id }}</td>
-			<td>{% if bid.quantity < 0 %}<span class="sale">{{ '%.2f'|format(bid.quantity) }} ML (sell)</span>{% else %}<span class="buy">{{ '%.2f'|format(bid.quantity) }} ML</span>{% endif %}</td>
-			<td>${{ '%.2f'|format(bid.price) }}</td>
-			<td>{% if bid.final_allocation is not none %}{{ '%.2f'|format(bid.final_allocation) }} ML{% else %}&mdash;{% endif %}</td>
-			<td>{% if bid.traded_price is not none %}${{ '%.2f'|format(bid.traded_price) }}{% else %}&mdash;{% endif %}</td>
-			<td>{{ bid.submitted_at }}</td>
-			<td>{% if bid.is_default %}<abbr title="Standing bid: will carry forward to future auctions">&#9733; Standing</abbr>{% endif %}</td>
-			<td>{% if auction_case.auction.status == 'OPEN' %}<form method="post" action="/bids/{{ bid.bid_id }}/delete"><button type="submit">Delete</button></form>{% endif %}</td>
-		</tr>
-		{% endfor %}
-	</tbody>
-</table>
 
-<hr>
+<table style="table-layout: auto;">
+<colgroup><col style="width: 12em;"><col style="width: 10em;"><col style="width: 7em;"><col style="width: 8em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}</colgroup>
+
+<thead><tr>
+	<th rowspan="2">Submitted</th>
+	<th rowspan="2">Start of pumping period</th>
+	<th rowspan="2">Bid id</th>
+	<th rowspan="2" style="text-align: right;">Cubic meters quota from auction {{ auction_case.auction.id - 1 }}</th>
+	<th rowspan="2" style="text-align: right;">Clearing price, $/m3, from auction {{ auction_case.auction.id - 1 }}</th>
+	{% for step_num in range(1, max_bid_steps + 1) %}<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
+	</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: right;">Cubic meters</th><th style="text-align: right;">$/m3</th>{% endfor %}</tr></thead>
+
+	<tbody>{% for row in bid_history_rows %}
+	<tr><td>{{ row.submitted_at }}</td>
+		<td>{{ row.period_label }}</td>
+		<td>{{ row.bid_id }}</td>
+		<td style="text-align: right;">{{ '{:,.1f}'.format(row.allocation) }}</td>
+		<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
+		{% for step_num in range(1, max_bid_steps + 1) %}
+		{% set idx = step_num - 1 %}
+		{% if idx < row.steps|length %}
+		<td style="text-align: right;">{{ '{:,.1f}'.format(row.steps[idx].quantity) }}</td>
+		<td style="text-align: right;">${{ row.steps[idx].price }}</td>
+		{% else %}
+		<td style="text-align: right;">&mdash;</td>
+		<td style="text-align: right;">&mdash;</td>
+		{% endif %}
+		{% endfor %}
+	</tr>{% endfor %}
+</tbody></table>
+
 <h2>Trader guide</h2>
 
 <h3>What this system does</h3>
@@ -97,28 +109,27 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
   <li>Your metering and reporting obligations must be in place.</li>
 </ul>
 
-<h3>Adjusting your initial quota to the available water</h3>
-<p>For the first auction, and any auction where the forecasted aquifer head changes, we will scale your quota separately for each control point and time period. 
-	We will convert your well quota will be converted to time-based quota for each environmental constraint. 
-	You can review your detailed time-based control point quota <a>here, sorted by size of impact, biggest first</a>.</p>
+<h3>We will adjust your initial quota to the available water.</h3>
+<p>For the first auction, and any auction where the forecasted aquifer head changes, we will scale your quota separately for each control point and time period.
+	We will convert your well quota will be converted to time-based quota for each environmental constraint.
+	You can review your detailed time-based control point quota TODO: <a>here, sorted by size of impact, biggest first</a>.</p>
 
 <h3>How to submit a bid</h3>
+<p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
+
 <ol>
-  <li>Log in at the  login page and select your trader identity.</li>
-  <li>Select a well and auction period.</li>
-  <li>Enter quantity and price for each tradable period.</li>
-  <li>Submit your bid. It will then appear in your bid history.</li>
+  <li>Log in at the login page and select your trader identity.</li>
+  <li>Use the row for the target auction period.</li>
+  <li>Enter quantity and price for the first bid step, then add optional later steps in the same row.</li>
+  <li>Submit the row. It will then appear in your bid history.</li>
   <li><b>Standing bids:</b> We will reuse your last bids unless you change them.</li>
 </ol>
-
-<h3>Bidding principle</h3>
-<p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
 
 <h3>Trading schedule and flexibility</h3>
 <ul>
   <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
   <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
-  <li>If you do not rebid in a cycle, prior bids can be reused defaultally when enabled by the manager.</li>
+  <li>If you do not rebid in a cycle, we will automatically re-use your prior bids.</li>
 </ul>
 
 <h3>Current validation rules</h3>
@@ -136,6 +147,258 @@ document.querySelector('form[action="/bids/new"]').addEventListener('submit', fu
   <li>Future periods may be revised in later operational updates.</li>
 </ul>
 
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
-</body>
-</html>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-06-01.</p>
+<script>
+function updateBidTimeRemaining() {
+	var timer = document.getElementById('bid-time-remaining');
+	if (!timer) return;
+	var closeText = (timer.getAttribute('data-close-date') || '').trim();
+	if (!closeText) return;
+	var closeDate = new Date(closeText);
+	if (Number.isNaN(closeDate.getTime())) {
+		timer.textContent = '';
+		return;
+	}
+	var msRemaining = closeDate.getTime() - Date.now();
+	if (msRemaining <= 0) {
+		timer.textContent = 'Bidding is closed.';
+		return;
+	}
+	var minutesRemaining = Math.ceil(msRemaining / 60000);
+	timer.textContent = 'You have ' + minutesRemaining + ' more minutes to bid.';
+}
+
+updateBidTimeRemaining();
+setInterval(updateBidTimeRemaining, 1000);
+
+function formatQtyValue(value) {
+	var cleaned = (value || '').replace(/,/g, '').trim();
+	if (!cleaned) return '';
+	var n = Number(cleaned);
+	if (!Number.isFinite(n)) return value;
+	return n.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1});
+}
+
+function unformatQtyValue(value) { return (value || '').replace(/,/g, '').trim(); }
+
+function parseConsoleNumber(value, isQty) {
+	var text = isQty ? unformatQtyValue(value) : String(value || '').trim();
+	if (!text) return null;
+	var num = Number(text);
+	if (!Number.isFinite(num) || num <= 0) return null;
+	return num;
+}
+
+function renderBidGraphForRow(row) {
+	var svg = row.querySelector('svg[data-bid-graph]');
+	if (!svg) return;
+	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
+	var clearingPriceText = String(row.getAttribute('data-clearing-price') || '').trim();
+	var clearingPrice = clearingPriceText ? Number(clearingPriceText) : null;
+	if (!Number.isFinite(clearingPrice)) clearingPrice = null;
+	var clearingPriceGraph = clearingPrice;
+	if (clearingPriceGraph !== null) clearingPriceGraph = -clearingPriceGraph;
+	var steps = [];
+	var cumulativeQty = 0;
+	for (var i = 1; i <= maxBidSteps; i++) {
+		var qName = i === 1 ? 'quantity' : ('quantity' + i);
+		var pName = i === 1 ? 'price' : ('price' + i);
+		var qInput = row.querySelector('[name="' + qName + '"]');
+		var pInput = row.querySelector('[name="' + pName + '"]');
+		var q = qInput ? parseConsoleNumber(qInput.value, true) : null;
+		var p = pInput ? parseConsoleNumber(pInput.value, false) : null;
+		if (q === null && p === null) continue;
+		if (q === null || p === null) continue;
+		cumulativeQty += q;
+		steps.push({x: cumulativeQty, y: p});
+	}
+
+	var width = 132; /* Width of the bid curve. */ 
+	var height = 30; /* Height of the bid curve. Change in conjunction with viewbox. */ 
+	var left = 1;
+	var right = 1;
+	var top = 0;
+	var bottom = 0;
+	var plotW = width - left - right;
+	var plotH = height - top - bottom;
+	var axis = '<line x1="' + left + '" y1="' + (height - bottom) + '" x2="' + (width - right) + '" y2="' + (height - bottom) + '" stroke="#666" stroke-width="1" />' + '<line x1="' + left + '" y1="' + top + '" x2="' + left + '" y2="' + (height - bottom) + '" stroke="#666" stroke-width="1" />';
+
+	if (!steps.length) {
+		if (clearingPriceGraph !== null) {
+			var cpPad = Math.max(Math.abs(clearingPriceGraph) * 0.2, 0.01);
+			var yTopNoBid = clearingPriceGraph + cpPad;
+			var yBottomNoBid = clearingPriceGraph - cpPad;
+			var yOnly = top + (1 - ((clearingPriceGraph - yBottomNoBid) / (yTopNoBid - yBottomNoBid))) * plotH;
+			var clearingOnly = '<line x1="' + left + '" y1="' + yOnly + '" x2="' + (width - right) + '" y2="' + yOnly + '" stroke="#d90429" stroke-width="1" stroke-dasharray="4 2" />';
+			svg.innerHTML = axis + clearingOnly + '<text x="66" y="31" text-anchor="middle" font-size="10" fill="#777">no bid</text>';
+			return;
+		}
+		svg.innerHTML = axis + '<text x="66" y="31" text-anchor="middle" font-size="10" fill="#777">no bid</text>';
+		return;
+	}
+
+	var maxX = steps[steps.length - 1].x;
+	var minY = steps[0].y;
+	var maxY = steps[0].y;
+	for (var idx = 0; idx < steps.length; idx++) {
+		if (steps[idx].y > maxY) maxY = steps[idx].y;
+		if (steps[idx].y < minY) minY = steps[idx].y;
+	}
+	if (maxX <= 0) maxX = 1;
+	if (maxY <= 0) maxY = 1;
+	var ySpan = maxY - minY;
+	if (ySpan < 0.002) {
+		var yMid = (maxY + minY) / 2;
+		maxY = yMid + 0.001;
+		minY = yMid - 0.001;
+		ySpan = maxY - minY;
+	}
+	var yPad = ySpan * 0.12;
+	var yTopVal = maxY + yPad;
+	var yBottomVal = minY - yPad;
+	if (yTopVal <= yBottomVal) yTopVal = yBottomVal + 1;
+
+	function sx(x) { return left + (x / maxX) * plotW; }
+	function sy(y) { return top + (1 - ((y - yBottomVal) / (yTopVal - yBottomVal))) * plotH; }
+
+	var d = 'M ' + sx(0) + ' ' + sy(steps[0].y);
+	for (var j = 0; j < steps.length; j++) {
+		d += ' L ' + sx(steps[j].x) + ' ' + sy(steps[j].y);
+		if (j < steps.length - 1) d += ' L ' + sx(steps[j].x) + ' ' + sy(steps[j + 1].y);
+	}
+
+	var clearingLine = '';
+	if (clearingPriceGraph !== null) {
+		var clearY = sy(clearingPriceGraph);
+		var plotTop = top;
+		var plotBottom = height - bottom;
+		if (clearY < plotTop) clearY = plotTop;
+		if (clearY > plotBottom) clearY = plotBottom;
+		clearingLine = '<line x1="' + left + '" y1="' + clearY + '" x2="' + (width - right) + '" y2="' + clearY + '" stroke="#d90429" stroke-width="1" stroke-dasharray="4 2" />';
+	}
+
+	svg.innerHTML = axis + '<path d="' + d + '" fill="none" stroke="#0b5cab" stroke-width="1" />' + clearingLine;
+}
+
+function renderAllBidGraphs() {consoleRows.forEach(function(row) { renderBidGraphForRow(row); });}
+
+document.querySelectorAll('[data-console-type="qty"]').forEach(function(input) {
+	input.addEventListener('focus', function() { input.value = unformatQtyValue(input.value); });
+	input.addEventListener('blur', function() { input.value = formatQtyValue(input.value); });
+	input.value = formatQtyValue(input.value);
+});
+
+var consoleRows = Array.from(document.querySelectorAll('table[data-console-table] tbody tr'));
+var focusedConsoleRow = null;
+
+document.querySelectorAll('table[data-console-table] input').forEach(function(input) {
+	input.addEventListener('focus', function() {
+		focusedConsoleRow = input.closest('tr');
+	});
+});
+
+function copyColumnValueDown(sourceInput)
+{	var sourceRow = sourceInput.closest('tr');
+	if (!sourceRow) return;
+	var sourceName = sourceInput.name;
+	var sourceValue = sourceInput.value;
+	var sourceIndex = consoleRows.indexOf(sourceRow);
+	if (sourceIndex < 0) return;
+	for (var row = sourceIndex + 1; row < consoleRows.length; row++) {
+		var target = consoleRows[row].querySelector('[name="' + sourceName + '"]');
+		if (!target) continue;
+		target.value = sourceValue;
+		if (target.getAttribute('data-console-type') === 'qty') target.value = formatQtyValue(unformatQtyValue(target.value));
+	}
+	renderAllBidGraphs();
+}
+
+document.querySelectorAll('[data-console-type="qty"], [data-console-type="price"]').forEach(function(input) {
+	input.addEventListener('input', function() {
+		var row = input.closest('tr');
+		if (row) renderBidGraphForRow(row);
+	});
+	input.addEventListener('change', function() { copyColumnValueDown(input); });
+	input.addEventListener('keydown', function(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			input.blur();
+		}
+	});
+});
+
+var submitBidButton = document.getElementById('submit-bid-btn');
+
+function prepareAndValidateConsoleRow(row) {
+	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
+	row.querySelectorAll('[data-console-type="qty"]').forEach(function(input) { input.value = unformatQtyValue(input.value); });
+	for (var i = 2; i <= maxBidSteps; i++) {
+		var qInput = row.querySelector('[name="quantity' + i + '"]');
+		var pInput = row.querySelector('[name="price' + i + '"]');
+		var q = qInput ? (qInput.value || '').trim() : '';
+		var p = pInput ? (pInput.value || '').trim() : '';
+		if ((q && !p) || (!q && p)) {
+			alert('Step ' + i + ': quantity and price must both be provided.');
+			return false;
+		}
+	}
+	var q1 = row.querySelector('[name="quantity"]');
+	var p1 = row.querySelector('[name="price"]');
+	if (!q1 || !p1 || !(q1.value || '').trim() || !(p1.value || '').trim()) {
+		alert('Step 1 requires quantity and price.');
+		return false;
+	}
+	return true;
+}
+
+function buildRowFormData(row) {
+	var fd = new FormData();
+	fd.append('auction_id', String(row.getAttribute('data-auction-id') || ''));
+	fd.append('well_id', String(row.getAttribute('data-well-id') || ''));
+	fd.append('period_id', String(row.getAttribute('data-period-id') || ''));
+	fd.append('return_to', '/trader');
+	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
+	for (var i = 1; i <= maxBidSteps; i++) {
+		var qName = i === 1 ? 'quantity' : ('quantity' + i);
+		var pName = i === 1 ? 'price' : ('price' + i);
+		var qInput = row.querySelector('[name="' + qName + '"]');
+		var pInput = row.querySelector('[name="' + pName + '"]');
+		fd.append(qName, qInput ? String(qInput.value || '').trim() : '');
+		fd.append(pName, pInput ? String(pInput.value || '').trim() : '');
+	}
+	return fd;
+}
+
+if (submitBidButton) {
+	submitBidButton.addEventListener('click', async function() {
+		var allRows = Array.from(document.querySelectorAll('tr[data-console-row]'));
+		if (!allRows.length) return;
+		submitBidButton.disabled = true;
+		try {
+			for (var idx = 0; idx < allRows.length; idx++) {
+				var row = allRows[idx];
+				if (!prepareAndValidateConsoleRow(row)) {
+					submitBidButton.disabled = false;
+					return;
+				}
+				await fetch('/bids/new', {method: 'POST', body: buildRowFormData(row), credentials: 'same-origin'});
+			}
+			var auctionId = String(allRows[0].getAttribute('data-auction-id') || '').trim();
+			window.location.href = auctionId ? ('/trader?auction_id=' + encodeURIComponent(auctionId)) : '/trader';
+		} catch (err) {
+			alert('Unable to submit bids right now. Please try again.');
+			submitBidButton.disabled = false;
+		}
+	});
+}
+
+document.querySelectorAll('form[data-console-bid-form]').forEach(function(form) {
+	form.addEventListener('submit', function(e) {
+		var row = form.closest('tr');
+		if (row && !prepareAndValidateConsoleRow(row)) e.preventDefault();
+	});
+});
+
+renderAllBidGraphs();
+</script>
+</body></html>

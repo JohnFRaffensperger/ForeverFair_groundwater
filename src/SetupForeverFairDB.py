@@ -1,4 +1,4 @@
-﻿# SetupForeverFairDB.py. JFR with Claude's help, 2026-05-08.
+﻿# SetupForeverFairDB.py. JFR with Claude's help, 2026-05-31.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.

@@ -1,4 +1,4 @@
-# BiddingController.py. Claude guided by JFR, 2026 05 14.
+# BiddingController.py. Claude guided by JFR, 2026 05 31.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Validate, submit, and manage trader bids.
 
@@ -9,7 +9,9 @@ from ForeverFairData import ForeverFairData
 def create_default_bid(foreverFairData_instance: ForeverFairData, auction_id: int, well_id: int) -> None:
 	quota_by_well_period = foreverFairData_instance.get_quota (auction_id) # sets a bid for each quota record.
 	license_by_period = foreverFairData_instance.get_well_license_quantity(well_id)
+
 	# Side effect: fewer bid steps results in a lower maximum bid price.
+	# Also, zero license results in bids with zero bid quantities. So you would have to enter your own bids manually.
 	price_steps = [0.01, 0.02, 0.04, 0.08, 0.16][:foreverFairData_instance.get_max_bid_steps()] # $/(cubic meter per week).
 	created_bids: list[dict] = []
 	for (quota_well_id, period_id), _quota_auction_start in quota_by_well_period.items():

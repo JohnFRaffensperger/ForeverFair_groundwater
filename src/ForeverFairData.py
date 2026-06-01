@@ -419,6 +419,24 @@ class ForeverFairData:
 			result[period_idx] = float(row["quota_auction_end"] or 0.0)
 		return result
 
+	def get_well_clearing_price_for_current_rows(self, well_id: int, auction_id: int) -> dict[int, float | None]:
+		"""Return {bid_period: price} mapped onto the current auction rows from source well_quota.price.
+		For auction>1 this uses the previous auction and applies the same one-period shift as set_quota_for_auction.
+		"""
+		if auction_id <= 1: return {}
+		period_labels = self._get_period_maps(auction_id)["pumping_labels"]
+		with self.connect_to_db() as conn:
+			source_rows = conn.execute("SELECT take_date, price FROM well_quota WHERE well_id=? AND auction_id=? ORDER BY take_date", (well_id, auction_id - 1)).fetchall()
+		take_dates = [str(r["take_date"] or "") for r in source_rows]
+		source_period_idx = {take_date: idx + 1 for idx, take_date in enumerate(take_dates[1:1 + len(period_labels)])}
+		result: dict[int, float | None] = {}
+		for row in source_rows:
+			take_date = str(row["take_date"] or "")
+			if take_date not in source_period_idx: continue
+			period_id = source_period_idx[take_date]
+			result[period_id] = float(row["price"]) if row["price"] is not None else None
+		return result
+
 	def get_well_license_quantity(self, well_id: int) -> dict[int, float]:
 		"""Return {bid_period: license_quantity} from well_license for the given well_id."""
 		with self.connect_to_db() as conn:
