@@ -13,23 +13,44 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <p><b style="color: red;">This is not designed to be a secure website!</b> It is designed for ease of use by a researcher or experienced hydrologist.
 	For example, the website tracks logged-in traders, but not the auction manager or other administrators. 
-	To make this demo code a secure website, a programmer would have to do more work.</p>
+  To make this demo code a secure website, a programmer would have to do more work. See <a href="/database-documentation#security-hardening">Security hardening for production deployment</a> in the Database documentation for recommended steps and open-source packages.</p>
 
 <h2>Installing the necessary Python libraries</h2>
-<p>1. From the workspace root (folder ForeverFair2026), install all dependencies. This installs FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
+<p>1. From the workspace root (folder ForeverFair2026), first install all dependencies with the command below. That will install FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
+
 <p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.ForeverFairPages:app --reload</pre>
 <p>2a. Before starting the server, create a file named <code>.env</code> in the project root folder (this file is gitignored and stays on your machine only). It tells the server which catchment to use:</p>
 <pre>FOREVER_FAIR_CATCHMENT=Tianqiao</pre>
+
 <p>Replace <code>Tianqiao</code> with the name of your catchment subdirectory under <code>Catchment_data/</code>. The server will not start if this variable is missing or names a directory that does not exist. A template is provided in <code>.env.example</code>.</p>
 <p>3. Open your browser to <a href="http://127.0.0.1:8000/">http://127.0.0.1:8000/</a>.</p>
+
 <p>4. Your hydrologist should run the hydrology model through USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> 
 	or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.
 	This code here reads those files to get the response matrix, the number of wells, the number of control points, and the number of time periods.
 	In principle, then, this code will work with any groundwater model that works with GWM. Buttons below allow you to import these files.</p>
 
 <h2>Open-source desktop tools</h2>
-<p>1. LP model files: Forever Fair writes auction models as <code>.lpt</code> files in <code>Auction_lpt_files/</code>. A programmer can open, edit, and solve these files with the open-source <a href="https://sourceforge.net/projects/lpsolveide/">LP Solve IDE</a>.</p>
-<p>2. Database files: Forever Fair uses SQLite databases (for example, <code>Catchment_data/Tianqiao/foreverfair.db</code>). A programmer can open and edit these files with the open-source <a href="https://sqlitebrowser.org/">DB Browser for SQLite</a>.</p>
+
+<p>1. Linear programming model .lpt files: Forever Fair writes auction models as <code>.lpt</code> files in <code>Auction_lpt_files/</code>. You can open, edit, and solve these files with the open-source <a href="https://sourceforge.net/projects/lpsolveide/">LP Solve IDE</a>.</p>
+<p>2. Database files: Forever Fair uses SQLite databases (for example, <code>Catchment_data/Tianqiao/foreverfair.db</code>). You can open and edit these files with the open-source <a href="https://sqlitebrowser.org/">DB Browser for SQLite</a>.</p>
+
+<h2>Running the code</h2>
+
+<ol><li>Load setup files below on this <a href="/programmer">Programmer page</a>. Import <code>.decvar</code>, <code>.hedcon</code>, trader names, trader wells, response matrix and bounds from <code>.mps</code>, and a file mapping traders to wells. Verify database status below.</li>
+
+<li>Enter bids from the <a href="/trader">Trader login page</a> (or use super-login buttons on the <a href="/researcher">Researcher page</a>), then submit bids for each trader well and period.
+	Or do nothing and let the code create automatic bids.</li>
+
+<li>Check the <a href="/auctionmanager">Auction manager page</a>. Confirm close date, pumping schedule, and rights-policy settings. 
+	Then run the auction. Review outcomes on <a href="/catchment">Catchment view</a> and trader pages.</li>
+<li>Check or update head assumptions on the <a href="/hydrologist">Hydrologist page</a> (for example, upload revised head limits or test a synthetic head update).</li>
+</ol>
+
+<p><b>Quick case setup:</b> Tianqiao is a realistic catchment dataset. Tiny_demonstration is a small test dataset for fast checks.
+	To set up either one quickly and avoid the Programmer.html page, you can edit <code>src/SetupForeverFairDB.py</code>, toward the bottom of that file.
+	In the <code>if __name__ == "__main__"</code> block, call either <code>setup_tianqiao()</code> or <code>setup_tiny_demonstration()</code>.
+	Then set <code>FOREVER_FAIR_CATCHMENT</code> in <code>.env</code> to the same case name and run the script once to rebuild that case database.</p>
 
 <h2>Database status</h2>
 {% if notice %}<p id="flash-notice"><strong>{{ notice }}</strong></p>{% endif %}
@@ -189,17 +210,31 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <span id="setup-auction-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span>
 </form>
 
+<h1 id="updating-aquifer-head">Updating aquifer heads for new forecasts</h1>
+
+<p>Your hydrologist should prepare an updated aquifer head file for you and is responsible for understanding the consequences.</p>
+<form id="aquifer-head-form" method="post" action="/setup/import-aquifer-head-limits" enctype="multipart/form-data">
+<p><button type="button" id="aquifer-head-browse">Upload new aquifer head</button>
+  <input type="file" id="aquifer-head-file" name="file" accept=".csv" required style="display:none">
+  <button id="aquifer-head-submit" type="submit" style="display:none">Import</button>
+  <span style="margin-left:0.75em;">Most recent aquifer head limits upload: {% if aquifer_head_limits_upload_date %}{{ aquifer_head_limits_upload_date[:19] | replace("T", " ") }}{% else %}none{% endif %}</span>
+</p>
+</form>
 
 <script>
   (function () {
+  var browseButton = document.getElementById('aquifer-head-browse');
+  var fileInput = document.getElementById('aquifer-head-file');
+  var submitButton = document.getElementById('aquifer-head-submit');
+  browseButton.addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () { submitButton.style.display = this.files && this.files.length > 0 ? 'inline-block' : 'none'; });
+
     var sel = document.getElementById('period-unit');
     var hidden = document.getElementById('period-unit-hidden');
     var status = document.getElementById('period-unit-status');
     fetch('/setup/current-period-unit')
       .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d.period_unit) { sel.value = d.period_unit; hidden.value = d.period_unit; }
-      });
+      .then(function (d) {if (d.period_unit) { sel.value = d.period_unit; hidden.value = d.period_unit; }});
     sel.addEventListener('change', function () {
       var unit = sel.value;
       hidden.value = unit;
@@ -573,6 +608,4 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
   })();
 </script>
 
-</body>
-</html>
-
+</body></html>

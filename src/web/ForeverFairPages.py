@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -96,8 +96,9 @@ def do_login(trader_id: int = Form(...)):
 @app.get("/researcher", response_class=HTMLResponse)
 def researcher_page(request: Request):
 	traders = ffdata.list_of_traders()
+	trader_well_counts = {int(trader["id"]): len(ffdata.get_trader_wells(int(trader["id"]))) for trader in traders}
 	context = _common_template_context()
-	context.update({"traders": traders})
+	context.update({"traders": traders, "trader_well_counts": trader_well_counts})
 	return templates.TemplateResponse(request, "Researcher.html", context)
 
 @app.get("/database-documentation", response_class=HTMLResponse)
@@ -107,11 +108,34 @@ def database_documentation_page(request: Request):
 @app.get("/hydrologist", response_class=HTMLResponse)
 def doc_hydrologist(request: Request):
 	notice = request.cookies.get("flash", "")
+	start_pumping_dates = ["(no open auction)", "(no open auction)", "(no open auction)", "(no open auction)"]
+	next_auction = ffdata.get_next_auction_info()
+	auction_id: int | None = None
+	if next_auction is not None:
+		auction_id = int(next_auction["auction_id"])
+	else:
+		auctions = ffdata.list_auctions()
+		if auctions:
+			auction_id = max(int(auction["auction_id"]) for auction in auctions)
+	if auction_id is not None:
+		periods = ffdata.get_auction_info(auction_id)["periods"]
+		for idx in range(min(4, len(periods))): start_pumping_dates[idx] = str(periods[idx]["label"]).split("T")[0]
 	context = _common_template_context()
-	context.update({"bounds_imported_at": ffdata.bounds_imported_at(), "notice": notice, })
+	context.update({"bounds_imported_at": ffdata.bounds_imported_at(), "notice": notice, "start_pumping_dates": start_pumping_dates,
+		"head_adjustment_notice": ffdata.latest_aquifer_head_adjustment_notice(), })
 	resp = templates.TemplateResponse(request, "Hydrologist.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
+
+@app.post("/hydrologist/create-synthetic-head-file")
+async def hydrologist_create_synthetic_head_file(request: Request):
+	try:
+		form = await request.form()
+		change_in_forecast = [float(str(form.get(f"change_in_forecast_{idx}", "1.0")).strip() or "1.0") for idx in range(4)]
+		csv_path = AuctionController.create_synthetic_new_head(ffdata, change_in_forecast=change_in_forecast)
+		return FileResponse(path=csv_path, media_type="text/csv", filename=csv_path.name)
+	except Exception as e:
+		return _flash_redirect("/hydrologist", f"Error creating synthetic head file: {e}")
 
 @app.get("/programmer", response_class=HTMLResponse)
 def doc_programmer(request: Request):
@@ -130,7 +154,7 @@ def doc_programmer(request: Request):
 		period_td = timedelta(hours=period_length_hours)
 		context["first_three_closes"] = [( close_dt + i * period_td).strftime("%d %b %Y %H:%M") for i in range(3)]
 	else: context["first_three_closes"] = None
-	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": ffdata.get_max_bid_steps(), })
+	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": ffdata.get_max_bid_steps(), "aquifer_head_limits_upload_date": ffdata.latest_aquifer_head_limits_upload_date(), })
 	resp = templates.TemplateResponse(request, "Programmer.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
@@ -154,6 +178,7 @@ def doc_auctionmanager(request: Request):
 
 	response_period_count = ffdata.response_matrix_period_count()
 	context: dict[str, Any] = {"auction": next_auction, "auctions": auctions, "period_length_hours": period_length_hours, "response_period_count": response_period_count, "bidding_periods": bidding_periods, "remaining_auctions": remaining_auctions, "next_auction_id": next_auction["auction_id"] if next_auction is not None else "none", "next_real_bid_count": next_real_bid_count, "next_default_bid_count": next_default_bid_count,}
+	context["rights_policy"] = ffdata.get_rights_policy()
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context["now"] = now_dt.isoformat(timespec="minutes")
@@ -192,10 +217,14 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 	auction_id = next_auction["auction_id"]
 	auction_info = ffdata.get_auction_info(auction_id)
 	current_wells = ffdata.get_trader_wells(trader_id)
-	current_well = current_wells[0] if current_wells else None
+	selected_well_cookie = request.cookies.get("current_well_id", "")
+	current_well_id_from_cookie = int(selected_well_cookie) if selected_well_cookie.isdigit() else None
+	current_well = next((well for well in current_wells if int(well["id"]) == current_well_id_from_cookie), None) if current_well_id_from_cookie is not None else None
+	if current_well is None and current_wells: current_well = current_wells[0]
 	bid_history = ffdata.get_bid_history(auction_id, trader_id)
 	current_well_id = current_well["id"] if current_well else None
 	quota_by_period = ffdata.get_well_start_quota(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
+	scaled_quota_by_period = ffdata.get_well_scaled_start_quota(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
 	clearing_price_by_period = ffdata.get_well_clearing_price_for_current_rows(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
 	max_bid_steps = ffdata.get_max_bid_steps()
 	latest_bids_by_period: dict[int, list[dict[str, Any]]] = {}
@@ -205,7 +234,7 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 		if latest_bids_by_period[period_id] and latest_bids_by_period[period_id][0]["bid_id"] != bid["bid_id"]: continue
 		latest_bids_by_period[period_id].append(bid)
 	period_rows: list[dict[str, Any]] = []
-	for period in auction_info["periods"]: period_rows.append({"period_id": period["id"], "period_key": period["id"], "period_label": period["label"], "allocation": quota_by_period.get(period["id"], 0.0), "clearing_price": clearing_price_by_period.get(period["id"]), "latest_bids": latest_bids_by_period.get(period["id"], []),})
+	for period in auction_info["periods"]: period_rows.append({"period_id": period["id"], "period_key": period["id"], "period_label": period["label"], "allocation": quota_by_period.get(period["id"], 0.0), "scaled_allocation": scaled_quota_by_period.get(period["id"], 0.0), "clearing_price": clearing_price_by_period.get(period["id"]), "latest_bids": latest_bids_by_period.get(period["id"], []),})
 	period_label_by_id = {int(period["id"]): str(period["label"]).split("T")[0] for period in auction_info["periods"]}
 	history_rows: list[dict[str, Any]] = []
 	history_row_by_bid_id: dict[int, dict[str, Any]] = {}
@@ -230,7 +259,7 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 	
 	matching_traders = [t for t in ffdata.list_of_traders() if t["id"] == trader_id]
 	current_trader: dict[str, Any] = matching_traders[0] if matching_traders else {"id": trader_id, "name": ""}
-	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "bid_history": bid_history, "bid_history_rows": history_rows, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)), "bid_entry_status_message": bid_entry_status_message,}
+	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "current_wells": current_wells, "bid_history": bid_history, "bid_history_rows": history_rows, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)), "bid_entry_status_message": bid_entry_status_message,}
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context.update(_common_template_context())
@@ -244,21 +273,32 @@ def trader_page(request: Request):
 	if context["notice"]: resp.delete_cookie("flash")
 	return resp
 
+@app.post("/trader/select-well")
+def trader_select_well(request: Request, well_id: int = Form(...)):
+	trader_cookie = request.cookies.get("trader_id", "")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
+	current_wells = ffdata.get_trader_wells(trader_id)
+	valid_well_ids = {int(well["id"]) for well in current_wells}
+	if well_id not in valid_well_ids: return _flash_redirect("/trader", f"Error: Well {well_id} is not assigned to your account.")
+	resp = RedirectResponse(url="/trader", status_code=303)
+	resp.set_cookie("current_well_id", str(well_id), max_age=86400, httponly=True, samesite="lax")
+	return resp
+
 @app.post("/bids/new")
 async def create_bid(request: Request):
 	form = await request.form()
 	return_to = str(form.get("return_to", "/trader")).strip()
 	if return_to != "/trader": return_to = "/trader"
-	period_text = ""
 	try:
 		auction_id = int(str(form["auction_id"]).strip())
 		well_id = int(str(form["well_id"]).strip())
 		period_id = int(str(form["period_id"]).strip())
 		quantity = float(str(form["quantity"]).strip())
 		price = float(str(form["price"]).strip())
-		auction_info = ffdata.get_auction_info(auction_id)
-		period_lookup = {int(p["id"]): str(p["label"]).split("T")[0] for p in auction_info["periods"]}
-		period_text = period_lookup.get(period_id, str(period_id))
+		if get_auctionmanager_run_active():
+			return _flash_redirect(return_to, "Error: Bid submission is locked because the auction manager is running the auction.")
 	except Exception:
 		q_text = str(form.get("quantity", "")).strip()
 		p_text = str(form.get("price", "")).strip()
@@ -277,10 +317,10 @@ async def create_bid(request: Request):
 		price_text = str(form[f"price{step_num}"] or "").strip()
 		if not quantity_text and not price_text: continue
 		if not quantity_text or not price_text:
-			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_text}, step {step_num} requires both quantity and price (quantity='{quantity_text}', price='{price_text}')")
+			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_id}, step {step_num} requires both quantity and price (quantity='{quantity_text}', price='{price_text}')")
 		try: bid_steps.append((float(quantity_text), float(price_text)))
 		except ValueError:
-			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_text}, step {step_num} has invalid quantity or price (quantity='{quantity_text}', price='{price_text}')")
+			return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: pumping period {period_id}, step {step_num} has invalid quantity or price (quantity='{quantity_text}', price='{price_text}')")
 	try: BiddingController.submitBid(ffdata, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps,)
 	except ValueError as e: return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: {e}")
 	return _flash_redirect(f"{return_to}?auction_id={auction_id}", "Bid saved")
@@ -371,7 +411,7 @@ def api_open_auctions():
 		return JSONResponse([{"id": a["auction_id"], "closed_date": a["closed_date"]} for a in ffdata.list_open_auctions()])
 	except Exception as e: return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.get("/setup/db-status") # TODO: this file should never know the db status.
+@app.get("/setup/db-status")
 def setup_db_status(): return JSONResponse(SetupForeverFairDB.db_status(ffdata.db_path), headers={"Cache-Control": "no-store"})
 
 @app.post("/setup/create-db")
@@ -577,6 +617,15 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 		f" {result['rows_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
+
+@app.post("/setup/import-aquifer-head-limits")
+async def setup_import_aquifer_head_limits(file: UploadFile = File(...)):
+	try:
+		text = (await file.read()).decode("utf-8", errors="replace")
+		updated_rows = ffdata.update_aquifer_head_limits(text)
+		return _flash_redirect("/programmer", f"Aquifer head limits updated: {updated_rows} rows")
+	except Exception as e:
+		return _flash_redirect("/programmer", f"Error importing aquifer head limits: {e}")
 
 @app.post("/setup/setup-first-auction")
 def setup_first_auction():

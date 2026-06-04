@@ -14,7 +14,7 @@
 	</div>
 </div>
 
-<h2>Auction schedule</h2>
+<h2>Auction schedule (rights policy: {{ rights_policy }})</h2>
 <p>Dates are synthetic in this demo code. The system opens an auction for Friday 4 pm whenever none exists.
 	If the auction manager runs a final auction, the synthetic date jumps to the next Friday at 4 pm and the "Today" display updates to the next week.</p>
 
@@ -56,7 +56,7 @@
 
 <h2>The Auction Manager's responsibilities</h2>
 <ol>
-	<li>Have your hydrologist load updated head limits for the forecasted inflows. Confirm hydrology constraints are current and defensible.</li>
+	<li>Have your hydrologist <a href="/hydrologist#managing-drawdown">load updated head limits for the forecasted inflows</a>. Confirm hydrology constraints are current and defensible.</li>
 	<li>Set up the auction and run it.</li>
 	<li>After the auction closes, run the auction.</li>
 	<li>Check that traders took only the water for which they have quota.</li>

@@ -7,24 +7,31 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader Console</h1>
 
-<p>Welcome, <strong>{{ current_trader.name }}</strong>.{% if current_well %}Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
-	{% else %}No well is registered for your account.{% endif %}
+<p>Welcome, <strong>{{ current_trader.name }}</strong>.
 	You are bidding in auction {{ auction_case.auction.id }}, which is <strong>{% if auction_case.auction.auction_type == 'tentative' %}tentative, so you will be able to bid again this period{% else %}final, so you will not be able to bid again this period{% endif %}</strong>.
 	Bidding for this auction {% if auction_case.auction.status == 'CLOSED' %} is closed{% else %} is open now, and closes {{ auction_case.auction.closed_date }}. <span id="bid-time-remaining" data-close-date="{{ auction_case.auction.closed_date }}"></span>{% endif %}
 </p>
 
+{% if current_well %}<form method="post" action="/trader/select-well" style="display: inline;">
+<p>Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
+{% if current_wells|length > 1 %}{% for well in current_wells %}
+	<button type="submit" name="well_id" value="{{ well.id }}" style="margin-left: 0.4em;" {% if well.id == current_well.id %}disabled{% endif %}>Switch to well {{ well.id }}</button>
+{% endfor %}{% endif %}
+</p></form>{% else %}<p>No well is registered for your account.</p>{% endif %}
+
 {% if auction_case.auction.status == 'OPEN' and current_well %}
 
-<h2>Bid entry console <button type="button" id="submit-bid-btn">Submit your bid</button> <span role="alert">{{ bid_entry_status_message }}</span></h2>
+<h2>Bid entry console <button type="button" id="submit-bid-btn">Submit your bid for auction {{ auction_case.auction.id }}</button> <span id="bid-lock-status" role="alert"></span> <span role="alert">{{ bid_entry_status_message }}</span></h2>
 <p>Press submit as often as you like. Each submission simply overwrites the previous bid until auction closing.</p>
-<p>The bid table has SPEED entry: change any value and the values below it change, too. NOTE: you are not likely to get bids under the clearing price.</p>
+<p>The bid table has SPEED entry: change any value and the values below it change, too. NOTE: you are not likely to get bids under the clearing price (the red dotted line in the bid steps graph).</p>
 
 <table data-console-table="true" style="table-layout: auto; border-collapse: collapse;">
-<colgroup><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}<col style="width: 10em;"></colgroup>
+<colgroup><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}<col style="width: 10em;"></colgroup>
 
 <thead><tr>
 		<th rowspan="2">Start of pumping period</th>
 		<th rowspan="2" style="text-align: right;">Cubic meters quota from auction {{ auction_case.auction.id - 1 }}</th>
+		<th rowspan="2" style="text-align: right;">Scaled quota</th>
 		<th rowspan="2" style="text-align: right;">Clearing price, $/m3, from auction {{ auction_case.auction.id - 1 }}</th>
 
 		{% for step_num in range(1, max_bid_steps + 1) %}
@@ -43,6 +50,7 @@
 		
 		<td>{{ row.period_label.split('T')[0] }}</td>
 		<td style="text-align: right;">{{ '{:,.1f}'.format(row.allocation) }}</td>
+		<td style="text-align: right;">{{ '{:,.1f}'.format(row.scaled_allocation) }}</td>
 		<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
 		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="{% if latest_bids|length >= 1 %}{{ '{:,.1f}'.format(latest_bids[0].quantity) }}{% endif %}" required></td>
 		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="{% if latest_bids|length >= 1 %}{{ latest_bids[0].price }}{% endif %}" required></td>
@@ -63,7 +71,7 @@
 <p><em>Bidding is closed for this auction.</em></p>
 {% endif %}
 
-<h2>Bidding history</h2>
+<h2>Your bids from the last auction</h2>
 
 <table style="table-layout: auto;">
 <colgroup><col style="width: 12em;"><col style="width: 10em;"><col style="width: 7em;"><col style="width: 8em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}</colgroup>
@@ -111,8 +119,7 @@
 
 <h3>We will adjust your initial quota to the available water.</h3>
 <p>For the first auction, and any auction where the forecasted aquifer head changes, we will scale your quota separately for each control point and time period.
-	We will convert your well quota will be converted to time-based quota for each environmental constraint.
-	You can review your detailed time-based control point quota TODO: <a>here, sorted by size of impact, biggest first</a>.</p>
+	We will convert your well quota will be converted to time-based quota for each environmental constraint.</p>
 
 <h3>How to submit a bid</h3>
 <p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
@@ -162,14 +169,30 @@ function updateBidTimeRemaining() {
 	var msRemaining = closeDate.getTime() - Date.now();
 	if (msRemaining <= 0) {
 		timer.textContent = 'Bidding is closed.';
+		isBidTimeClosed = true;
+		setBidConsoleLocked(true, 'Bidding is closed for this auction.');
 		return;
 	}
+	isBidTimeClosed = false;
 	var minutesRemaining = Math.ceil(msRemaining / 60000);
 	timer.textContent = 'You have ' + minutesRemaining + ' more minutes to bid.';
 }
 
 updateBidTimeRemaining();
 setInterval(updateBidTimeRemaining, 1000);
+
+async function refreshBidLockFromAuctionRun() {
+	if (!submitBidButton || isBidTimeClosed) return;
+	try {
+		var response = await fetch('/api/auctionmanager-debug', { cache: 'no-store' });
+		if (!response.ok) return;
+		var payload = await response.json();
+		if (payload && payload.run_active) setBidConsoleLocked(true, 'Bid submission is locked because the auction manager is running the auction.');
+		else setBidConsoleLocked(false, '');
+	} catch (_err) {}
+}
+refreshBidLockFromAuctionRun();
+setInterval(refreshBidLockFromAuctionRun, 2000);
 
 function formatQtyValue(value) {
 	var cleaned = (value || '').replace(/,/g, '').trim();
@@ -328,6 +351,15 @@ document.querySelectorAll('[data-console-type="qty"], [data-console-type="price"
 });
 
 var submitBidButton = document.getElementById('submit-bid-btn');
+var bidLockStatus = document.getElementById('bid-lock-status');
+var isBidTimeClosed = false;
+
+function setBidConsoleLocked(locked, message) {
+	var consoleInputs = document.querySelectorAll('table[data-console-table] input');
+	consoleInputs.forEach(function(input) { input.disabled = !!locked; });
+	if (submitBidButton) submitBidButton.disabled = !!locked;
+	if (bidLockStatus) bidLockStatus.textContent = locked ? (' ' + (message || 'Bid submission is locked.')) : '';
+}
 
 function prepareAndValidateConsoleRow(row) {
 	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);

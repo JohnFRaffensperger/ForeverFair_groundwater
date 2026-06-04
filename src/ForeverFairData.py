@@ -1,8 +1,11 @@
 # services/ForeverFairData.py. Claude guided by JFR, 2026 05 08.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Persist auction data and run results in SQLite.
+# This is the business logic from the database manager's point of view. Some auction logic appears here for speed, since SQL is sometimes faster than Python.
 
 from __future__ import annotations
+import csv
+import json
 import shutil
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -44,10 +47,13 @@ class ForeverFairData:
 			except sqlite3.OperationalError:
 				pass
 			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, integer_value) VALUES ('MAX_BID_STEPS', ?)", (DEFAULT_BID_STEPS,))
+			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) VALUES ('rights_policy_name', 'Unspecified rights policy')")
+			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) VALUES ('rights_policy_summary', 'No rights policy summary has been configured yet.')")
 
 	def get_meta_data(self, conn: sqlite3.Connection, key: str) -> str:
 		row = conn.execute("SELECT text_value FROM Catchment_info WHERE meta_key=?", (key,)).fetchone()
-		return row[0]
+		if row is None: raise ValueError(f"Missing Catchment_info row for meta_key={key}")
+		return str(row[0] or "")
 
 	def get_catchment_name(self) -> str:
 		with self.connect_to_db() as conn: return self.get_meta_data(conn, "Catchment_name")
@@ -134,7 +140,6 @@ class ForeverFairData:
 		return max(1, self.get_number_of_bidding_periods() - max(0, auction_id - 1))
 
 	def _iter_period_axis(self, first_dt: datetime, last_dt: datetime, period_length_hours: int):
-		"""Yield 1-based period indices over an ordinal/date axis."""
 		if period_length_hours <= 0 or last_dt < first_dt:
 			return
 		current = first_dt
@@ -144,7 +149,7 @@ class ForeverFairData:
 			idx += 1
 			current += timedelta(hours=period_length_hours)
 
-	# JFR: Claude wants to biuld maps on the basis that some period and date lookups are random rather than sequential.
+	# JFR: Claude wants to build maps on the basis that some period and date lookups are random rather than sequential.
 	def _get_period_maps(self, auction_id: int) -> dict[str, Any]:
 		auction = self.get_auction_info(auction_id)
 		period_length_hours = int(auction["period_length_hours"])
@@ -214,7 +219,6 @@ class ForeverFairData:
 			if row is None: return None
 			return dict(row)
 
-	# TODO: should have exactly one open auction. I guess we could implement an auction history page.
 	def list_auctions(self) -> list[dict[str, Any]]:
 		with self.connect_to_db() as conn:
 			rows = conn.execute("SELECT auction_id, status, auction_type, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, solve_status, objective_value, auction_revenue FROM auctions WHERE status != 'DELETED' ORDER BY CAST(auction_id AS INTEGER) ASC").fetchall()
@@ -225,7 +229,6 @@ class ForeverFairData:
 			rows = conn.execute("SELECT auction_id, closed_date FROM auctions WHERE status='OPEN' ORDER BY created_date DESC").fetchall()
 			return [dict(row) for row in rows]
 
-	# TODO: UNUSED?
 	def make_auction_final(self) -> int:
 		next_auction = self.get_next_auction_info()
 		if next_auction is None: raise ValueError("No open auction available")
@@ -234,7 +237,6 @@ class ForeverFairData:
 			conn.execute("UPDATE auctions SET auction_type='final' WHERE auction_id=?", (auction_id,))
 		return auction_id
 
-	# TODO: UNUSED?
 	def make_auction_tentative(self) -> int:
 		next_auction = self.get_next_auction_info()
 		if next_auction is None: raise ValueError("No open auction available")
@@ -288,7 +290,6 @@ class ForeverFairData:
 			trader_row = conn.execute("SELECT trader_id FROM wells WHERE well_id=?", (well_id,)).fetchone()
 			trader_id = int(trader_row["trader_id"]) if trader_row and trader_row["trader_id"] is not None else 0
 			# One active bid per (well, auction, period) - soft-delete any existing before inserting.
-			# TODO. The update seems dumb. 
 			conn.execute("UPDATE well_bids SET deleted=1 WHERE auction_id=? AND well_id=? AND pumping_date=? AND deleted=0", (auction_id, well_id, period_label),)
 			cursor = conn.execute("INSERT INTO well_bids(" "auction_id, trader_id, well_id, bid_date, pumping_date, " "qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, " "is_bid_default, deleted" ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)", (auction_id, trader_id, well_id, now, period_label, qty_values[0], price_values[0], qty_values[1], price_values[1], qty_values[2], price_values[2], qty_values[3], price_values[3], qty_values[4], price_values[4], 1 if is_default else 0,),)
 			bid_pk = cursor.lastrowid or 0
@@ -314,7 +315,6 @@ class ForeverFairData:
 			row = conn.execute(f"SELECT COALESCE(SUM(CASE WHEN is_bid_default = 0 THEN ({step_count_sql}) ELSE 0 END), 0) AS real_bid_count, COALESCE(SUM(CASE WHEN is_bid_default = 1 THEN ({step_count_sql}) ELSE 0 END), 0) AS default_bid_count FROM well_bids WHERE auction_id=? AND deleted=0", (auction_id,)).fetchone()
 			return int(row["real_bid_count"]), int(row["default_bid_count"])
 
-	# TODO. Way too complicated, should be just the SQL.
 	def get_bid_history (self, auction_id: int, trader_id: int) -> list[dict[str, Any]]:
 		"""Fetch bid history from well_bids joined to well_quota for final allocation and traded price."""
 		max_bid_steps = self.get_max_bid_steps()
@@ -346,7 +346,6 @@ class ForeverFairData:
 		with self.connect_to_db() as conn:
 			standing = conn.execute("SELECT trader_id, well_id, pumping_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5 FROM well_bids WHERE auction_id=? AND is_bid_default=1 AND deleted=0", (source_auction_id,)).fetchall()
 			for s in standing:
-				# TODO. The update seems dumb. 
 				conn.execute("UPDATE well_bids SET deleted=1 WHERE auction_id=? AND well_id=? AND pumping_date=? AND deleted=0", (auction_id, s["well_id"], s["pumping_date"]),)
 				conn.execute("INSERT OR IGNORE INTO well_bids(auction_id, trader_id, well_id, bid_date, pumping_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)", (auction_id, s["trader_id"], s["well_id"], now, s["pumping_date"], s["qty1"], s["price1"], s["qty2"], s["price2"], s["qty3"], s["price3"], s["qty4"], s["price4"], s["qty5"], s["price5"]),)
 
@@ -417,6 +416,18 @@ class ForeverFairData:
 		for row in rows:
 			period_idx = pumping_iso_to_idx[str(row["take_date"] or "")]
 			result[period_idx] = float(row["quota_auction_end"] or 0.0)
+		return result
+
+	def get_well_scaled_start_quota(self, well_id: int, auction_id: int) -> dict[int, float]:
+		"""Return {bid_period: quota_scaled_start} from well_quota for the given auction_id, ordered by take_date."""
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT take_date, quota_scaled_start FROM well_quota WHERE well_id=? AND auction_id=? ORDER BY take_date", (well_id, auction_id)).fetchall()
+		period_maps = self._get_period_maps(auction_id)
+		pumping_iso_to_idx = period_maps["pumping_iso_to_idx"]
+		result: dict[int, float] = {}
+		for row in rows:
+			period_idx = pumping_iso_to_idx[str(row["take_date"] or "")]
+			result[period_idx] = float(row["quota_scaled_start"] or 0.0)
 		return result
 
 	def get_well_clearing_price_for_current_rows(self, well_id: int, auction_id: int) -> dict[int, float | None]:
@@ -650,8 +661,31 @@ class ForeverFairData:
 				FROM control_point_events WHERE auction_id=?""", (auction_id,)).fetchall()
 			return {(int(row["control_point_id"]), str(row["effect_date"])): (row["committed_head_auction_start"], row["committed_head_auction_end"]) for row in rows}
 
+	def get_first_open_auction_control_point_events(self) -> tuple[int, list[dict[str, Any]]]:
+		"""Return (auction_id, rows) from control_point_events for the first open auction.
+
+		If no auction is open, fall back to the latest auction that has control_point_events rows.
+		"""
+		with self.connect_to_db() as conn:
+			next_auction = self.get_next_auction_info()
+			if next_auction is not None:
+				auction_id = int(next_auction["auction_id"])
+			else:
+				row = conn.execute("""SELECT cpe.auction_id
+					FROM control_point_events cpe
+					ORDER BY cpe.auction_id DESC
+					LIMIT 1""").fetchone()
+				if row is None: raise ValueError("No auction control-point events available")
+				auction_id = int(row["auction_id"])
+
+			rows = conn.execute("""SELECT control_point_id, effect_date, committed_head_auction_start, committed_allowable_head_change
+				FROM control_point_events
+				WHERE auction_id=?
+				ORDER BY control_point_id, effect_date""", (auction_id,)).fetchall()
+			if not rows: raise ValueError(f"No control_point_events rows for auction {auction_id}")
+			return auction_id, [dict(row) for row in rows]
+
 	def get_control_points_for_auction(self, auction_id: int) -> list[dict[str, int | str | dict[int, float] | None]]:
-		"""Retrieve control points for an auction as dictionaries with bound_by_period mapping."""
 		period_label_to_idx = self._get_period_maps(auction_id)["effect_iso_to_idx"]
 		with self.connect_to_db() as conn:
 			rows = conn.execute("""SELECT c.control_point_id, c.name, c.gw_model_row, c.gw_model_column, c.latitude, c.longitude, e.effect_date, (ahl.minimum_head - e.committed_head_auction_start) AS allowable_head_change
@@ -752,10 +786,8 @@ class ForeverFairData:
 						(SELECT prev.committed_head_auction_end FROM control_point_events prev
 						 WHERE prev.control_point_id = ahl.control_point_id AND prev.effect_date = ahl.effect_date
 						   AND prev.auction_id = (SELECT MAX(cpe2.auction_id) FROM control_point_events cpe2
-						                          WHERE cpe2.control_point_id = ahl.control_point_id
-						                            AND cpe2.effect_date = ahl.effect_date AND cpe2.auction_id < ?)),
-						ahl.actual_start_head
-					)
+						                          WHERE cpe2.control_point_id = ahl.control_point_id AND cpe2.effect_date = ahl.effect_date AND cpe2.auction_id < ?)),
+						ahl.actual_start_head)
 				FROM aquifer_head_limits ahl WHERE ahl.effect_date >= ?
 				ORDER BY ahl.control_point_id, ahl.effect_date""", (auction_id, auction_id, auction_id, auction_id, first_take_date))
 			return cur.rowcount
@@ -802,6 +834,88 @@ class ForeverFairData:
 					committed_allowable_head_change = (SELECT ahl.minimum_head FROM aquifer_head_limits ahl WHERE ahl.control_point_id=? AND ahl.effect_date=?) - (committed_head_auction_start + ?)
 				WHERE auction_id=? AND control_point_id=? AND effect_date=?""",
 				[(committed_head_change, control_point_id, effect_date, committed_head_change, auction_id, control_point_id, effect_date) for effect_date, control_point_id, committed_head_change in committed_rows],)
+
+	def latest_aquifer_head_limits_upload_date(self) -> str | None:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT MAX(upload_date) AS upload_date FROM aquifer_head_limits").fetchone()
+			if row is None or row["upload_date"] is None: return None
+			return str(row["upload_date"])
+
+	def latest_aquifer_head_adjustment_notice(self) -> dict[str, Any] | None:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT text_value FROM Catchment_info WHERE meta_key='latest_aquifer_head_adjustment_notice'").fetchone()
+			if row is None or not row["text_value"]: return None
+			return cast(dict[str, Any], json.loads(str(row["text_value"])))
+
+	def update_aquifer_head_limits(self, csv_text: str) -> int:
+		rows = list(csv.DictReader(csv_text.splitlines()))
+		if not rows: raise ValueError("CSV is empty")
+		required_columns = {"control_point_id", "effect_date", "actual_start_head"}
+		if not required_columns.issubset(set(rows[0].keys())): raise ValueError("CSV must contain control_point_id, effect_date, actual_start_head")
+
+		next_auction = self.get_next_auction_info()
+		if next_auction is None: raise ValueError("No open auction available")
+		auction_id = int(next_auction["auction_id"])
+		first_pumping_date = str(self.get_auction_info(auction_id)["first_pumping_date"])
+
+		parsed_rows: list[tuple[int, str, float]] = []
+		for row in rows:
+			parsed_rows.append((int(row["control_point_id"]), str(row["effect_date"]), float(row["actual_start_head"])))
+
+		first_effect_date = min(effect_date for _control_point_id, effect_date, _actual_start_head in parsed_rows)
+		if first_effect_date != first_pumping_date:
+			raise ValueError(f"First effect_date {first_effect_date} does not match first pumping date {first_pumping_date}")
+
+		csv_keys = {(control_point_id, effect_date) for control_point_id, effect_date, _actual_start_head in parsed_rows}
+		with self.connect_to_db() as conn:
+			expected_rows = conn.execute("SELECT control_point_id, effect_date FROM control_point_events WHERE auction_id=?", (auction_id,)).fetchall()
+			expected_keys = {(int(row["control_point_id"]), str(row["effect_date"])) for row in expected_rows}
+			if csv_keys != expected_keys: raise ValueError("CSV control_point_id/effect_date rows must exactly match control_point_events for the first open auction")
+
+			minimum_head_rows = conn.execute("SELECT control_point_id, effect_date, minimum_head FROM aquifer_head_limits").fetchall()
+			minimum_head_by_key = {(int(row["control_point_id"]), str(row["effect_date"])): row["minimum_head"] for row in minimum_head_rows}
+			control_point_rows = conn.execute("SELECT control_point_id, name FROM control_points").fetchall()
+			control_point_name_by_id = {int(row["control_point_id"]): str(row["name"] or "") for row in control_point_rows}
+			upload_date = datetime.now().isoformat(timespec="minutes")
+			updates: list[tuple[str, float, float, int, str]] = []
+			raised_rows: list[dict[str, int | str | float]] = []
+			adjusted_start_head_by_key: dict[tuple[int, str], float] = {}
+			for control_point_id, effect_date, actual_start_head in parsed_rows:
+				minimum_head = minimum_head_by_key[(control_point_id, effect_date)]
+				if minimum_head is None: raise ValueError(f"Missing minimum_head for control_point_id={control_point_id}, effect_date={effect_date}")
+				minimum_head_value = float(minimum_head)
+				adjusted_actual_start_head = actual_start_head
+				if minimum_head_value > actual_start_head:
+					adjusted_actual_start_head = minimum_head_value
+					raised_rows.append({"control_point_id": control_point_id, "control_point_name": control_point_name_by_id.get(control_point_id, ""), "effect_date": effect_date,
+						"uploaded_actual_start_head": actual_start_head, "raised_to": adjusted_actual_start_head, "difference": adjusted_actual_start_head - actual_start_head})
+				allowable_head_change = minimum_head_value - adjusted_actual_start_head
+				updates.append((upload_date, adjusted_actual_start_head, allowable_head_change, control_point_id, effect_date))
+				adjusted_start_head_by_key[(control_point_id, effect_date)] = adjusted_actual_start_head
+
+			top_raised_rows: list[dict[str, int | str | float]] = sorted(raised_rows, key=lambda row: float(row["difference"]), reverse=True)[:3]
+			notice_payload: dict[str, Any] = {"upload_date": upload_date, "adjusted_count": len(raised_rows), "top_rows": top_raised_rows}
+
+			conn.executemany("""UPDATE aquifer_head_limits
+				SET upload_date=?, actual_start_head=?, allowable_head_change=?, license_demand=NULL, head_constraint_upper_bound=NULL
+				WHERE control_point_id=? AND effect_date=?""", updates)
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value) VALUES ('latest_aquifer_head_adjustment_notice', ?)", (json.dumps(notice_payload),))
+
+			conn.executemany("""UPDATE control_point_events
+				SET committed_head_auction_start=?,
+					committed_allowable_head_change=(SELECT ahl.minimum_head FROM aquifer_head_limits ahl WHERE ahl.control_point_id=? AND ahl.effect_date=?) - ?,
+					planned_head_auction_start=?,
+					committed_head_auction_end=NULL,
+					planned_head_auction_end=NULL,
+					slack=NULL,
+					dual_price=NULL,
+					alpha=NULL
+				WHERE auction_id=? AND control_point_id=? AND effect_date=?""",
+				[(adjusted_start_head_by_key[(control_point_id, effect_date)], control_point_id, effect_date,
+					adjusted_start_head_by_key[(control_point_id, effect_date)], adjusted_start_head_by_key[(control_point_id, effect_date)],
+					auction_id, control_point_id, effect_date) for control_point_id, effect_date, _actual_start_head in parsed_rows],
+			)
+			return len(updates)
 
 	# 8. Rights -------------------------------------------------------------------------
 	# Amazing query by Claude, though I gave it a lot of guidance. The same as AuctionController.compute_alphas, but for just one well. SQL is faster in this case than Python.

@@ -25,7 +25,15 @@ Adding security is probably pretty easy to vibe-code in.</p>
 		<input type="hidden" name="trader_id" value="{{ p.id }}">
     <button type="submit">{{ p.name }}</button>
   </form>
+	{% if trader_well_counts.get(p.id, 0) > 1 %}<span>{{ trader_well_counts.get(p.id, 0) }} wells.</span>{% endif %}
   {% endfor %}
+<h2>About this code</h2>
+<p>The purpose of this code is to show how the smart market for water would work, to the policymaker, the water manager, and the water user.
+	I put this together in a month using VSCode with the help of Claude AI. I have not tested it heavily and can't imagine every edge case.
+	Modifying this code, e.g, adding tentative auctions, changing the behavior of automatic bids, etc., is trivial.
+	Correcting mistakes in it is probably trivial. Water users may want changes to the interface, which would be trivial.
+	I focused on the math, which is nontrivial.
+	</p>
 
 <h2>About Forever Fair</h2>
 <p>The old way of allocating water by season or year must end. The old way of allocating water by writing long applications and waiting for months 
@@ -194,6 +202,133 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Enforcement.</b> Users must not take more water than the auction manager allocates to them. Users' wells must have real time meters that the auction manager can see.
 	 The auction manager must be sure that users can and will pay. Users have to learn to use the website and learn to make bids.</p>
 
+<h1>The smart market clearing model for groundwater</h1>
+<p>The following is the mathematical formulation of the Forever Fair market-clearing model.
+	 At each auction run, the software creates this optimmization from the database and solves it.
+	The authoritative reference for this work is Raffensperger &amp; Milke, <a href="https://link.springer.com/book/10.1007/978-3-319-55008-4"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.
+</p>
+
+<h3>Indices</h3>
+<p><i>b</i>: bid step, <i>b</i> = 1, &hellip;, 5</p>
+<p><i>i</i>: well location, <i>i</i> = 1, &hellip;, <i>n</i></p>
+<p><i>t</i>: bid period (pumping period), <i>t</i> = 1, &hellip;, <i>T</i></p>
+<p><i>cp</i>: control point</p>
+<p><i>e</i>: effect period (period in which drawdown occurs at a control point)</p>
+
+<h3>Parameters</h3>
+<p><i>n</i> = number of well locations</p>
+<p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i>. 
+	Units: meters per (cubic meter per period). Usually, <i>F</i><sub><i>cp,e,i,t</i></sub> < 0.
+	</p>
+<p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
+<p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase. Units: cubic meters per period.</p>
+<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_events.head_constraint_upper_bound.</p>
+<p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
+
+<h3>Variables</h3>
+<p><i>bid</i><sub><i>itb</i></sub> = quantity of bid step <i>b</i> accepted at well <i>i</i>, bid period <i>t</i>. Bounded [0, <i>Q</i><sub><i>itb</i></sub>].</p>
+<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in well_quota.price.</p>
+<p><i>q</i><sub><i>it</i></sub> = aggregate pumping at well <i>i</i>, bid period <i>t</i>. Free auxiliary variable; equals the sum of accepted bids by constraint 3.</p>
+
+<h3>Model</h3>
+<p>1. Objective. This is a gross-pool model with buy bids only; each accepted bid quantity yields surplus equal to <i>P</i><sub><i>itb</i></sub> per unit. Maximise consumer surplus (gross-pool; buy bids only):
+	maximize&nbsp;&sum;<sub><i>i,t,b</i></sub>&nbsp;<i>P</i><sub><i>itb</i></sub>&middot;<i>bid</i><sub><i>itb</i></sub>.</p>
+
+<p>2. Bid bounds. Each accepted bid quantity is nonnegative and bounded above by the step quantity <i>Q</i><sub><i>itb</i></sub>. 
+	For&nbsp;all&nbsp;<i>b</i>,&nbsp;<i>i</i>,&nbsp;<i>t</i>:&nbsp;0&nbsp;&le;&nbsp;<i>bid</i><sub><i>itb</i></sub>&nbsp;&le;&nbsp;<i>Q</i><sub><i>itb</i></sub>. Dual variables <i>&alpha;</i><sub><i>itb</i></sub> &ge; 0.</p>
+
+<p>3. Pumping equals the sum of bids. 
+	The dual price <i>p</i><sub><i>it</i></sub> is the market clearing price at well <i>i</i>, period <i>t</i>.
+	The code extracts this value from the solver via PuLP&rsquo;s constraint.pi attribute and stores it as the well-period price.
+	For all <i>i</i>, <i>t</i>: <i>q</i><sub><i>it</i></sub> = &sum;<sub><i>b</i>=1..5</sub> <i>bid</i><sub><i>itb</i></sub>. Dual variables <i>p</i><sub><i>it</i></sub> (free).</p>
+
+<p>4. Control-point drawdown constraint. 
+	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
+	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_events.dual_price).
+	For each control point <i>cp</i> and effect period <i>e</i>: 
+	&sum;<sub><i>i,t</i></sub>&nbsp;<i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
+
+<p>5. Variable bounds. 0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub> (constraint 2). <i>q</i><sub><i>it</i></sub> is free (unconstrained in sign).</p>
+
+<h2>Adding minimum drawdown constraints</h2>
+
+<p>The current version enforces only <strong>upper-bound drawdown constraints only</strong>, corresponding to constraint 4 above.
+Each control point has a single bound per period: <i>s</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>it</i></sub>. 
+The database stores these bounds in control_point_events.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
+After the auction runs, the code returns the dual price dual_price and slack slack for each row.
+This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
+for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
+
+<p>The hydrologist may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
+A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
+The database schema already has the necessary column control_point_events.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
+<ul>
+<li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
+<li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
+<li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
+<li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
+</ul>
+
+<h2>Adding head difference constraints</h2>
+<p>A head-difference constraint bounds the drawdown difference between two locations <i>i</i> and <i>j</i> (constraint 6 in the model above): 
+	<i>LHD</i><sub><i>ijt</i></sub>  &le;  <i>s</i><sub><i>it</i></sub> &minus; <i>s</i><sub><i>jt</i></sub>  &le;  <i>UHD</i><sub><i>ijt</i></sub>. 
+	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,
+	or to maintain a minimum gradient between an irrigation area and a river. The database schema already stores two grid locations per control point (CP_layer1/row1/col1 and CP_layer2/row2/col2,
+	with corresponding lat/lon pairs), which is the physical basis for a two-point difference constraint.
+	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_events. 
+	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
+<ul>
+<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
+<li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
+<li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
+<li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>
+</ul>
+
+<h2>How Forever Fair scales license</h2>
+
+<p>Under a revenue-neutral rights policy of scaled license, the auction manager must scale license-derived quota to the environmental constraints. 
+	The auction manager must also scale quota when the hydrologist uploads new aquifer heads. 
+	This scaling can be done many ways (see Raffensperger, <a href="https://www.sciencedirect.com/science/article/abs/pii/S0921800911000437">"Matching users' rights to available groundwater,"</a> <i>Ecological Economics</i>). 
+
+<p>Following that article, this code scales quota based on control point events, aka, "constraint quota". 
+	The key idea is to start with the effect of a well pumping in a specific pumping period on a control point at a specific effect period.
+	This effect is summed across wells and pumping periods, then scaled to the available drawdown at that control point and effect period.
+	For effect period <i>u</i> and control point <i>k</i>, I call the scale factor &alpha;(<i>u</i>,<i>k</i>). 
+	In effect, we are converting one quota for a well to a portfolio quota for each control point constraint.</p>
+
+<p>Of course, this portfolio of constraint quota is a nuisance to the bidder, who probably doesn't have time for reviewing hundreds of control point events.
+	So the next question is how to convert this list of constraint quota to a single well quota that makes sense to the bidder.
+	To get a cash-equivalent well quota, we weight the constraint quota by the dual prices, as shown below.
+	To my knowledge, this idea has not been published. You're seeing it here first.</p>
+
+<p>Definitions</p>
+
+<p><i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>): starting quota for well <i>w</i> in pumping period <i>t</i> (for auction 1, this comes from upgraded license).</p>
+<p><i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>): response matrix coefficient linking pumping at well <i>w</i>, period <i>t</i>, to head change at control point <i>k</i>, effect period <i>u</i>.</p>
+
+<p>&alpha;(<i>u</i>,<i>k</i>) &equiv; [<i>minimum_head</i>(<i>u</i>,<i>k</i>) - <i>committed_head_auction_start</i>(<i>u</i>,<i>k</i>)] / [&sum;<sub>(<i>w</i>,<i>t</i>): <i>t</i> &le; <i>u</i></sub> <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>)]. 
+	&alpha;(<i>u</i>,<i>k</i>) is the scaling factor for control point event (<i>u</i>,<i>k</i>), calculated by the auction manager from allowed head change. 
+	If &alpha;(<i>u</i>,<i>k</i>) &lt; 1, this control point event is over-allocated and the auction manager must scale down quota for that control point event. 
+	If &alpha;(<i>u</i>,<i>k</i>) &gt; 1, the control point event is under-allocated and the auction manager can scale up quota for that control point event. 
+	&alpha;(<i>u</i>,<i>k</i>) can be negative when F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i> > 0, as occurs with the Tianqiao case (the associated dual prices were always zero).
+	If the denominator is zero, the code stores &alpha; as NULL.
+</p>
+
+<p>&lambda;(<i>u</i>,<i>k</i>): dual price control point event constraint (<i>u</i>,<i>k</i>).</p>
+<p>&pi;(<i>w</i>,<i>t</i>): dual price on well quota constraint for well <i>w</i>, pumping period <i>t</i>.</p>
+<p><i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>): scaled starting quota for well <i>w</i>, pumping period <i>t</i>.</p>
+
+<p>Formulas</p>
+
+<p>1) Constraint quota for well <i>w</i>, pumping period <i>t</i>, effect period <i>u</i>, control point <i>k</i>: <i>constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>). Typically <i>constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) < 0.</p>
+
+<p>2) &alpha;(<i>u</i>,<i>k</i>) &equiv; [<i>minimum_head</i>(<i>u</i>,<i>k</i>) - <i>committed_head_auction_start</i>(<i>u</i>,<i>k</i>)] / [&sum;<sub>(<i>w</i>,<i>t</i>): <i>t</i> &le; <i>u</i></sub> <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>)]. Typically &alpha;(<i>u</i>,<i>k</i>) > 0.</p>
+
+<p>3) Scaled constraint quota for well <i>w</i>, pumping period <i>t</i>, effect period <i>u</i>, control point <i>k</i>: <i>scaled_constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) * &alpha;(<i>u</i>,<i>k</i>). Typically, <i>scaled_constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) < 0.</p> 
+
+<p>4) Cash-equivalent scaled well quota: <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * &sum;<sub>(<i>u</i>,<i>k</i>)</sub> [<i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) * &alpha;(<i>u</i>,<i>k</i>) * &lambda;(<i>u</i>,<i>k</i>)] / &pi;(<i>w</i>,<i>t</i>) if &pi;(<i>w</i>,<i>t</i>) &ne; 0; otherwise <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) = 0. 
+	Almost always, <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) > 0. Occasionally this may be zero, but never negative for this groundwater model.</p>
+
 <h2>Terminology, glossary</h2>
 
 <p><b>Auction</b>. An auction is one market-clearing event that allocates water quota across wells and bid periods using the optimization model.</p>
@@ -244,6 +379,7 @@ For example, the auction manager runs each auction with four week-long bidding p
 
 <h2>Key references</h2>
 <p>The authoritative reference for this work is Raffensperger and Milke, <a href="https://link.springer.com/book/10.1007/978-3-319-55008-4"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.</p>
+<p>Raffensperger 2011, <a href="https://www.sciencedirect.com/science/article/abs/pii/S0921800911000437">"Matching users' rights to available groundwater."</a></p>
 <p><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger's bibliography on smart markets for water resources</a>.</p>
 <p><a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">USGS GWM Groundwater Management Process</a>.</p>
 <p><a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a>.</p>

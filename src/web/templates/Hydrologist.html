@@ -13,13 +13,64 @@
 <p>{% if notice %}<p><strong>{{ notice }}</strong></p>{% endif %} <em>No head-constraint bounds are loaded yet. Upload a .hedcon or .mps file on the <a href="/programmer">Programmer page</a> first.</em></p>
 {% endif %}
 
+{% if head_adjustment_notice and head_adjustment_notice.adjusted_count > 0 %}
+<h2>Latest head adjustment for feasibility</h2>
+<p>To keep optimization feasible, {{ head_adjustment_notice.adjusted_count }} uploaded actual_start_head value{% if head_adjustment_notice.adjusted_count != 1 %}s{% endif %} were raised to minimum_head (allowable head change = 0 where needed).</p>
+<p>Largest 3 raises from the latest upload ({{ head_adjustment_notice.upload_date[:19] | replace("T", " ") }}):</p>
+<table>
+	<thead><tr><th>Control point id</th><th>Control point name</th><th>Effect date</th><th>Uploaded actual_start_head</th><th>Raised to</th><th>Difference</th></tr></thead>
+	<tbody>
+		{% for row in head_adjustment_notice.top_rows %}
+		<tr>
+			<td>{{ row.control_point_id }}</td>
+			<td>{{ row.control_point_name }}</td>
+			<td>{{ row.effect_date.split('T')[0] }}</td>
+			<td style="text-align: right;">{{ '%.3f'|format(row.uploaded_actual_start_head) }}</td>
+			<td style="text-align: right;">{{ '%.3f'|format(row.raised_to) }}</td>
+			<td style="text-align: right;">{{ '%.3f'|format(row.difference) }}</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+{% endif %}
+
+<h2>Try changing the aquifer head</h2>
+
+<p>Here's the scenario: you've set up the auction (as described below) with forecasted aquifer heads and firm head limits. After the auction has run a week or two, you realize that the weather forecast
+	has changed, so the forecasted aquifer heads are wrong. This research code has a function create_synthetic_new_head (auction_id) that will read the current database, synthetically adjust the "current" aquifer head.
+	The button will download the CSV file for you. Then you can <a href="/programmer#updating-aquifer-head">tell the programmer</a> to upload new aquifer heads. 
+	YOU ARE RESPONSIBLE for ensuring feasible head limits: if you try to upload head limits with no allowable drawdown, the code will clip the data: allowable_head_change = min (0, minimum_head &ndash; actual_head_start).
+	You <i>must</i> set proper head limits. They are the boundaries of the market. The market is likely to allocate the full allowable limit, so set them carefully. 
+	The crude boxes below are simply so you can conveniently test the ability to upload new aquifer head limits.</p>
+
+<form method="post" action="/hydrologist/create-synthetic-head-file">
+<table>
+	<tr><td>Start pumping date:</td>
+		<td><label for="change_in_forecast_0">{{ start_pumping_dates[0] }}</label></td>
+		<td><label for="change_in_forecast_1">{{ start_pumping_dates[1] }}</label></td>
+		<td><label for="change_in_forecast_2">{{ start_pumping_dates[2] }}</label></td>
+		<td><label for="change_in_forecast_3">{{ start_pumping_dates[3] }}</label></td>
+		<td></td>
+	</tr>
+	<tr><td>Factor change in head, e.g., 1.03 or 0.97:</td>
+		<td><input id="change_in_forecast_0" name="change_in_forecast_0" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_1" name="change_in_forecast_1" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_2" name="change_in_forecast_2" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_3" name="change_in_forecast_3" type="number" step="0.01" value="1.0" required></td>
+		<td><button type="submit">Create new aquifer head file</button></td>
+	</tr>
+</table>
+</form>
+
+<h1>Setting up Forever Fair</h1>
+	
 <p>The Forever Fair market is centered on a groundwater model. The hydrologist has a key role!
 	The groundwater model is the source of the response matrix, well locations, and head constraints at control points.
 	The response matrix is a linearized representation of the hydrology; its values describe the effect of pumping from wells and head at various control points. 
-Through the response factors, each accepted bid affects the control point constraints. 
-Since hydrologic effects propagate over time, the market clearing optimization must support lagged responses, so pumping does not injure control points in future periods.
-Therefore, to set up the market, the programmer needs a groundwater model that can produce this response matrix.
-The hydrologist must define environmental limits as control points with head limits. This is best done with code like 
+	Through the response factors, each accepted bid affects the control point constraints. 
+	Since hydrologic effects propagate over time, the market clearing optimization must support lagged responses, so pumping does not injure control points in future periods.
+	Therefore, to set up the market, the programmer needs a groundwater model that can produce this response matrix.
+	The hydrologist must define environmental limits as control points with head limits. This is best done with code like 
 	USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a>. 
 	GWM can produce important files needed: decvar, hedcon, and mps. But the hydrologist must set this up!</p>
 
@@ -97,7 +148,7 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 
 <p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
-<h2>Managing drawdown for each auction</h2>
+<h2 id="managing-drawdown">Managing drawdown for each auction</h2>
 
 <p>The head-constraint bounds come from the your_file_name.hedcon and your_file_name.mps files uploaded via the <a href="/programmer">Programmer page</a>.
 	Each time the programmer uploads hedcon and mps files, the code saves them with a timestamp.
@@ -107,87 +158,11 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 <p>Managing groundwater with real weather requires updating the head constraints in every auction. 
 	For a real auction, the hydrologist should re-load head limits that match the forecasted limits based on forecasted inflows.
 To update the bounds, just upload revised .hedcon and .mps files via the Programmer page. The new bounds take effect for any auction created after that upload.
- Auctions that were already created keep the bounds that were current when they were scheduled.</p>
+ Auctions that were already created keep the bounds that were current when they were scheduled. If you don't have or want to make new .hedcon and .mps files, 
+but only want to simulate changing inflows then: (1) open foreverfair.db, browse control_point_events, filter to the first open auction, and export those rows.
+(2) With a spreadsheet, modify the committed_head_auction_start as you wish. Modify the committed_allowable_head_change to match. Change the layout to match aquifer_head_limits.
+(3) Then import the new aquifer_head_limits rows into foreverfair.db. The code will automatically use the new head limits and automatically scale initial quota to the available water.</p>
 
-<h2>The smart market clearing model for groundwater</h2>
-<p>The following is the mathematical formulation of the Forever Fair market-clearing model.
-	 At each auction run, the software creates this optimmization from the database and solves it.
-	The authoritative reference for this work is Raffensperger &amp; Milke, <a href="https://link.springer.com/book/10.1007/978-3-319-55008-4"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.
-</p>
-
-<h3>Indices</h3>
-<p><i>b</i>: bid step, <i>b</i> = 1, &hellip;, 5</p>
-<p><i>i</i>: well location, <i>i</i> = 1, &hellip;, <i>n</i></p>
-<p><i>t</i>: bid period (pumping period), <i>t</i> = 1, &hellip;, <i>T</i></p>
-<p><i>cp</i>: control point</p>
-<p><i>e</i>: effect period (period in which drawdown occurs at a control point)</p>
-
-<h3>Parameters</h3>
-<p><i>n</i> = number of well locations</p>
-<p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i>. Units: meters per (cubic meter per period).</p>
-<p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
-<p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase. Units: cubic meters per period.</p>
-<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_events.head_constraint_upper_bound.</p>
-<p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
-
-<h3>Variables</h3>
-<p><i>bid</i><sub><i>itb</i></sub> = quantity of bid step <i>b</i> accepted at well <i>i</i>, bid period <i>t</i>. Bounded [0, <i>Q</i><sub><i>itb</i></sub>].</p>
-<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in well_quota.price.</p>
-<p><i>q</i><sub><i>it</i></sub> = aggregate pumping at well <i>i</i>, bid period <i>t</i>. Free auxiliary variable; equals the sum of accepted bids by constraint 3.</p>
-
-<h3>Model</h3>
-<p>1. Objective. This is a gross-pool model with buy bids only; each accepted bid quantity yields surplus equal to <i>P</i><sub><i>itb</i></sub> per unit. Maximise consumer surplus (gross-pool; buy bids only):
-	maximize&nbsp;&sum;<sub><i>i,t,b</i></sub>&nbsp;<i>P</i><sub><i>itb</i></sub>&middot;<i>bid</i><sub><i>itb</i></sub>.</p>
-
-<p>2. Bid bounds. Each accepted bid quantity is nonnegative and bounded above by the step quantity <i>Q</i><sub><i>itb</i></sub>. 
-	For&nbsp;all&nbsp;<i>b</i>,&nbsp;<i>i</i>,&nbsp;<i>t</i>:&nbsp;0&nbsp;&le;&nbsp;<i>bid</i><sub><i>itb</i></sub>&nbsp;&le;&nbsp;<i>Q</i><sub><i>itb</i></sub>. Dual variables <i>&alpha;</i><sub><i>itb</i></sub> &ge; 0.</p>
-
-<p>3. Pumping equals the sum of bids. 
-	The dual price <i>p</i><sub><i>it</i></sub> is the market clearing price at well <i>i</i>, period <i>t</i>.
-	The code extracts this value from the solver via PuLP&rsquo;s constraint.pi attribute and stores it as the well-period price.
-	For all <i>i</i>, <i>t</i>: <i>q</i><sub><i>it</i></sub> = &sum;<sub><i>b</i>=1..5</sub> <i>bid</i><sub><i>itb</i></sub>. Dual variables <i>p</i><sub><i>it</i></sub> (free).</p>
-
-<p>4. Control-point drawdown constraint. 
-	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
-	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_events.dual_price).
-	For each control point <i>cp</i> and effect period <i>e</i>: 
-	&sum;<sub><i>i,t</i></sub>&nbsp;<i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
-
-<p>5. Variable bounds. 0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub> (constraint 2). <i>q</i><sub><i>it</i></sub> is free (unconstrained in sign).</p>
-
-<h2>Adding minimum drawdown constraints</h2>
-
-<p>The current version enforces only <strong>upper-bound drawdown constraints only</strong>, corresponding to constraint 4 above.
-Each control point has a single bound per period: <i>s</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>it</i></sub>. 
-The database stores these bounds in control_point_events.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
-After the auction runs, the code returns the dual price dual_price and slack slack for each row.
-This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
-for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
-
-<p>The hydrologist may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
-A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
-The database schema already has the necessary column control_point_events.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
-<ul>
-<li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
-<li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
-<li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
-<li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
-</ul>
-
-<h2>Adding head difference constraints</h2>
-A head-difference constraint bounds the drawdown difference between two locations <i>i</i> and <i>j</i> (constraint 6 in the model above): 
-	<i>LHD</i><sub><i>ijt</i></sub>  &le;  <i>s</i><sub><i>it</i></sub> &minus; <i>s</i><sub><i>jt</i></sub>  &le;  <i>UHD</i><sub><i>ijt</i></sub>. 
-	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,
-	or to maintain a minimum gradient between an irrigation area and a river. The database schema already stores two grid locations per control point (CP_layer1/row1/col1 and CP_layer2/row2/col2,
-	with corresponding lat/lon pairs), which is the physical basis for a two-point difference constraint.
-	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_events. 
-	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
-<ul>
-<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
-<li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
-<li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
-<li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>
-</ul>
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
 </body>
 </html>

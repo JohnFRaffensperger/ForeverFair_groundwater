@@ -2,6 +2,7 @@
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.
+# This is the business logic from the implementing programmer's point of view.
 
 from __future__ import annotations
 import gc
@@ -584,6 +585,7 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 	num_pump_periods = get_catchment_info(conn, "gwm_num_pump_periods")
 	num_control_points = get_catchment_info(conn, "gwm_num_control_points")
 	num_control_periods = get_catchment_info(conn, "gwm_num_control_periods")
+	rights_policy = str(get_catchment_info(conn, "Rights_policy") or "")
 
 	if num_wells is None:
 		row = conn.execute("SELECT COUNT(*) FROM wells").fetchone()
@@ -714,7 +716,8 @@ def import_mps(db_path: Path, text: str, period_length_hours: int) -> dict[str, 
 			try:
 				well_num, pump_period = mps_well_decoding(col_token, num_pump_periods)
 				well_id = int(well_num)
-				license_quantity = Modify_license_for_your_scenario(raw_license, well_id, pump_period)
+				if "Users_pay" == rights_policy: license_quantity = 0.0
+				else: license_quantity = Modify_license_for_your_scenario(raw_license, well_id, pump_period)
 				before_changes = conn.total_changes
 				conn.execute("INSERT OR IGNORE INTO wells (well_id, name, trader_id, gw_model_layer, gw_model_row, gw_model_column, latitude, longitude) VALUES (?,?,?,?,?,?,?,?)", (well_id, f"gwm-well-{well_num}", None, None, None, None, None, None))
 				if conn.total_changes > before_changes: wells_ensured += 1
@@ -930,6 +933,10 @@ def setup_tianqiao(): # When you don't feel like using Programmer.html.
 	# Set auction calendar before import_hedcon.
 	save_catchment_info(conn, "period_length_hours", 168)
 	save_catchment_info(conn, "num_bidding_periods", 20)
+	# Rights policy for testing (leave one active, comment out the other two).
+	# save_catchment_info(conn, "Rights_policy", "Quota_scaled")
+	# save_catchment_info(conn, "Rights_policy", "Auction_manager_pays")
+	save_catchment_info(conn, "Rights_policy", "Users_pay")
 	conn.commit()
 	conn.close()
 	import_decvar(db_path, (data_dir / "tianqiao.decvar").read_text())

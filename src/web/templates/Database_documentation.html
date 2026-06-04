@@ -7,8 +7,8 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Database Documentation</h1>
 
-<p>This page documents the SQLite schema used by Forever Fair. The schema is created in src/SetupForeverFairDB.py (SCHEMA_DDL), and most writes/reads are performed through src/services/repository.py and SetupForeverFairDB import helpers.</p>
-<p><strong>Initialization convention:</strong> Setup imports use <strong>auction_id = 0</strong> for initial rows in both well_quota (initial quota via quota_auction_start) and control_point_events (initial head values: minimum_head from HEDCON, actual_start_head computed from HEDCON and MPS together). The optimization computes the LP right-hand side as <strong>minimum_head &minus; actual_start_head</strong> at runtime.</p>
+<p>This page documents the SQLite schema for Forever Fair. <strong>SetupForeverFairDB.create_empty_db</strong> creates the schema from SCHEMA_DDL in src/SetupForeverFairDB.py. <strong>ForeverFairData</strong> methods in src/ForeverFairData.py and import helpers in src/SetupForeverFairDB.py write and read most table values.</p>
+<p><strong>Initialization convention:</strong> Setup import functions write <strong>auction_id = 0</strong> rows into both well_quota (initial quota via quota_auction_start) and control_point_events baseline data paths. During solve, <strong>AuctionController.runCurrentAuction</strong> builds LP right-hand sides from <strong>minimum_head &minus; committed_head_auction_start</strong>.</p>
 
 <h2>Table: Catchment_info</h2>
 <p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global catchment setting. Used for keys such as inferred GWM dimensions, synthetic time, period length, and bidding-period count.</p>
@@ -18,7 +18,7 @@
 <h2>Table: traders</h2>
 <p><strong>trader_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal numeric trader identifier used throughout joins and foreign keys.</p>
 <p><strong>name_tag (TEXT, NOT NULL):</strong> Trader display/name key used by UI and several import joins (for example trader-well assignment import). One trader can own more than one well.</p>
-<p><strong>trader_loginid (TEXT):</strong> Login identifier value imported with trader names. Currently derived from surname in importer.</p>
+<p><strong>trader_loginid (TEXT):</strong> Login identifier value imported with trader names. <strong>SetupForeverFairDB.import_trader_names</strong> currently derives it from surname.</p>
 <p><strong>trader_password (TEXT):</strong> Reserved legacy column for password storage; not used by current auth flow.</p>
 <p><strong>trader_first_name (TEXT):</strong> Trader first name imported from trader names file.</p>
 <p><strong>trader_last_name (TEXT):</strong> Trader last name imported from trader names file.</p>
@@ -29,13 +29,13 @@
 
 <h2>Table: wells</h2>
 <p><strong>well_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal well identifier used by bids, response matrix rows, and quota/result tables.</p>
-<p><strong>name (TEXT, NOT NULL):</strong> Well label (for example gwm-well-N) imported from DECVAR/MPS and used for display and fallback matching.</p>
-<p><strong>trader_id (INTEGER, FOREIGN KEY to traders.trader_id):</strong> Assigned owner/trader for the well, populated by trader-well import. One trader can own more than one well.</p>
-<p><strong>gw_model_layer (INTEGER):</strong> Groundwater model layer index from DECVAR.</p>
-<p><strong>gw_model_row (INTEGER):</strong> Groundwater model row index from DECVAR.</p>
-<p><strong>gw_model_column (INTEGER):</strong> Groundwater model column index from DECVAR.</p>
-<p><strong>latitude (REAL):</strong> Well latitude imported from lat/lon file.</p>
-<p><strong>longitude (REAL):</strong> Well longitude imported from lat/lon file.</p>
+<p><strong>name (TEXT, NOT NULL):</strong> Well label (for example gwm-well-N). <strong>SetupForeverFairDB.import_decvar</strong> writes these names for display and matching.</p>
+<p><strong>trader_id (INTEGER, FOREIGN KEY to traders.trader_id):</strong> Assigned owner/trader for the well. <strong>SetupForeverFairDB.import_trader_wells</strong> writes this field. One trader can own more than one well.</p>
+<p><strong>gw_model_layer (INTEGER):</strong> Groundwater model layer index. <strong>SetupForeverFairDB.import_decvar</strong> writes this field.</p>
+<p><strong>gw_model_row (INTEGER):</strong> Groundwater model row index. <strong>SetupForeverFairDB.import_decvar</strong> writes this field.</p>
+<p><strong>gw_model_column (INTEGER):</strong> Groundwater model column index. <strong>SetupForeverFairDB.import_decvar</strong> writes this field.</p>
+<p><strong>latitude (REAL):</strong> Well latitude. <strong>SetupForeverFairDB.import_well_lat_lon</strong> writes this field.</p>
+<p><strong>longitude (REAL):</strong> Well longitude. <strong>SetupForeverFairDB.import_well_lat_lon</strong> writes this field.</p>
 
 <h2>Table: control_points</h2>
 <p><strong>control_point_id (TEXT, PRIMARY KEY):</strong> Control point identifier (for example gwm-cp-N), used across constraints and events.</p>
@@ -63,16 +63,19 @@
 <p><strong>pumping_period (INTEGER, NOT NULL):</strong> Pumping period index in response matrix dimension.</p>
 <p><strong>effect_period (INTEGER, NOT NULL):</strong> Effect period index in response matrix dimension.</p>
 <p><strong>response (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect. 
-	A NULL value is treated as zero when read. The hydrologist may choose to omit rows with very small coefficients to keep the database compact; 
+	<strong>SetupForeverFairDB.import_mps</strong> writes these coefficients, and <strong>AuctionController.runCurrentAuction</strong> 
+	reads them through <strong>ForeverFairData.get_response_factors_for_auction</strong>. The hydrologist may choose to omit rows with very small coefficients to keep the database compact; 
 	however, the rounding threshold must be chosen very carefully, because omitting small-but-numerous coefficients can systematically undercount 
 	the total hydrological effect at a control point and cause the market to accept more pumping than the aquifer can safely sustain. 
 	They hydrologist should also inspect response matrix coefficients (also called factors) that are positive,
 	which implies injection rather than withdrawal. The Tianqiao data (tiansqiao.decvar) has only withdrawals,
-	but the response matrix does have some positive values.</p>
+	but the response matrix does have some positive values. 
+	Inside SetupForeverFairDB.import_mps, function SetupForeverFairDB.censor_the_response_matrix runs before each response row is written. 
+	The Tianqiao data has dodgy response matrix values for lags over 22 periods, so I added some code to fix it on the fly.</p>
 <p><strong>Primary key:</strong> (well_id, control_point_id, pumping_period, effect_period).</p>
 
 <h2>Table: response_matrix_info</h2>
-<p><strong>Removed:</strong> This table was retired. Its settings were moved into Catchment_info key/value rows.</p>
+<p><strong>Removed:</strong> The current setup code does not create this table. <strong>SetupForeverFairDB.save_catchment_info</strong> writes those settings into Catchment_info key/value rows.</p>
 
 <h2>Table: well_license</h2>
 <p><strong>license_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> License row identifier.</p>
@@ -98,24 +101,58 @@
 <p><strong>control_point_id (TEXT):</strong> Control point associated with event/result row.</p>
 <p><strong>auction_id (INTEGER, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
 <p><strong>effect_date (TEXT):</strong> Effect period/date key for the row.</p>
-<p><strong>actual_start_head (REAL):</strong> Base-run head h&#x2080; at this control point and period (metres). Computed during MPS import as minimum_head minus LP_RHS, where LP_RHS is the GWM MPS RHS value (= h&#x2097; minus h&#x2080;, e.g. &minus;4.756 m). Corresponds to GWM Fortran variable HDCSTATE0. Only stored in the binary GWM response matrix file; not present in the MPS or GLOBAL output files; back-calculated here from the HEDCON BND and the MPS RHS.</p>
-<p><strong>minimum_head (REAL):</strong> Physical minimum allowed head h&#x2097; at this control point and period (metres). Sourced from the HEDCON BND field (e.g. 829 m). Can be adjusted by the hydrologist per auction. The optimization LP constraint is: &sum;(F &times; q) &le; minimum_head &minus; actual_start_head.</p>
-<p><strong>allowable_head_change (REAL):</strong> Allowed head change used in LP RHS form. During HEDCON import this column temporarily stages minimum head values (auction_id=0, effect_date='stg:{period}'). During MPS import it is rewritten as the final RHS value h&#x2097;&minus;h&#x2080; for each real effect_date row.</p>
-<p><strong>Hydrologist maintenance rule:</strong> If you manually change <em>actual_start_head</em> for a control-point row, you must also recalculate and update <em>allowable_head_change</em> for that same row so the identity <strong>allowable_head_change = minimum_head &minus; actual_start_head</strong> remains true. If this is not updated, optimization bounds and reported values will be inconsistent.</p>
-<p><strong>head_constraint_upper_bound (REAL):</strong> The LP bound value actually used in a completed solve run (= minimum_head &minus; actual_start_head at solve time). Written by save_run_results; read by catchment_price_rows for post-run reporting.</p>
-<p><strong>range_lower (REAL):</strong> Reserved lower range statistic.</p>
-<p><strong>range_upper (REAL):</strong> Reserved upper range statistic.</p>
-<p><strong>slack (REAL):</strong> Constraint slack in solved run for control-point period.</p>
-<p><strong>dual_price (REAL):</strong> Constraint dual price for control-point period.</p>
-<p><strong>alpha (REAL):</strong> Alpha value copied for this event row.</p>
-<h3>GWM input data sources and how they map to control_point_events</h3>
-<p>The GWM2K Groundwater Management process for MODFLOW-2000 produces three input files relevant to control-point bounds:</p>
+<p><strong>committed_head_auction_start (REAL):</strong> Start head for the committed track in this auction row. On auction setup, <strong>ForeverFairData.set_control_point_events_for_auction</strong> copies the latest prior <em>committed_head_auction_end</em> for the same (control_point_id, effect_date). If no prior auction row exists, that function falls back to <em>aquifer_head_limits.actual_start_head</em>.</p>
+<p><strong>committed_head_auction_end (REAL):</strong> End head for the committed track after solve. <strong>ForeverFairData.set_auction_solution_results_bulk</strong> writes <strong>committed_head_auction_start + committed_head_change</strong> into this field.</p>
+<p><strong>committed_allowable_head_change (REAL):</strong> Remaining committed head allowance after solve. <strong>ForeverFairData.set_auction_solution_results_bulk</strong> writes <strong>aquifer_head_limits.minimum_head - committed_head_auction_end</strong> into this field.</p>
+<p><strong>planned_head_auction_start (REAL):</strong> Start head for the planning track in this auction row. On auction setup, <strong>ForeverFairData.set_control_point_events_for_auction</strong> copies the latest prior <em>planned_head_auction_end</em> for the same (control_point_id, effect_date). If no prior auction row exists, that function falls back to <em>aquifer_head_limits.actual_start_head</em>.</p>
+<p><strong>planned_head_auction_end (REAL):</strong> End head for the planning track after solve. <strong>ForeverFairData.set_auction_solution_results_bulk</strong> writes <strong>aquifer_head_limits.minimum_head + slack</strong> into this field.</p>
+<p><strong>slack (REAL):</strong> Solver output slack for the control-point constraint period. <strong>AuctionController.runCurrentAuction</strong> computes it from the LP constraint, and <strong>ForeverFairData.set_auction_solution_results_bulk</strong> writes it.</p>
+<p><strong>dual_price (REAL):</strong> Solver output dual price for the control-point constraint period. <strong>AuctionController.runCurrentAuction</strong> computes it from the LP constraint, and <strong>ForeverFairData.set_auction_solution_results_bulk</strong> writes it.</p>
+<p><strong>alpha (REAL):</strong> Constraint scaling value for this event row. <strong>ForeverFairData.calculate_and_set_constraint_alphas</strong> computes and writes alpha, and <strong>ForeverFairData.set_constraint_alphas</strong> can also write alpha values.</p>
+
+<h3>Committed versus planned</h3>
+<p>Since the auction calendar runs the full season, traders and the auction manager must commit only in the auction period, e.g., the current week.
+	At the end of an auction, everyone expects wells to actually take the allocated quota for the immediate next week. Following weeks are only plans and subject to change.
+	Committed aquifer head depends on quota allocated in the most-recently closed auction for that auction period. That committed quota will affect future periods.</p>
+
+<p>Based on ForeverFairData.get_control_point_events, function AuctionController.runCurrentAuction forms the right-hand-side constraint coefficients for allowable head change.
+		After solving the linear program, the function computes committed head change from pumping period 1 only (the committed period); 
+		committed head change is the modeled head change at one control point and one effect_date caused only by pumping in the auction period pumping (pumping_period = 1). 
+		To do this, the function sums response_matrix(well, pumping_period=1, effect_period, control_point) &times; cleared_quantity(well, pumping_period=1) across wells.
+</p>
+<p>Then ForeverFairData.set_auction_solution_results_bulk writes committed_head_auction_end = committed_head_auction_start + committed_head_change. Function ForeverFairData.set_auction_solution_results_bulk carries forward planned aquifer heads between auctions, and it computes planned end head from full-LP constraint slack for each effect period.
+</p>
+<p>Carry-forward rules for auction_id at (control_point_id, effect_date):</p>
 <ul>
-  <li><strong>HEDCON file (.hedcon):</strong> Defines head constraints. The BND field (token index 5) is the physical minimum head h&#x2097; (e.g. 829 m for a GE-type constraint meaning head must be &ge; 829 m). import_hedcon stages this inside control_point_events.allowable_head_change using auction_id=0 and effect_date='stg:{period}'.</li>
-  <li><strong>MPS file (.mps):</strong> LP problem in standard MPS format. The RHS section contains values equal to h&#x2097; minus h&#x2080; (e.g. 829 minus 833.756 = &minus;4.756 m). The base head h&#x2080; (GWM HDCSTATE0) is never written to the MPS file; it lives only in the binary GWM response matrix file (not distributed with Tianqiao data). import_mps reads staged minimum_head from control_point_events.allowable_head_change, computes actual_start_head = minimum_head minus LP_RHS, and writes final rows to control_point_events with allowable_head_change set to LP_RHS.</li>
-  <li><strong>Response matrix file (binary):</strong> Written by GWM when IRM=1. Contains HDCSTATE0 per constraint. Not available in the Tianqiao data directory; actual_start_head is back-calculated from HEDCON and MPS as described above.</li>
+	<li>planned_head_auction_start(auction_id) = previous planned_head_auction_end, else aquifer_head_limits.actual_start_head.</li>
+	<li>committed_head_auction_start(auction_id) = previous committed_head_auction_end, else aquifer_head_limits.actual_start_head.</li>
 </ul>
-<p><strong>How the optimization uses these values:</strong> get_control_point_rhs computes the LP right-hand side as minimum_head minus actual_start_head for each control-point &times; period. This value drives the LP constraint: &sum;(F &times; q) &le; minimum_head &minus; actual_start_head, where F is the response matrix coefficient. The hydrologist can adjust minimum_head per auction without changing actual_start_head.</p>
+<p>After the user of Programmer.html uploads a new aquifer head CSV, function ForeverFairData.update_aquifer_head_limits writes the new aquifer_head_limits.actual_start_head values into the database.
+	In one transaction, the function synchronizes control_point_events rows for the first open auction: </p>
+<ul><li>set committed_head_auction_start = aquifer_head_limits.actual_start_head,</li>
+	<li>set committed_allowable_head_change = aquifer_head_limits.minimum_head - aquifer_head_limits.actual_start_head,</li>
+	<li>set planned_head_auction_start = aquifer_head_limits.actual_start_head, </li>
+	<li>and clear stale solve outputs: set committed_head_auction_end = NULL, set planned_head_auction_end = NULL; clear slack, dual_price, and alpha.</li>
+</ul>
+<p>This synchronization aligns committed and planned heads with the uploaded forecast before the next call to AuctionController.runCurrentAuction.</p>
+
+<h3>Upload File Format: new aquifer head limits</h3>
+<p><strong>Route and parser:</strong> Programmer.html posts the file to <strong>/setup/import-aquifer-head-limits</strong>, and <strong>ForeverFairData.update_aquifer_head_limits</strong> parses the text with Python <strong>csv.DictReader</strong>.</p>
+<p><strong>Required CSV columns:</strong></p>
+<ul>
+	<li><strong>control_point_id</strong>: integer control-point identifier.</li>
+	<li><strong>effect_date</strong>: ISO-like datetime text label matching the database effect_date values (for example 2030-03-04T00:00).</li>
+	<li><strong>actual_start_head</strong>: numeric head value (float).</li>
+</ul>
+<p><strong>Validation rules enforced by update_aquifer_head_limits:</strong></p>
+<ul>
+	<li>The file must not be empty.</li>
+	<li>The header must include control_point_id, effect_date, and actual_start_head.</li>
+	<li>The earliest effect_date in the file must equal first_pumping_date for the first open auction.</li>
+	<li>The set of (control_point_id, effect_date) keys in the file must exactly match control_point_events rows for the first open auction: no missing keys and no unexpected keys.</li>
+	<li>For each row, the code computes allowable_head_change = minimum_head - actual_start_head and updates aquifer_head_limits.</li>
+</ul>
+<p><strong>Practical guidance:</strong> provide one row per (control_point_id, effect_date) in the open-auction horizon, using the same effect_date labels already present in the database.</p>
 
 <h2>Table: well_bids</h2>
 <p><strong>bid_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Bid row identifier.</p>
@@ -130,9 +167,64 @@
 <p><strong>price1..price5 (REAL):</strong> Up to five prices aligned with qty1..qty5.</p>
 <p><strong>deleted (INTEGER, NOT NULL, default 0):</strong> Soft-delete flag used to hide/cancel bids without hard delete.</p>
 
-<h2>Notes</h2>
-<p>SQLite type affinity is flexible; declared field types indicate intended use but SQLite may store compatible values across affinities.</p>
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-05-04.</p>
-</body>
-</html>
+<h2>How to use the API link</h2>
+<p>The navigation link <strong>API</strong> opens <strong>/api/system-state</strong>. That endpoint returns JSON describing the current catchment and auction state. It is intended for programmers, scripts, and integration code, not for a formatted human report.</p>
+<p>The main fields in the JSON response are: catchment_name, auction, rights_conversion, latest_run, well_price_rows, control_point_rows. Here are five use cases for the programmer:</p>
 
+<ol><li><strong>Automated health check:</strong> poll /api/system-state every minute and alert if latest_run.solve_status indicates a failed run or if the response contains an error field.</li>
+	<li><strong>Dashboard integration:</strong> feed well_price_rows and control_point_rows into a custom charting page so operations staff can monitor prices and binding constraints without opening the full web UI.</li>
+	<li><strong>Auction-run regression tests:</strong> after running a test auction, compare key JSON fields (objective_value, auction_revenue, selected prices) against expected values in CI.</li>
+	<li><strong>Data export for research:</strong> save periodic snapshots of /api/system-state to files, then analyse time trends in prices, dual values, and control-point usage in Python or R.</li>
+	<li><strong>External workflow trigger:</strong> call /api/system-state from an orchestration script and trigger follow-up jobs (for example notification emails or report generation) when a new auction closes.</li>
+</ol>
+
+<h2 id="security-hardening">Security hardening for production deployment</h2>
+<p>This research code is intentionally simple and is <strong>not</strong> ready for commercial deployment. 
+A production water-trading website should follow current security practice (for example OWASP ASVS, OWASP Top 10, and your local privacy and critical-infrastructure obligations).</p>
+
+<h3>Minimum authentication and authorization changes</h3>
+<ul>
+    <li>Require username + password login for every role (trader, auction manager, programmer, hydrologist, researcher).</li>
+    <li>Store only password hashes (never plaintext passwords). Use Argon2id or bcrypt with strong parameters.</li>
+    <li>Replace the current cookie-only trader identity approach with signed, expiring sessions or short-lived tokens.</li>
+    <li>Implement role-based access control for every route and API endpoint.</li>
+    <li>Add multi-factor authentication for administrator roles.</li>
+    <li>Add account lockout, throttling, and audit events for failed login attempts.</li>
+</ul>
+
+<h3>Transport, browser, and request protection</h3>
+<ul>
+    <li>Serve only over HTTPS behind a hardened reverse proxy (Nginx, Caddy, or Traefik).</li>
+    <li>Set secure headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and secure cookie flags.</li>
+    <li>Enable CSRF protection for state-changing form posts.</li>
+    <li>Restrict CORS to trusted origins only.</li>
+    <li>Add per-IP and per-account rate limits on login, bidding, and upload endpoints.</li>
+</ul>
+
+<h3>Data and operations security</h3>
+<ul>
+    <li>Move secrets from local files into a managed secret store in production.</li>
+    <li>Add structured security logging (auth events, privilege changes, uploads, auction runs) and central monitoring.</li>
+    <li>Add automated dependency and container scanning, plus regular patching.</li>
+    <li>Encrypt backups, test restore procedures, and protect database files with strict filesystem permissions.</li>
+    <li>Add tamper-evident audit trails for bids, quota changes, and administrative actions.</li>
+</ul>
+
+<h3>Open-source security packages</h3>
+<p>Example Python packages you can use:</p>
+<ul>
+    <li><strong>pwdlib</strong> or <strong>argon2-cffi</strong>: password hashing (Argon2id).</li>
+    <li><strong>Authlib</strong> or <strong>python-jose[cryptography]</strong>: token and OAuth/OpenID flows.</li>
+    <li><strong>starlette-csrf</strong>: CSRF protection for form posts.</li>
+    <li><strong>slowapi</strong>: request rate limiting for FastAPI.</li>
+    <li><strong>secure</strong>: HTTP security header policy helper.</li>
+    <li><strong>fastapi-users</strong>: user management scaffolding (optional, if you want a full auth framework).</li>
+</ul>
+
+<p>Example installation commands:</p>
+<pre>pip install -e ".[dev]"
+pip install pwdlib argon2-cffi authlib "python-jose[cryptography]" starlette-csrf slowapi secure fastapi-users[sqlalchemy]</pre>
+
+<p>Commercial deployment should also include a threat model, penetration testing, independent code review, incident response planning, and legal/compliance review before go-live.</p>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-05-04.</p>
+</body></html>

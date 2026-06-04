@@ -1,8 +1,10 @@
 # AuctionController.py. Claude guided by JFR, 2026 05 14.
 # Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 # Purpose: Call for bids, clear ("run") the auction with optimization, calculate rights and cash exchanges.
+# This is the business logic from the auction manager's point of view.
 
 from __future__ import annotations
+import csv
 from pathlib import Path
 from typing import Callable
 from pulp import LpMaximize, LpProblem, LpStatus, LpVariable, PULP_CBC_CMD, lpSum, value
@@ -35,12 +37,14 @@ def create_auction(db_path: Path) -> int:
 # Set up default bids. A trader's manual entry will overwrite these.
 def call_for_bids(ffdata: ForeverFairData, auction_id: int) -> None:
 	# Use quota to create default bids.
+	rights_policy = ffdata.get_rights_policy()
 	quota_by_well_period = ffdata.get_quota(auction_id)
+	users_pay_by_well = BiddingController.get_users_pay_bid_quantities_by_well(ffdata, auction_id) if rights_policy == "Users_pay" else None
 	previous_auction_id = ffdata.get_previous_auction_id(auction_id)
 	for well_id in sorted({well_id for (well_id, _period_id) in quota_by_well_period.keys()}):
 		if ffdata.has_active_bids_for_well(auction_id, well_id): continue
 		if previous_auction_id is not None and ffdata.copy_active_bids_for_well(auction_id, previous_auction_id, well_id): continue
-		BiddingController.create_default_bid(ffdata, auction_id, well_id)
+		BiddingController.create_default_bid(ffdata, auction_id, well_id, rights_policy=rights_policy, quota_by_well_period=quota_by_well_period, users_pay_by_well=users_pay_by_well)
 
 # Section 2. Solve the market-clearing optimization. Called from the button on AuctionManager.html.
 def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float | None:
@@ -107,7 +111,6 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	for cpe in cp_events:
 		control_point_id = int(cpe["control_point_id"])
 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
-		# TODO: Do you really want max(0.0,...) here?
 		auction_model += (lpSum(-1.0 * response_factors.get((well_id, pumping_period, effect_period, control_point_id), 0.0) * quantity_vars[(well_id, pumping_period)]
 				for well_id in ffdata.get_wells()
 				for pumping_period in range(1, auction["periods"][-1]["id"] + 1)
@@ -235,7 +238,7 @@ def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: in
 	log("In function compute_revenue_on_constraint_quota")
 	return ffdata.compute_constraint_quota_revenue_sql(auction_id)
 
-# Here is an old version of compute_revenue_on_constraint_quota. I'll leave it here for explanation, since Claude's SQL is inscrutable.
+# Here is a pure Python version of compute_revenue_on_constraint_quota. I'll leave it here for explanation. Claude's SQL is much faster but inscrutable.
 # def compute_revenue_on_constraint_quota (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float:
 # 	"""Compute revenue from constraint quota bought and sold.
 # 	Revenue = sum over all causal response factors (pumping_period <= effect_period) of:
@@ -307,3 +310,36 @@ def compute_revenue_on_well_quota (ffdata: ForeverFairData, auction_id: int, deb
 	return revenue
 
 def SetDebugAuctionData (ffdata: ForeverFairData): return ffdata.use_debug_database ()
+
+# Research ---------------------------------------------------------------
+
+def create_synthetic_new_head(ffdata: ForeverFairData, change_in_forecast: list[float] | None = None, output_csv_path: Path | None = None) -> Path:
+	"""Export a synthetic aquifer-head CSV from control_point_events for the first open auction."""
+	auction_id, control_point_events = ffdata.get_first_open_auction_control_point_events()
+	if not control_point_events: raise ValueError(f"No control_point_events rows for open auction {auction_id}")
+
+	effect_dates = sorted({str(row["effect_date"]) for row in control_point_events})
+	if change_in_forecast is None: change_in_forecast = [1.0, 1.0, 1.0, 1.0]
+	CHANGE_IN_FORECAST = {effect_date: (change_in_forecast[idx] if idx < len(change_in_forecast) else 1.0) for idx, effect_date in enumerate(effect_dates)}
+
+	csv_path = output_csv_path or (Path(__file__).parent.parent / "new_aquifer_head_limits.csv")
+	rows_for_csv: list[dict[str, float | int | str]] = []
+	for row in control_point_events:
+		control_point_id = int(row["control_point_id"])
+		effect_date = str(row["effect_date"])
+		committed_head_auction_start = row["committed_head_auction_start"]
+		committed_allowable_head_change = row["committed_allowable_head_change"]
+		if committed_head_auction_start is None or committed_allowable_head_change is None:
+			raise ValueError(f"Missing committed head values for control_point_id={control_point_id}, effect_date={effect_date}")
+
+		actual_start_head = CHANGE_IN_FORECAST[effect_date] * committed_head_auction_start
+		rows_for_csv.append({"control_point_id": control_point_id, "effect_date": effect_date, "actual_start_head": actual_start_head,})
+
+	# fieldnames = ["auction_id", "control_point_id", "effect_date", "actual_start_head", "minimum_head", "allowable_head_change", "committed_allowable_head_change", "change_in_forecast"]
+	fieldnames = ["control_point_id", "effect_date", "actual_start_head"]
+	with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+		writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+		writer.writeheader()
+		writer.writerows(rows_for_csv)
+
+	return csv_path
