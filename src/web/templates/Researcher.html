@@ -140,13 +140,13 @@ The market distinguishes those different periods by different rights and differe
 	This means that the quota right to take water from a well is <i>really</i> the right to draw down aquifer head at each control point in each period.
 	When users' rights in aggregate don't match the available water, the auction manager <i>must</i> scale quota, and the correct way to do this 
 	is by converting quota to take from a well in a particular period to "constraint quota" (first suggested by E. Grant Read), 
-	which is a list of rights to draw down aquifer head at many places and many future periods.</p>
+	which is a list of rights to draw down aquifer head at many places and many future periods. In the example below, each row is a one-user illustrative case, so alpha scales that row's constraint quota exactly to the head-change limit.</p>
 
-	<table><tr><th colspan="5">Example of constraint quota: MacDonald's quota to take 2 cubic meters at Old MacDonald's Farm on 1 Feb 2030</th></tr>
-			<tr><td>Impact location, period</td><td>Head change limit</td><td>Response matrix coefficient</td><td>Constraint quota</td><td>Scaled constraint quota</td></tr>
-			<tr><td>Piggy's Stream, 1 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash; 0.06 m/m^3</td><td>&ndash;2*0.06 = &ndash;0.12 meters</td><td>&ndash;0.08 meters</td></tr>
-			<tr><td>Piggy's Stream, 2 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.03 m/m^3</td><td>&ndash;2*0.03 = &ndash;0.06 meters</td><td>&ndash;0.06 meters</td></tr>
-			<tr><td>Piggy's Stream, 3 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.015 m/m^3</td><td>&ndash;2*0.015 = &ndash;0.03 meters</td><td>&ndash;0.03 meters</td></tr>
+	<table><tr><th colspan="6">Example of constraint quota: MacDonald's quota to take 2 cubic meters at Old MacDonald's Farm on 1 Feb 2030</th></tr>
+			<tr><td>Impact location, period</td><td>Head change limit</td><td>Response matrix coefficient</td><td>Constraint quota</td><td>Alpha</td><td>Scaled constraint quota</td></tr>
+			<tr><td>Piggy's Stream, 1 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash; 0.06 m/m^3</td><td>&ndash;2*0.06 = &ndash;0.12 meters</td><td>(&ndash;0.08)/(&ndash;0.12) = 0.6667</td><td>&ndash;0.08 meters</td></tr>
+			<tr><td>Piggy's Stream, 2 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.03 m/m^3</td><td>&ndash;2*0.03 = &ndash;0.06 meters</td><td>(&ndash;0.08)/(&ndash;0.06) = 1.3333</td><td>&ndash;0.08 meters</td></tr>
+			<tr><td>Piggy's Stream, 3 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.015 m/m^3</td><td>&ndash;2*0.015 = &ndash;0.03 meters</td><td>(&ndash;0.08)/(&ndash;0.03) = 2.6667</td><td>&ndash;0.08 meters</td></tr>
 	</tr></table>
 
 <p>The scaling problem is most critical when the new market is implemented. It occurs to a much lesser degree when the forecast of inflows changes.
@@ -186,6 +186,7 @@ If the user doesn't have enough water, they are stuck.</p>
 <p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
 <h2>Auction operation</h2>
+
 <p><b>Bid period.</b> Auctions run on a regular schedule. How often do you want to trade water? The length of the bid period should come from a consultation
 	 with the users and the hydrologist as to how often users want the auction to run and the physics of the local groundwater. If users wish, the auction manager
 	  could run the auction with bids each hour; hourly bids may require the hydrologist to have a model with hourly time steps. For groundwater, 
@@ -202,7 +203,13 @@ For example, the auction manager runs each auction with four week-long bidding p
 <p><b>Enforcement.</b> Users must not take more water than the auction manager allocates to them. Users' wells must have real time meters that the auction manager can see.
 	 The auction manager must be sure that users can and will pay. Users have to learn to use the website and learn to make bids.</p>
 
+<p><b>The first auction</b> results in immediate change in quota for the season. Traders buy and sell from their initial license
+	to the quota they need (given the prices) for every period in the hydrological season. As a result, the first auction will likely be the biggest financially.
+	So the first auction is perhaps the most important, with the most money. After that first auction, traders will only need to adjust their quota
+	for changes from their own plans and changes in the inflow forecast.</p>
+
 <h1>The smart market clearing model for groundwater</h1>
+
 <p>The following is the mathematical formulation of the Forever Fair market-clearing model.
 	 At each auction run, the software creates this optimmization from the database and solves it.
 	The authoritative reference for this work is Raffensperger &amp; Milke, <a href="https://link.springer.com/book/10.1007/978-3-319-55008-4"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.
@@ -270,6 +277,7 @@ The database schema already has the necessary column control_point_events.constr
 </ul>
 
 <h2>Adding head difference constraints</h2>
+
 <p>A head-difference constraint bounds the drawdown difference between two locations <i>i</i> and <i>j</i> (constraint 6 in the model above): 
 	<i>LHD</i><sub><i>ijt</i></sub>  &le;  <i>s</i><sub><i>it</i></sub> &minus; <i>s</i><sub><i>jt</i></sub>  &le;  <i>UHD</i><sub><i>ijt</i></sub>. 
 	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,

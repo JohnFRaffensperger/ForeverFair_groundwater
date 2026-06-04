@@ -5,7 +5,7 @@
 from __future__ import annotations
 import os
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
@@ -58,6 +58,18 @@ _auctionmanager_debug_log: list[str] = []
 _auctionmanager_run_active = False
 
 def add_auctionmanager_debug(message: str) -> None: _auctionmanager_debug_log.append(str(message))
+
+
+def _format_iso_datetime_short(value: Any) -> str:
+	text = str(value or "").strip()
+	if not text:
+		return ""
+	try:
+		normalized = text.replace("Z", "+00:00")
+		dt = datetime.fromisoformat(normalized)
+		return dt.strftime("%Y-%m-%d %H:%M:%S")
+	except Exception:
+		return text
 
 def clear_auctionmanager_debug() -> None: _auctionmanager_debug_log.clear()
 
@@ -216,16 +228,20 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 	if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
 	auction_id = next_auction["auction_id"]
 	auction_info = ffdata.get_auction_info(auction_id)
+	history_auction_id = ffdata.get_previous_auction_id(auction_id)
+	history_auction_info = ffdata.get_auction_info(history_auction_id) if history_auction_id is not None else None
 	current_wells = ffdata.get_trader_wells(trader_id)
 	selected_well_cookie = request.cookies.get("current_well_id", "")
 	current_well_id_from_cookie = int(selected_well_cookie) if selected_well_cookie.isdigit() else None
 	current_well = next((well for well in current_wells if int(well["id"]) == current_well_id_from_cookie), None) if current_well_id_from_cookie is not None else None
 	if current_well is None and current_wells: current_well = current_wells[0]
-	bid_history = ffdata.get_bid_history(auction_id, trader_id)
+	bid_history = ffdata.get_bid_history(history_auction_id, trader_id) if history_auction_id is not None else []
 	current_well_id = current_well["id"] if current_well else None
 	quota_by_period = ffdata.get_well_start_quota(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
 	scaled_quota_by_period = ffdata.get_well_scaled_start_quota(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
 	clearing_price_by_period = ffdata.get_well_clearing_price_for_current_rows(well_id=current_well_id, auction_id=auction_id) if isinstance(current_well_id, int) else {}
+	history_quota_by_period = ffdata.get_well_start_quota(well_id=current_well_id, auction_id=history_auction_id) if isinstance(current_well_id, int) and history_auction_id is not None else {}
+	history_clearing_price_by_period = {(period_id): price for ((well_id, period_id), price) in ffdata.get_well_dual_prices(history_auction_id).items() if well_id == current_well_id} if isinstance(current_well_id, int) and history_auction_id is not None else {}
 	max_bid_steps = ffdata.get_max_bid_steps()
 	latest_bids_by_period: dict[int, list[dict[str, Any]]] = {}
 	for bid in bid_history:
@@ -234,32 +250,63 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 		if latest_bids_by_period[period_id] and latest_bids_by_period[period_id][0]["bid_id"] != bid["bid_id"]: continue
 		latest_bids_by_period[period_id].append(bid)
 	period_rows: list[dict[str, Any]] = []
-	for period in auction_info["periods"]: period_rows.append({"period_id": period["id"], "period_key": period["id"], "period_label": period["label"], "allocation": quota_by_period.get(period["id"], 0.0), "scaled_allocation": scaled_quota_by_period.get(period["id"], 0.0), "clearing_price": clearing_price_by_period.get(period["id"]), "latest_bids": latest_bids_by_period.get(period["id"], []),})
-	period_label_by_id = {int(period["id"]): str(period["label"]).split("T")[0] for period in auction_info["periods"]}
+	for period in auction_info["periods"]: period_rows.append({"period_id": period["id"], "period_key": period["id"], "period_label": period["label"], "period_label_display": _format_iso_datetime_short(period["label"]), "allocation": quota_by_period.get(period["id"], 0.0), "scaled_allocation": scaled_quota_by_period.get(period["id"], 0.0), "clearing_price": clearing_price_by_period.get(period["id"]), "latest_bids": latest_bids_by_period.get(period["id"], []),})
+	history_period_label_by_id = ({int(period["id"]): _format_iso_datetime_short(period["label"]) for period in history_auction_info["periods"]}
+		if history_auction_info is not None else {})
 	history_rows: list[dict[str, Any]] = []
 	history_row_by_bid_id: dict[int, dict[str, Any]] = {}
+	total_last_auction_payment = 0.0
 	for bid in bid_history:
 		bid_id = int(bid["bid_id"])
 		if bid_id not in history_row_by_bid_id:
 			period_id = int(bid["period_id"])
+			allocation = history_quota_by_period.get(period_id, 0.0)
+			final_allocation = bid["final_allocation"]
+			traded_price = bid["traded_price"]
+			quota_change = None
+			clearing_action = "\u2014"
+			payment_text = "\u2014"
+			payment_value = 0.0
+			if final_allocation is not None and traded_price is not None:
+				quota_change = float(final_allocation) - float(allocation)
+				if abs(quota_change) < 1.0e-9:
+					clearing_action = "No change"
+					payment_text = "$0.00"
+					payment_value = 0.0
+				elif quota_change > 0.0:
+					clearing_action = "Purchase"
+					payment_value = -abs(quota_change) * abs(float(traded_price))
+					payment_text = f"Pays ${abs(payment_value):,.2f}"
+				else:
+					clearing_action = "Sale"
+					payment_value = abs(quota_change) * abs(float(traded_price))
+					payment_text = f"Receives ${abs(payment_value):,.2f}"
+			total_last_auction_payment += payment_value
 			history_row_by_bid_id[bid_id] = {
-				"submitted_at": bid["submitted_at"],
-				"period_label": period_label_by_id.get(period_id, str(period_id)),
+				"submitted_at": _format_iso_datetime_short(bid["submitted_at"]),
+				"period_label": history_period_label_by_id.get(period_id, str(period_id)),
 				"bid_id": bid_id,
-				"allocation": quota_by_period.get(period_id, 0.0),
-				"clearing_price": clearing_price_by_period.get(period_id),
+				"allocation": allocation,
+				"clearing_price": history_clearing_price_by_period.get(period_id),
 				"steps": [],
-				"final_allocation": bid["final_allocation"],
-				"traded_price": bid["traded_price"],
+				"final_allocation": final_allocation,
+				"traded_price": traded_price,
+				"quota_change": quota_change,
+				"clearing_action": clearing_action,
+				"payment_value": payment_value,
+				"payment_text": payment_text,
 			}
 			history_rows.append(history_row_by_bid_id[bid_id])
 		history_row_by_bid_id[bid_id]["steps"].append({"quantity": bid["quantity"], "price": bid["price"]})
-	manual_submitted_at = [str(bid["submitted_at"]) for bid in bid_history if not bool(bid.get("is_default", False)) and bid.get("submitted_at")]
+	manual_submitted_at = [_format_iso_datetime_short(bid["submitted_at"]) for bid in bid_history if not bool(bid.get("is_default", False)) and bid.get("submitted_at")]
 	bid_entry_status_message = f"Last submitted on {max(manual_submitted_at)}." if manual_submitted_at else "Not yet submitted. An automatic bid is in place."
+	last_auction_submitted_values = [_format_iso_datetime_short(bid["submitted_at"]) for bid in bid_history if bid.get("submitted_at")]
+	last_auction_submitted_at = max(last_auction_submitted_values) if last_auction_submitted_values else "-"
+	last_auction_id_display = history_auction_id if history_auction_id is not None else "-"
 	
 	matching_traders = [t for t in ffdata.list_of_traders() if t["id"] == trader_id]
 	current_trader: dict[str, Any] = matching_traders[0] if matching_traders else {"id": trader_id, "name": ""}
-	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "current_wells": current_wells, "bid_history": bid_history, "bid_history_rows": history_rows, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)), "bid_entry_status_message": bid_entry_status_message,}
+	context: dict[str, Any] = {"current_trader": current_trader, "current_well": current_well, "current_wells": current_wells, "bid_history": bid_history, "bid_history_rows": history_rows, "period_rows": period_rows, "auction_id": auction_id, "auction_case": {"auction": auction_info}, "max_bid_steps": max_bid_steps, "optional_bid_step_numbers": list(range(2, max_bid_steps + 1)), "bid_entry_status_message": bid_entry_status_message, "total_last_auction_payment": total_last_auction_payment, "last_auction_id": last_auction_id_display, "last_auction_submitted_at": last_auction_submitted_at,}
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
 	context.update(_common_template_context())

@@ -7,13 +7,13 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader Console</h1>
 
-<p>Welcome, <strong>{{ current_trader.name }}</strong>.
+<p>Welcome, <strong>{{ current_trader.name }}</strong>. (Trader id {{ current_trader.id }}.)
 	You are bidding in auction {{ auction_case.auction.id }}, which is <strong>{% if auction_case.auction.auction_type == 'tentative' %}tentative, so you will be able to bid again this period{% else %}final, so you will not be able to bid again this period{% endif %}</strong>.
 	Bidding for this auction {% if auction_case.auction.status == 'CLOSED' %} is closed{% else %} is open now, and closes {{ auction_case.auction.closed_date }}. <span id="bid-time-remaining" data-close-date="{{ auction_case.auction.closed_date }}"></span>{% endif %}
 </p>
 
 {% if current_well %}<form method="post" action="/trader/select-well" style="display: inline;">
-<p>Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}.
+<p>Your well is <strong>{{ current_well.name }}</strong>{% if current_well.latitude and current_well.longitude %} ({{ '%.4f'|format(current_well.latitude) }}, {{ '%.4f'|format(current_well.longitude) }}){% endif %}, well id {{ current_well.id }}.
 {% if current_wells|length > 1 %}{% for well in current_wells %}
 	<button type="submit" name="well_id" value="{{ well.id }}" style="margin-left: 0.4em;" {% if well.id == current_well.id %}disabled{% endif %}>Switch to well {{ well.id }}</button>
 {% endfor %}{% endif %}
@@ -48,7 +48,7 @@
 		<input type="hidden" name="period_id" value="{{ row.period_key }}">
 		<input type="hidden" name="return_to" value="/trader">
 		
-		<td>{{ row.period_label.split('T')[0] }}</td>
+		<td>{{ row.period_label_display }}</td>
 		<td style="text-align: right;">{{ '{:,.1f}'.format(row.allocation) }}</td>
 		<td style="text-align: right;">{{ '{:,.1f}'.format(row.scaled_allocation) }}</td>
 		<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
@@ -71,36 +71,40 @@
 <p><em>Bidding is closed for this auction.</em></p>
 {% endif %}
 
-<h2>Your bids from the last auction</h2>
+<h2>Your bids from the auction {{ last_auction_id }}, submitted {{ last_auction_submitted_at }}.</h2>
 
-<table style="table-layout: auto;">
-<colgroup><col style="width: 12em;"><col style="width: 10em;"><col style="width: 7em;"><col style="width: 8em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}</colgroup>
+<table id="last-auction-bids-table" style="table-layout: auto;">
+<colgroup><col style="width: 10em;"><col style="width: 7em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}<col style="width: 8em;"><col style="width: 8em;"><col style="width: 8em;"><col style="width: 9em;"><col style="width: 11em;"></colgroup>
 
 <thead><tr>
-	<th rowspan="2">Submitted</th>
-	<th rowspan="2">Start of pumping period</th>
-	<th rowspan="2">Bid id</th>
-	<th rowspan="2" style="text-align: right;">Cubic meters quota from auction {{ auction_case.auction.id - 1 }}</th>
-	<th rowspan="2" style="text-align: right;">Clearing price, $/m3, from auction {{ auction_case.auction.id - 1 }}</th>
+	<th rowspan="2" data-sort-col="0">Start of pumping period</th>
+	<th rowspan="2" data-sort-col="1">Bid id</th>
 	{% for step_num in range(1, max_bid_steps + 1) %}<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
-	</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: right;">Cubic meters</th><th style="text-align: right;">$/m3</th>{% endfor %}</tr></thead>
+	<th rowspan="2" style="text-align: right;" data-sort-col="{{ (max_bid_steps * 2) + 2 }}">Cubic meters quota from auction {{ auction_case.auction.id - 1 }}</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="{{ (max_bid_steps * 2) + 3 }}">Cubic meters quota from auction {{ auction_case.auction.id }}</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="{{ (max_bid_steps * 2) + 4 }}">Change in quota (m3)</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="{{ (max_bid_steps * 2) + 5 }}">Clearing price, $/m3, from auction {{ auction_case.auction.id - 1 }}</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="{{ (max_bid_steps * 2) + 6 }}">Receipt</th>
+	</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: right;" data-sort-col="{{ ((step_num - 1) * 2) + 2 }}">Cubic meters</th><th style="text-align: right;" data-sort-col="{{ ((step_num - 1) * 2) + 3 }}">$/m3</th>{% endfor %}</tr></thead>
 
 	<tbody>{% for row in bid_history_rows %}
-	<tr><td>{{ row.submitted_at }}</td>
-		<td>{{ row.period_label }}</td>
+	<tr><td>{{ row.period_label }}</td>
 		<td>{{ row.bid_id }}</td>
-		<td style="text-align: right;">{{ '{:,.1f}'.format(row.allocation) }}</td>
-		<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
 		{% for step_num in range(1, max_bid_steps + 1) %}
 		{% set idx = step_num - 1 %}
 		{% if idx < row.steps|length %}
-		<td style="text-align: right;">{{ '{:,.1f}'.format(row.steps[idx].quantity) }}</td>
-		<td style="text-align: right;">${{ row.steps[idx].price }}</td>
+		<td style="text-align: right;" data-sort="{{ row.steps[idx].quantity }}">{{ '{:,.1f}'.format(row.steps[idx].quantity) }}</td>
+		<td style="text-align: right;" data-sort="{{ row.steps[idx].price }}">${{ row.steps[idx].price }}</td>
 		{% else %}
 		<td style="text-align: right;">&mdash;</td>
 		<td style="text-align: right;">&mdash;</td>
 		{% endif %}
 		{% endfor %}
+		<td style="text-align: right;" data-sort="{{ row.allocation }}">{{ '{:,.1f}'.format(row.allocation) }}</td>
+		<td style="text-align: right;" {% if row.final_allocation is not none %}data-sort="{{ row.final_allocation }}"{% endif %}>{% if row.final_allocation is not none %}{{ '{:,.1f}'.format(row.final_allocation) }}{% else %}&mdash;{% endif %}</td>
+		<td style="text-align: right;" {% if row.quota_change is not none %}data-sort="{{ row.quota_change }}"{% endif %}>{% if row.quota_change is not none %}{{ '{:+,.1f}'.format(row.quota_change) }}{% else %}&mdash;{% endif %}</td>
+		<td style="text-align: right;" {% if row.clearing_price is not none %}data-sort="{{ row.clearing_price|abs }}"{% endif %}>{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
+		<td style="text-align: right;" {% if row.quota_change is not none and row.traded_price is not none %}data-sort="{{ row.payment_value }}"{% endif %}>{% if row.quota_change is not none and row.traded_price is not none %}${{ '{:+,.2f}'.format(row.payment_value) }}{% else %}&mdash;{% endif %}</td>
 	</tr>{% endfor %}
 </tbody></table>
 
@@ -156,6 +160,68 @@
 
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-06-01.</p>
 <script>
+function sortLastAuctionTableFallback(table) {
+	var tbody = table.tBodies && table.tBodies.length ? table.tBodies[0] : null;
+	if (!tbody) return;
+	var rows = Array.from(tbody.rows || []);
+	function clearSortMarkers() {
+		table.querySelectorAll('th[data-sort-col]').forEach(function(head) {
+			head.setAttribute('aria-sort', 'none');
+			var marker = head.querySelector('span[data-sort-marker]');
+			if (marker) marker.textContent = ' \u2195';
+		});
+	}
+	table.querySelectorAll('th[data-sort-col]').forEach(function(th) {
+		th.style.cursor = 'pointer';
+		th.title = 'Click to sort';
+		th.setAttribute('aria-sort', 'none');
+		if (!th.querySelector('span[data-sort-marker]')) {
+			var marker = document.createElement('span');
+			marker.setAttribute('data-sort-marker', 'true');
+			marker.textContent = ' \u2195';
+			marker.style.opacity = '0.65';
+			marker.style.fontWeight = 'normal';
+			th.appendChild(marker);
+		}
+		th.addEventListener('click', function() {
+			var colIndex = parseInt(th.getAttribute('data-sort-col') || '-1', 10);
+			if (colIndex < 0) return;
+			var prevCol = table.getAttribute('data-last-sort-col');
+			var prevDir = table.getAttribute('data-last-sort-dir') || 'asc';
+			var dir = (prevCol === String(colIndex) && prevDir === 'asc') ? 'desc' : 'asc';
+			table.setAttribute('data-last-sort-col', String(colIndex));
+			table.setAttribute('data-last-sort-dir', dir);
+
+			rows = Array.from(tbody.rows || []);
+			rows.sort(function(a, b) {
+				var acell = a.cells[colIndex];
+				var bcell = b.cells[colIndex];
+				var aval = acell ? (acell.getAttribute('data-sort') || acell.textContent || '').trim() : '';
+				var bval = bcell ? (bcell.getAttribute('data-sort') || bcell.textContent || '').trim() : '';
+				var anum = Number(aval);
+				var bnum = Number(bval);
+				var cmp = 0;
+				if (!Number.isNaN(anum) && !Number.isNaN(bnum)) cmp = anum - bnum;
+				else cmp = aval.localeCompare(bval, undefined, {numeric: true, sensitivity: 'base'});
+				return dir === 'asc' ? cmp : -cmp;
+			});
+			rows.forEach(function(row) { tbody.appendChild(row); });
+			clearSortMarkers();
+			th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+			var activeMarker = th.querySelector('span[data-sort-marker]');
+			if (activeMarker) activeMarker.textContent = dir === 'asc' ? ' \u2191' : ' \u2193';
+		});
+	});
+}
+
+function initLastAuctionTableSort() {
+	var table = document.getElementById('last-auction-bids-table');
+	if (!table) return;
+	sortLastAuctionTableFallback(table);
+	var defaultHeader = table.querySelector('th[data-sort-col="0"]');
+	if (defaultHeader) defaultHeader.click();
+}
+
 function updateBidTimeRemaining() {
 	var timer = document.getElementById('bid-time-remaining');
 	if (!timer) return;
@@ -431,6 +497,7 @@ document.querySelectorAll('form[data-console-bid-form]').forEach(function(form) 
 	});
 });
 
+initLastAuctionTableSort();
 renderAllBidGraphs();
 </script>
 </body></html>
