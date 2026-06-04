@@ -46,6 +46,10 @@ class ForeverFairData:
 				conn.execute("ALTER TABLE auctions ADD COLUMN auction_revenue REAL")
 			except sqlite3.OperationalError:
 				pass
+			try:
+				conn.execute("ALTER TABLE traders ADD COLUMN trader_type TEXT NOT NULL DEFAULT 'well'")
+			except sqlite3.OperationalError:
+				pass
 			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, integer_value) VALUES ('MAX_BID_STEPS', ?)", (DEFAULT_BID_STEPS,))
 			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) VALUES ('rights_policy_name', 'Unspecified rights policy')")
 			conn.execute("INSERT OR IGNORE INTO Catchment_info(meta_key, text_value) VALUES ('rights_policy_summary', 'No rights policy summary has been configured yet.')")
@@ -248,7 +252,18 @@ class ForeverFairData:
 	# 4. Traders, wells. -------------------------------------------------------------------------------------------------
 	def list_of_traders(self) -> list[dict[str, Any]]:
 		with self.connect_to_db() as conn:
-			return [{"id": int(row["trader_id"]), "name": row["name_tag"]} for row in conn.execute("SELECT trader_id, name_tag FROM traders ORDER BY name_tag").fetchall()]
+			return [{"id": int(row["trader_id"]), "name": row["name_tag"], "trader_type": str(row["trader_type"] or "well")}
+				for row in conn.execute("SELECT trader_id, name_tag, trader_type FROM traders ORDER BY name_tag").fetchall()]
+
+	def get_trader_type(self, trader_id: int) -> str:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT trader_type FROM traders WHERE trader_id=?", (trader_id,)).fetchone()
+			return str(row["trader_type"] or "well") if row is not None else "well"
+
+	def get_trader_ids_by_type(self, trader_type: str) -> list[int]:
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT trader_id FROM traders WHERE trader_type=? ORDER BY trader_id", (trader_type,)).fetchall()
+			return [int(row["trader_id"]) for row in rows]
 
 	def get_trader_wells(self, trader_id: int) -> list[dict[str, int | str | float | None]]:
 		"""Retrieve all wells for a trader as dictionaries."""
@@ -338,6 +353,115 @@ class ForeverFairData:
 				if qty is None or price is None: continue
 				bid_history_list.append({"bid_id": int(row["bid_id"]), "period_id": period_id, "quantity": float(qty), "price": float(price), "submitted_at": row["bid_date"], "final_allocation": final_allocation, "traded_price": traded_price, "is_default": bool(row["is_bid_default"]) if row["is_bid_default"] is not None else False, })
 		return bid_history_list
+
+	def add_environmental_bid(self, auction_id: int, trader_id: int, cpe_id: int, quantity: float, price: float,
+			is_default: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> dict[str, int | str | float | None]:
+		now = datetime.now(timezone.utc).isoformat()
+		max_bid_steps = self.get_max_bid_steps()
+		steps = bid_steps if bid_steps is not None else [(quantity, price)]
+		if len(steps) > max_bid_steps: raise ValueError(f"At most {max_bid_steps} bid steps are supported.")
+		qty_values: list[float | None] = [None] * MAX_BID_STEPS
+		price_values: list[float | None] = [None] * MAX_BID_STEPS
+		for idx, (step_qty, step_price) in enumerate(steps):
+			qty_values[idx] = float(step_qty)
+			price_values[idx] = float(step_price)
+		with self.connect_to_db() as conn:
+			conn.execute("UPDATE environmental_bids SET deleted=1 WHERE auction_id=? AND trader_id=? AND cpe_id=? AND deleted=0", (auction_id, trader_id, cpe_id))
+			cursor = conn.execute("INSERT INTO environmental_bids(auction_id, trader_id, cpe_id, bid_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+				(auction_id, trader_id, cpe_id, now, qty_values[0], price_values[0], qty_values[1], price_values[1], qty_values[2], price_values[2], qty_values[3], price_values[3], qty_values[4], price_values[4], 1 if is_default else 0))
+			env_bid_id = cursor.lastrowid or 0
+			return {"id": f"env-bid-{env_bid_id}-s1", "cpe_id": cpe_id, "quantity": float(steps[0][0]), "price": float(steps[0][1]), "submitted_at": now}
+
+	def get_environmental_bids(self, auction_id: int) -> list[dict[str, Any]]:
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT env_bid_id, trader_id, cpe_id, bid_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5 FROM environmental_bids WHERE auction_id=? AND deleted=0 ORDER BY env_bid_id", (auction_id,)).fetchall()
+			return [dict(row) for row in rows]
+
+	def get_environmental_bid_rows(self, auction_id: int, trader_id: int) -> list[dict[str, Any]]:
+		previous_auction_id = self.get_previous_auction_id(auction_id)
+		max_bid_steps = self.get_max_bid_steps()
+		with self.connect_to_db() as conn:
+			current_rows = conn.execute("""SELECT cpe.cpe_id, cpe.control_point_id, cp.name AS control_point_name, cpe.effect_date,
+				cpe.committed_head_auction_start, cpe.committed_head_auction_end, cpe.planned_head_auction_start, cpe.planned_head_auction_end,
+				(ahl.minimum_head - cpe.committed_head_auction_start) AS allowable_head_change
+				FROM control_point_events cpe
+				JOIN control_points cp ON cp.control_point_id = cpe.control_point_id
+				JOIN aquifer_head_limits ahl ON ahl.control_point_id = cpe.control_point_id AND ahl.effect_date = cpe.effect_date
+				WHERE cpe.auction_id=? ORDER BY cpe.effect_date, cpe.control_point_id""", (auction_id,)).fetchall()
+			latest_rows = conn.execute("SELECT cpe_id, bid_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5 FROM environmental_bids WHERE auction_id=? AND trader_id=? AND deleted=0 ORDER BY env_bid_id DESC", (auction_id, trader_id)).fetchall()
+			previous_price_by_key: dict[tuple[int, str], float | None] = {}
+			if previous_auction_id is not None:
+				previous_rows = conn.execute("SELECT control_point_id, effect_date, dual_price FROM control_point_events WHERE auction_id=?", (previous_auction_id,)).fetchall()
+				previous_price_by_key = {(int(row["control_point_id"]), str(row["effect_date"])): (float(row["dual_price"]) if row["dual_price"] is not None else None) for row in previous_rows}
+		latest_by_cpe_id: dict[int, sqlite3.Row] = {}
+		for row in latest_rows:
+			cpe_id = int(row["cpe_id"])
+			if cpe_id not in latest_by_cpe_id: latest_by_cpe_id[cpe_id] = row
+		result: list[dict[str, Any]] = []
+		for row in current_rows:
+			cpe_id = int(row["cpe_id"])
+			latest = latest_by_cpe_id.get(cpe_id)
+			latest_bids: list[dict[str, float]] = []
+			if latest is not None:
+				for step_num in range(1, max_bid_steps + 1):
+					qty = latest[f"qty{step_num}"]
+					step_price = latest[f"price{step_num}"]
+					if qty is None or step_price is None: continue
+					latest_bids.append({"quantity": float(qty), "price": float(step_price)})
+			result.append({"cpe_id": cpe_id, "control_point_id": int(row["control_point_id"]), "control_point_name": str(row["control_point_name"] or ""),
+				"effect_date": str(row["effect_date"] or ""), "committed_head_auction_start": row["committed_head_auction_start"], "committed_head_auction_end": row["committed_head_auction_end"],
+				"planned_head_auction_start": row["planned_head_auction_start"], "planned_head_auction_end": row["planned_head_auction_end"], "allowable_head_change": float(row["allowable_head_change"] or 0.0),
+				"latest_bids": latest_bids, "clearing_price": previous_price_by_key.get((int(row["control_point_id"]), str(row["effect_date"])))})
+		return result
+
+	def get_environmental_bid_history(self, auction_id: int, trader_id: int) -> list[dict[str, Any]]:
+		max_bid_steps = self.get_max_bid_steps()
+		with self.connect_to_db() as conn:
+			rows = conn.execute("""SELECT eb.env_bid_id, eb.cpe_id, eb.bid_date, eb.is_bid_default, eb.qty1, eb.price1, eb.qty2, eb.price2, eb.qty3, eb.price3, eb.qty4, eb.price4, eb.qty5, eb.price5,
+				cpe.control_point_id, cpe.effect_date, cp.name AS control_point_name, ep.traded_head_end, ep.price
+				FROM environmental_bids eb
+				JOIN control_point_events cpe ON cpe.cpe_id = eb.cpe_id
+				JOIN control_points cp ON cp.control_point_id = cpe.control_point_id
+				LEFT JOIN environmental_position ep ON ep.auction_id = eb.auction_id AND ep.trader_id = eb.trader_id AND ep.cpe_id = eb.cpe_id
+				WHERE eb.auction_id=? AND eb.trader_id=? AND eb.deleted=0 ORDER BY eb.env_bid_id DESC""", (auction_id, trader_id)).fetchall()
+		bid_history_list: list[dict[str, Any]] = []
+		for row in rows:
+			traded_head_end = float(row["traded_head_end"]) if row["traded_head_end"] is not None else None
+			traded_price = float(row["price"]) if row["price"] is not None else None
+			for step_num in range(1, max_bid_steps + 1):
+				qty = row[f"qty{step_num}"]
+				step_price = row[f"price{step_num}"]
+				if qty is None or step_price is None: continue
+				bid_history_list.append({"env_bid_id": int(row["env_bid_id"]), "cpe_id": int(row["cpe_id"]), "control_point_id": int(row["control_point_id"]),
+					"control_point_name": str(row["control_point_name"] or ""), "effect_date": str(row["effect_date"] or ""), "quantity": float(qty), "price": float(step_price),
+					"submitted_at": row["bid_date"], "traded_head_end": traded_head_end, "traded_price": traded_price,
+					"is_default": bool(row["is_bid_default"]) if row["is_bid_default"] is not None else False})
+		return bid_history_list
+
+	def has_active_environmental_bids(self, auction_id: int, trader_id: int, cpe_id: int) -> bool:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT 1 FROM environmental_bids WHERE auction_id=? AND trader_id=? AND cpe_id=? AND deleted=0 LIMIT 1", (auction_id, trader_id, cpe_id)).fetchone()
+			return row is not None
+
+	def copy_active_environmental_bids(self, auction_id: int, source_auction_id: int, trader_id: int) -> int:
+		now = datetime.now(timezone.utc).isoformat()
+		with self.connect_to_db() as conn:
+			target_rows = conn.execute("SELECT cpe_id, control_point_id, effect_date FROM control_point_events WHERE auction_id=?", (auction_id,)).fetchall()
+			target_cpe_by_key = {(int(row["control_point_id"]), str(row["effect_date"])): int(row["cpe_id"]) for row in target_rows}
+			source_rows = conn.execute("""SELECT eb.qty1, eb.price1, eb.qty2, eb.price2, eb.qty3, eb.price3, eb.qty4, eb.price4, eb.qty5, eb.price5,
+				cpe.control_point_id, cpe.effect_date
+				FROM environmental_bids eb JOIN control_point_events cpe ON cpe.cpe_id = eb.cpe_id
+				WHERE eb.auction_id=? AND eb.trader_id=? AND eb.deleted=0 ORDER BY eb.env_bid_id""", (source_auction_id, trader_id)).fetchall()
+			inserted = 0
+			for row in source_rows:
+				key = (int(row["control_point_id"]), str(row["effect_date"]))
+				if key not in target_cpe_by_key: continue
+				target_cpe_id = target_cpe_by_key[key]
+				conn.execute("UPDATE environmental_bids SET deleted=1 WHERE auction_id=? AND trader_id=? AND cpe_id=? AND deleted=0", (auction_id, trader_id, target_cpe_id))
+				conn.execute("INSERT INTO environmental_bids(auction_id, trader_id, cpe_id, bid_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)",
+					(auction_id, trader_id, target_cpe_id, now, row["qty1"], row["price1"], row["qty2"], row["price2"], row["qty3"], row["price3"], row["qty4"], row["price4"], row["qty5"], row["price5"]))
+				inserted += 1
+			return inserted
 
 	# Reads default bids from the previous auction and posts them to the new auction.
 	# To do: this should be incorporated in get_bids
@@ -648,7 +772,7 @@ class ForeverFairData:
 	def get_control_point_events(self, auction_id: int) -> list[dict[str, Any]]:
 		"""Return all control_point_events rows for the given auction_id as dicts with control_point_id, effect_date, allowable_head_change, dual_price, slack, alpha."""
 		with self.connect_to_db() as conn:
-			rows = conn.execute("""SELECT cpe.control_point_id, cpe.effect_date, (ahl.minimum_head - cpe.committed_head_auction_start) AS allowable_head_change, cpe.dual_price, cpe.slack, cpe.alpha
+			rows = conn.execute("""SELECT cpe.cpe_id, cpe.control_point_id, cpe.effect_date, (ahl.minimum_head - cpe.committed_head_auction_start) AS allowable_head_change, cpe.dual_price, cpe.slack, cpe.alpha
 				FROM control_point_events cpe
 				JOIN aquifer_head_limits ahl ON ahl.control_point_id = cpe.control_point_id AND ahl.effect_date = cpe.effect_date
 				WHERE cpe.auction_id=?""", (auction_id,)).fetchall()
@@ -808,7 +932,7 @@ class ForeverFairData:
 				(committed_head_change, control_point_id, effect_date, committed_head_change, auction_id, control_point_id, effect_date))
 
 	def set_auction_solution_results_bulk(self, auction_id: int, quota_rows: list[tuple[int, str, float | None, float | None]], control_point_rows: list[tuple[str, int, float | None, float | None]],
-		committed_rows: list[tuple[str, int, float]], ) -> None:
+		committed_rows: list[tuple[str, int, float]], environmental_rows: list[tuple[int, int, float | None, float | None, float | None]] | None = None,) -> None:
 		"""Persist all post-solve rows using one DB connection/transaction."""
 		with self.connect_to_db() as conn:
 			for well_id, take_date, quota_auction_end, price in quota_rows:
@@ -834,6 +958,14 @@ class ForeverFairData:
 					committed_allowable_head_change = (SELECT ahl.minimum_head FROM aquifer_head_limits ahl WHERE ahl.control_point_id=? AND ahl.effect_date=?) - (committed_head_auction_start + ?)
 				WHERE auction_id=? AND control_point_id=? AND effect_date=?""",
 				[(committed_head_change, control_point_id, effect_date, committed_head_change, auction_id, control_point_id, effect_date) for effect_date, control_point_id, committed_head_change in committed_rows],)
+
+			if environmental_rows:
+				for trader_id, cpe_id, traded_head_start, traded_head_end, price in environmental_rows:
+					cursor = conn.execute("UPDATE environmental_position SET traded_head_start=?, traded_head_end=?, price=? WHERE auction_id=? AND trader_id=? AND cpe_id=?",
+						(traded_head_start, traded_head_end, price, auction_id, trader_id, cpe_id))
+					if cursor.rowcount: continue
+					conn.execute("INSERT INTO environmental_position(auction_id, trader_id, cpe_id, traded_head_start, traded_head_end, price) VALUES (?, ?, ?, ?, ?, ?)",
+						(auction_id, trader_id, cpe_id, traded_head_start, traded_head_end, price))
 
 	def latest_aquifer_head_limits_upload_date(self) -> str | None:
 		with self.connect_to_db() as conn:
@@ -1088,6 +1220,11 @@ class ForeverFairData:
 				JOIN q_global q ON q.well_id = rm.well_id AND q.pumping_period_global = rm.pumping_period
 				JOIN cpe_global cpe ON cpe.control_point_id = rm.control_point_id AND cpe.effect_period_global = rm.effect_period""", 
 				(auction_id, auction_id, auction_id, auction_id)).fetchone()
+			return float(row["revenue"] if row is not None and row["revenue"] is not None else 0.0)
+
+	def compute_environmental_revenue_sql(self, auction_id: int) -> float:
+		with self.connect_to_db() as conn:
+			row = conn.execute("SELECT COALESCE(SUM(COALESCE(traded_head_end, 0.0) * ABS(COALESCE(price, 0.0))), 0.0) AS revenue FROM environmental_position WHERE auction_id=?", (auction_id,)).fetchone()
 			return float(row["revenue"] if row is not None and row["revenue"] is not None else 0.0)
 
 	# 9. Get price output. ---------------------------------------------

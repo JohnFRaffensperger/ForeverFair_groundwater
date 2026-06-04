@@ -3,7 +3,7 @@
   <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
 	
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer page</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
@@ -39,7 +39,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <ol><li>Load setup files below on this <a href="/programmer">Programmer page</a>. Import <code>.decvar</code>, <code>.hedcon</code>, trader names, trader wells, response matrix and bounds from <code>.mps</code>, and a file mapping traders to wells. Verify database status below.</li>
 
-<li>Enter bids from the <a href="/trader">Trader login page</a> (or use super-login buttons on the <a href="/researcher">Researcher page</a>), then submit bids for each trader well and period.
+<li>Enter bids from the <a href="/login">Trader login page</a> (or use super-login buttons on the <a href="/researcher">Researcher page</a>), then submit bids for each trader well and period.
 	Or do nothing and let the code create automatic bids.</li>
 
 <li>Check the <a href="/auctionmanager">Auction manager page</a>. Confirm close date, pumping schedule, and rights-policy settings. 

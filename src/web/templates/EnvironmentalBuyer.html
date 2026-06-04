@@ -1,0 +1,153 @@
+<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Environmental Buyer Console</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
+<body data-max-bid-steps="{{ max_bid_steps }}">
+
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <strong>Environmental buyer console</strong> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Environmental Buyer Console</h1>
+
+<p>Welcome, <strong>{{ current_trader.name }}</strong>. (Trader id {{ current_trader.id }}.)
+	You are an <strong>environmental buyer</strong> bidding in auction {{ auction_case.auction.id }}, which is <strong>{% if auction_case.auction.auction_type == 'tentative' %}tentative{% else %}final{% endif %}</strong>.
+	Bidding for this auction {% if auction_case.auction.status == 'CLOSED' %}is closed{% else %}is open now, and closes {{ auction_case.auction.closed_date }}{% endif %}.
+</p>
+
+<h2>Environmental bid entry <button type="button" id="submit-env-bid-btn">Submit your environmental bids for auction {{ auction_case.auction.id }}</button> <span role="alert">{{ bid_entry_status_message }}</span></h2>
+<p>Each row is a control point event. Environmental buyers can only buy protection at a control point event, never sell.</p>
+
+<table data-console-table="true" style="table-layout: auto; border-collapse: collapse;">
+<colgroup><col style="width: 8em;"><col style="width: 14em;"><col style="width: 12em;"><col style="width: 8em;"><col style="width: 8em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}</colgroup>
+<thead><tr>
+	<th rowspan="2">Control point id</th>
+	<th rowspan="2">Control point</th>
+	<th rowspan="2">Effect date</th>
+	<th rowspan="2" style="text-align: right;">Control point event id</th>
+	<th rowspan="2" style="text-align: right;">Allowable head change</th>
+	<th rowspan="2" style="text-align: right;">Clearing price from auction {{ auction_case.auction.id - 1 }}</th>
+	{% for step_num in range(1, max_bid_steps + 1) %}<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
+</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: center;">Head units</th><th style="text-align: center;">$/unit</th>{% endfor %}</tr></thead>
+<tbody>{% for row in bid_rows %}{% set latest_bids = row.latest_bids %}
+<tr data-console-row="true" data-auction-id="{{ auction_case.auction.id }}" data-cpe-id="{{ row.cpe_id }}"><form method="post" action="/environmental-bids/new" data-console-bid-form="true">
+	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
+	<input type="hidden" name="cpe_id" value="{{ row.cpe_id }}">
+	<input type="hidden" name="return_to" value="/trader">
+	<td>{{ row.control_point_id }}</td>
+	<td>{{ row.control_point_name }}</td>
+	<td>{{ row.effect_date_display }}</td>
+	<td style="text-align: right;">{{ row.cpe_id }}</td>
+	<td style="text-align: right;">{{ '{:,.4f}'.format(row.allowable_head_change) }}</td>
+	<td style="text-align: right;">{% if row.clearing_price is not none %}${{ '%.4f'|format(row.clearing_price|abs) }}{% else %}&mdash;{% endif %}</td>
+	<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="{% if latest_bids|length >= 1 %}{{ '{:,.4f}'.format(latest_bids[0].quantity) }}{% endif %}" required></td>
+	<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="{% if latest_bids|length >= 1 %}{{ latest_bids[0].price }}{% endif %}" required></td>
+	{% for step_num in optional_bid_step_numbers %}
+	<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity{{ step_num }}" inputmode="decimal" placeholder="" value="{% if latest_bids|length >= step_num %}{{ '{:,.4f}'.format(latest_bids[step_num - 1].quantity) }}{% endif %}"></td>
+	<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price{{ step_num }}" inputmode="decimal" placeholder="" value="{% if latest_bids|length >= step_num %}{{ latest_bids[step_num - 1].price }}{% endif %}"></td>
+	{% endfor %}
+</form></tr>{% endfor %}</tbody>
+</table>
+
+<h2>Your bids from the auction {{ last_auction_id }}, submitted {{ last_auction_submitted_at }}.</h2>
+<table style="table-layout: auto;">
+<colgroup><col style="width: 11em;"><col style="width: 8em;"><col style="width: 14em;"><col style="width: 12em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}<col style="width: 8em;"><col style="width: 8em;"><col style="width: 10em;"></colgroup>
+<thead><tr>
+	<th rowspan="2">Submitted</th>
+	<th rowspan="2">Control point id</th>
+	<th rowspan="2">Control point</th>
+	<th rowspan="2">Effect date</th>
+	<th rowspan="2">Control point event id</th>
+	{% for step_num in range(1, max_bid_steps + 1) %}<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
+	<th rowspan="2" style="text-align: right;">Purchased head</th>
+	<th rowspan="2" style="text-align: right;">Clearing price</th>
+	<th rowspan="2" style="text-align: right;">Receipt</th>
+</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: right;">Head units</th><th style="text-align: right;">$/unit</th>{% endfor %}</tr></thead>
+<tbody>{% for row in bid_history_rows %}
+<tr>
+	<td>{{ row.submitted_at }}</td>
+	<td>{{ row.control_point_id }}</td>
+	<td>{{ row.control_point_name }}</td>
+	<td>{{ row.effect_date_display }}</td>
+	<td>{{ row.cpe_id }}</td>
+	{% for step_num in range(1, max_bid_steps + 1) %}
+	{% set idx = step_num - 1 %}
+	{% if idx < row.steps|length %}
+	<td style="text-align: right;">{{ '{:,.4f}'.format(row.steps[idx].quantity) }}</td>
+	<td style="text-align: right;">${{ row.steps[idx].price }}</td>
+	{% else %}
+	<td style="text-align: right;">&mdash;</td>
+	<td style="text-align: right;">&mdash;</td>
+	{% endif %}
+	{% endfor %}
+	<td style="text-align: right;">{% if row.traded_head_end is not none %}{{ '{:,.4f}'.format(row.traded_head_end) }}{% else %}&mdash;{% endif %}</td>
+	<td style="text-align: right;">{% if row.traded_price is not none %}${{ '%.4f'|format(row.traded_price|abs) }}{% else %}&mdash;{% endif %}</td>
+	<td style="text-align: right;">{% if row.payment_value is not none %}${{ '{:+,.2f}'.format(row.payment_value) }}{% else %}&mdash;{% endif %}</td>
+</tr>{% endfor %}</tbody></table>
+
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.</p>
+<script>
+var submitEnvBidButton = document.getElementById('submit-env-bid-btn');
+
+function prepareAndValidateEnvironmentalRow(row) {
+	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
+	for (var i = 2; i <= maxBidSteps; i++) {
+		var qInput = row.querySelector('[name="quantity' + i + '"]');
+		var pInput = row.querySelector('[name="price' + i + '"]');
+		var q = qInput ? (qInput.value || '').trim() : '';
+		var p = pInput ? (pInput.value || '').trim() : '';
+		if ((q && !p) || (!q && p)) {
+			alert('Step ' + i + ': quantity and price must both be provided.');
+			return false;
+		}
+	}
+	var q1 = row.querySelector('[name="quantity"]');
+	var p1 = row.querySelector('[name="price"]');
+	if (!q1 || !p1 || (!(q1.value || '').trim() && !(p1.value || '').trim())) return true;
+	if (!(q1.value || '').trim() || !(p1.value || '').trim()) {
+		alert('Step 1 requires quantity and price.');
+		return false;
+	}
+	return true;
+}
+
+function buildEnvironmentalRowFormData(row) {
+	var fd = new FormData();
+	fd.append('auction_id', String(row.getAttribute('data-auction-id') || ''));
+	fd.append('cpe_id', String(row.getAttribute('data-cpe-id') || ''));
+	fd.append('return_to', '/trader');
+	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
+	for (var i = 1; i <= maxBidSteps; i++) {
+		var qName = i === 1 ? 'quantity' : ('quantity' + i);
+		var pName = i === 1 ? 'price' : ('price' + i);
+		var qInput = row.querySelector('[name="' + qName + '"]');
+		var pInput = row.querySelector('[name="' + pName + '"]');
+		fd.append(qName, qInput ? String(qInput.value || '').trim() : '');
+		fd.append(pName, pInput ? String(pInput.value || '').trim() : '');
+	}
+	return fd;
+}
+
+if (submitEnvBidButton) {
+	submitEnvBidButton.addEventListener('click', async function() {
+		var allRows = Array.from(document.querySelectorAll('tr[data-console-row]'));
+		if (!allRows.length) return;
+		submitEnvBidButton.disabled = true;
+		try {
+			for (var idx = 0; idx < allRows.length; idx++) {
+				var row = allRows[idx];
+				if (!prepareAndValidateEnvironmentalRow(row)) {
+					submitEnvBidButton.disabled = false;
+					return;
+				}
+				var q1 = row.querySelector('[name="quantity"]');
+				var p1 = row.querySelector('[name="price"]');
+				if (!q1 || !p1 || !(q1.value || '').trim() || !(p1.value || '').trim()) continue;
+				await fetch('/environmental-bids/new', {method: 'POST', body: buildEnvironmentalRowFormData(row), credentials: 'same-origin'});
+			}
+			window.location.href = '/trader';
+		} catch (_err) {
+			alert('Unable to submit environmental bids right now. Please try again.');
+			submitEnvBidButton.disabled = false;
+		}
+	});
+}
+</script>
+</body></html>

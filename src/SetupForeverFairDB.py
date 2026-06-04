@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS Catchment_info (meta_key TEXT PRIMARY KEY, text_value
 CREATE TABLE IF NOT EXISTS control_points (control_point_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL);
 CREATE TABLE IF NOT EXISTS aquifer_head_limits (control_point_event_id INTEGER PRIMARY KEY AUTOINCREMENT, control_point_id INTEGER, effect_date TEXT, upload_date TEXT, actual_start_head REAL, minimum_head REAL, allowable_head_change REAL, head_constraint_upper_bound REAL, license_demand REAL, FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
 CREATE TABLE IF NOT EXISTS response_matrix (well_id INTEGER NOT NULL, control_point_id INTEGER NOT NULL, pumping_period INTEGER NOT NULL, effect_period INTEGER NOT NULL, response REAL NOT NULL, PRIMARY KEY (well_id, control_point_id, pumping_period, effect_period), FOREIGN KEY (well_id) REFERENCES wells(well_id), FOREIGN KEY (control_point_id) REFERENCES control_points(control_point_id));
-CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT);
+CREATE TABLE IF NOT EXISTS traders (trader_id INTEGER PRIMARY KEY AUTOINCREMENT, name_tag TEXT NOT NULL, trader_type TEXT NOT NULL DEFAULT 'well', trader_loginid TEXT, trader_password TEXT, trader_first_name TEXT, trader_last_name TEXT, trader_address TEXT, trader_city TEXT, trader_phone TEXT, trader_email TEXT);
 CREATE TABLE IF NOT EXISTS wells (well_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, trader_id INTEGER, gw_model_layer INTEGER, gw_model_row INTEGER, gw_model_column INTEGER, latitude REAL, longitude REAL, FOREIGN KEY (trader_id) REFERENCES traders(trader_id));
 
 CREATE TABLE IF NOT EXISTS auctions (auction_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_type TEXT, created_date TEXT NOT NULL, closed_date TEXT, status TEXT NOT NULL, firstWaterTakeDate TEXT, lastWaterTakeDate TEXT, period_length_hours INTEGER, solve_status TEXT, objective_value REAL, auction_revenue REAL);
@@ -29,10 +29,14 @@ CREATE TABLE IF NOT EXISTS control_point_events (cpe_id INTEGER PRIMARY KEY AUTO
 CREATE TABLE IF NOT EXISTS well_license (license_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER, well_id INTEGER, bid_period INTEGER, license_quantity REAL, license_date TEXT);
 CREATE TABLE IF NOT EXISTS well_quota (quota_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id INTEGER, trader_id INTEGER, well_id INTEGER, take_date TEXT, quota_auction_start REAL, quota_scaled_start REAL, quota_auction_end REAL, price REAL);
 CREATE TABLE IF NOT EXISTS well_bids (bid_id INTEGER PRIMARY KEY AUTOINCREMENT, well_id INTEGER, trader_id INTEGER, auction_id INTEGER, bid_date TEXT, pumping_date TEXT, expiry_date TEXT, is_bid_default INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS environmental_bids (env_bid_id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id INTEGER NOT NULL, auction_id INTEGER NOT NULL, cpe_id INTEGER NOT NULL, bid_date TEXT NOT NULL, is_bid_default INTEGER DEFAULT 0, qty1 REAL, price1 REAL, qty2 REAL, price2 REAL, qty3 REAL, price3 REAL, qty4 REAL, price4 REAL, qty5 REAL, price5 REAL, deleted INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (trader_id) REFERENCES traders(trader_id), FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (cpe_id) REFERENCES control_point_events(cpe_id));
+CREATE TABLE IF NOT EXISTS environmental_position (env_position_id INTEGER PRIMARY KEY AUTOINCREMENT, auction_id INTEGER NOT NULL, trader_id INTEGER NOT NULL, cpe_id INTEGER NOT NULL, traded_head_start REAL, traded_head_end REAL, price REAL, FOREIGN KEY (auction_id) REFERENCES auctions(auction_id), FOREIGN KEY (trader_id) REFERENCES traders(trader_id), FOREIGN KEY (cpe_id) REFERENCES control_point_events(cpe_id));
 CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_control_point_effect_date ON aquifer_head_limits(control_point_id, effect_date);
 CREATE INDEX IF NOT EXISTS idx_aquifer_head_limits_effect_date ON aquifer_head_limits(effect_date);
 CREATE INDEX IF NOT EXISTS idx_response_matrix_well_pumping_effect_control ON response_matrix(well_id, pumping_period, effect_period, control_point_id);
 CREATE INDEX IF NOT EXISTS idx_well_license_well_bid_period ON well_license(well_id, bid_period);
+CREATE INDEX IF NOT EXISTS idx_environmental_bids_auction_trader_cpe_deleted ON environmental_bids(auction_id, trader_id, cpe_id, deleted);
+CREATE INDEX IF NOT EXISTS idx_environmental_position_auction_trader_cpe ON environmental_position(auction_id, trader_id, cpe_id);
 """
 
 # Programmer.html, section 0. 
@@ -254,21 +258,24 @@ def import_trader_names(db_path: Path, text: str) -> dict[str, Any]:
 
 	fn_idx = col("trader_first_name")
 	ln_idx = col("trader_last_name")
+	type_idx = col("trader_type")
 	if ln_idx is None: return {"traders_inserted": 0, "traders_skipped": 0, "errors": [f"Missing column 'trader_last_name'. Found: {header}"]}
 
 	# Collect parsed rows
-	parsed: list[tuple[str, str]] = []
+	parsed: list[tuple[str, str, str]] = []
 	for line in lines[1:]:
 		cols = line.split("\t")
 		if ln_idx >= len(cols): continue
 		last_name = cols[ln_idx].strip()
 		first_name = cols[fn_idx].strip() if fn_idx is not None and fn_idx < len(cols) else ""
-		if last_name: parsed.append((first_name, last_name))
+		trader_type = cols[type_idx].strip().lower() if type_idx is not None and type_idx < len(cols) else "well"
+		if trader_type not in {"well", "environmental"}: trader_type = "well"
+		if last_name: parsed.append((first_name, last_name, trader_type))
 
 	# Assign dedup suffixes based on order of appearance
 	seen: dict[str, int] = {}
 	suffixes: list[str] = []
-	for _, last_name in parsed:
+	for _, last_name, _trader_type in parsed:
 		key = last_name.lower()
 		count = seen.setdefault(key, 0)
 		suffixes.append("" if count == 0 else str(count))
@@ -277,10 +284,10 @@ def import_trader_names(db_path: Path, text: str) -> dict[str, Any]:
 	conn = sqlite3.connect(db_path)
 	inserted = skipped = 0
 	errors: list[str] = []
-	for (first_name, last_name), suffix in zip(parsed, suffixes):
+	for (first_name, last_name, trader_type), suffix in zip(parsed, suffixes):
 		display = last_name + suffix
 		try:
-			cur = conn.execute("INSERT OR IGNORE INTO traders (name_tag, trader_loginid, trader_first_name, trader_last_name) VALUES (?,?,?,?)", (display, display, first_name, last_name),)
+			cur = conn.execute("INSERT OR IGNORE INTO traders (name_tag, trader_type, trader_loginid, trader_first_name, trader_last_name) VALUES (?,?,?,?,?)", (display, trader_type, display, first_name, last_name),)
 			if cur.rowcount: inserted += 1
 			else: skipped += 1
 		except Exception as exc: errors.append(str(exc))
@@ -318,9 +325,12 @@ def import_trader_wells(db_path: Path, text: str) -> dict[str, Any]:
 		name_val = cols[name_idx].strip()
 		well_id_val = cols[well_idx].strip()
 		if not name_val or not well_id_val: continue
-		trader_row = conn.execute("SELECT trader_id FROM traders WHERE name_tag=?", (name_val,) ).fetchone()
+		trader_row = conn.execute("SELECT trader_id, trader_type FROM traders WHERE name_tag=?", (name_val,) ).fetchone()
 		if trader_row is None:
 			errors.append(f"Trader name not found in traders table: {name_val!r}")
+			continue
+		if str(trader_row["trader_type"] or "well") == "environmental":
+			errors.append(f"Environmental buyers cannot be assigned wells: {name_val!r}")
 			continue
 		well_row = conn.execute("SELECT well_id FROM wells WHERE well_id=? OR name=?", (well_id_val, well_id_val) ).fetchone()
 		if well_row is None:

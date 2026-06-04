@@ -90,18 +90,27 @@ def _common_template_context() -> dict[str, Any]: return {"active_catchment_name
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+	target_path = str(request.query_params.get("target", "/trader") or "/trader").strip()
+	if target_path not in {"/trader", "/environmental-buyer"}: target_path = "/trader"
+	trader_type = str(request.query_params.get("trader_type", "") or "").strip().lower()
+	if trader_type not in {"", "well", "environmental"}: trader_type = ""
 	traders = ffdata.list_of_traders()
+	if trader_type:
+		traders = [trader for trader in traders if str(trader.get("trader_type") or "well") == trader_type]
 	now_iso = ffdata.the_time_at_the_tone_is().isoformat(timespec="minutes")
 	upcoming = ffdata.list_auctions()
 	next_final = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] != "tentative" and (a["closed_date"] or "") > now_iso), None)
 	next_tentative = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] == "tentative" and (a["closed_date"] or "") > now_iso), None)
 	context = _common_template_context()
-	context.update({"traders": traders, "next_final": next_final, "next_tentative": next_tentative, })
+	context.update({"traders": traders, "next_final": next_final, "next_tentative": next_tentative,
+		"target_path": target_path, "login_heading": "Forever Fair Environmental Buyer Login" if target_path == "/environmental-buyer" else "Forever Fair Trader Login",
+		"login_label": "Environmental buyer" if target_path == "/environmental-buyer" else "Trader",})
 	return templates.TemplateResponse(request, "LoginPage.html", context)
 
 @app.post("/login")
-def do_login(trader_id: int = Form(...)):
-	response = RedirectResponse(url="/trader", status_code=303)
+def do_login(trader_id: int = Form(...), target_path: str = Form("/trader")):
+	if target_path not in {"/trader", "/environmental-buyer"}: target_path = "/trader"
+	response = RedirectResponse(url=target_path, status_code=303)
 	response.set_cookie("trader_id", str(trader_id), max_age=86400, httponly=True)
 	return response
 
@@ -312,11 +321,74 @@ def _build_trader_context(request: Request) -> dict[str, Any] | RedirectResponse
 	context.update(_common_template_context())
 	return context
 
+def _build_environmental_buyer_context(request: Request) -> dict[str, Any] | RedirectResponse:
+	trader_cookie = request.cookies.get("trader_id", "")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
+	next_auction = ffdata.get_next_auction_info()
+	if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
+	auction_id = next_auction["auction_id"]
+	auction_info = ffdata.get_auction_info(auction_id)
+	history_auction_id = ffdata.get_previous_auction_id(auction_id)
+	bid_rows = ffdata.get_environmental_bid_rows(auction_id, trader_id)
+	for row in bid_rows: row["effect_date_display"] = _format_iso_datetime_short(row["effect_date"])
+	bid_history = ffdata.get_environmental_bid_history(history_auction_id, trader_id) if history_auction_id is not None else []
+	history_rows: list[dict[str, Any]] = []
+	history_row_by_bid_id: dict[int, dict[str, Any]] = {}
+	total_last_auction_payment = 0.0
+	for bid in bid_history:
+		env_bid_id = int(bid["env_bid_id"])
+		if env_bid_id not in history_row_by_bid_id:
+			traded_head_end = bid["traded_head_end"]
+			traded_price = bid["traded_price"]
+			payment_value = None if traded_head_end is None or traded_price is None else -abs(float(traded_head_end)) * abs(float(traded_price))
+			if payment_value is not None: total_last_auction_payment += payment_value
+			history_row_by_bid_id[env_bid_id] = {"env_bid_id": env_bid_id, "submitted_at": _format_iso_datetime_short(bid["submitted_at"]), "control_point_id": int(bid["control_point_id"]),
+				"control_point_name": str(bid["control_point_name"]), "cpe_id": int(bid["cpe_id"]), "effect_date_display": _format_iso_datetime_short(bid["effect_date"]),
+				"steps": [], "traded_head_end": traded_head_end, "traded_price": traded_price, "payment_value": payment_value}
+			history_rows.append(history_row_by_bid_id[env_bid_id])
+		history_row_by_bid_id[env_bid_id]["steps"].append({"quantity": bid["quantity"], "price": bid["price"]})
+	last_auction_submitted_values = [_format_iso_datetime_short(bid["submitted_at"]) for bid in bid_history if bid.get("submitted_at")]
+	last_auction_submitted_at = max(last_auction_submitted_values) if last_auction_submitted_values else "-"
+	last_auction_id_display = history_auction_id if history_auction_id is not None else "-"
+	matching_traders = [t for t in ffdata.list_of_traders() if t["id"] == trader_id]
+	current_trader: dict[str, Any] = matching_traders[0] if matching_traders else {"id": trader_id, "name": "", "trader_type": "environmental"}
+	context: dict[str, Any] = {"current_trader": current_trader, "bid_rows": bid_rows, "bid_history_rows": history_rows, "auction_id": auction_id,
+		"auction_case": {"auction": auction_info}, "max_bid_steps": ffdata.get_max_bid_steps(), "optional_bid_step_numbers": list(range(2, ffdata.get_max_bid_steps() + 1)),
+		"bid_entry_status_message": "Environmental buyers bid directly for control point events.", "last_auction_id": last_auction_id_display,
+		"last_auction_submitted_at": last_auction_submitted_at, "total_last_auction_payment": total_last_auction_payment, "notice": request.cookies.get("flash", "")}
+	context.update(_common_template_context())
+	return context
+
 @app.get("/trader", response_class=HTMLResponse)
 def trader_page(request: Request):
+	trader_cookie = request.cookies.get("trader_id", "")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
+	if ffdata.get_trader_type(trader_id) == "environmental":
+		context = _build_environmental_buyer_context(request)
+		if isinstance(context, RedirectResponse): return context
+		resp = templates.TemplateResponse(request, "EnvironmentalBuyer.html", context)
+		if context["notice"]: resp.delete_cookie("flash")
+		return resp
 	context = _build_trader_context(request)
 	if isinstance(context, RedirectResponse): return context
 	resp = templates.TemplateResponse(request, "Trader.html", context)
+	if context["notice"]: resp.delete_cookie("flash")
+	return resp
+
+@app.get("/environmental-buyer", response_class=HTMLResponse)
+def environmental_buyer_page(request: Request):
+	trader_cookie = request.cookies.get("trader_id", "")
+	if not trader_cookie: return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
+	if ffdata.get_trader_type(trader_id) != "environmental": return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
+	context = _build_environmental_buyer_context(request)
+	if isinstance(context, RedirectResponse): return context
+	resp = templates.TemplateResponse(request, "EnvironmentalBuyer.html", context)
 	if context["notice"]: resp.delete_cookie("flash")
 	return resp
 
@@ -371,6 +443,39 @@ async def create_bid(request: Request):
 	try: BiddingController.submitBid(ffdata, auction_id=auction_id, this_trader_id=trader_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps,)
 	except ValueError as e: return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: {e}")
 	return _flash_redirect(f"{return_to}?auction_id={auction_id}", "Bid saved")
+
+@app.post("/environmental-bids/new")
+async def create_environmental_bid(request: Request):
+	form = await request.form()
+	return_to = str(form.get("return_to", "/trader")).strip()
+	if return_to != "/trader": return_to = "/trader"
+	try:
+		auction_id = int(str(form["auction_id"]).strip())
+		cpe_id = int(str(form["cpe_id"]).strip())
+		quantity = float(str(form["quantity"]).strip())
+		price = float(str(form["price"]).strip())
+		if get_auctionmanager_run_active(): return _flash_redirect(return_to, "Error: Bid submission is locked because the auction manager is running the auction.")
+	except Exception:
+		q_text = str(form.get("quantity", "")).strip()
+		p_text = str(form.get("price", "")).strip()
+		cpe_text = str(form.get("cpe_id", "")).strip()
+		return _flash_redirect(return_to, f"Error: invalid environmental bid values for control point event {cpe_text} (quantity='{q_text}', price='{p_text}')")
+	is_default = str(form.get("is_default", "")).strip().lower() in {"true", "on", "1", "yes"}
+	trader_cookie = request.cookies.get("trader_id", "")
+	if not trader_cookie: return RedirectResponse(url="/login", status_code=303)
+	try: trader_id = int(trader_cookie)
+	except ValueError: return RedirectResponse(url="/login", status_code=303)
+	bid_steps: list[tuple[float, float]] = [(quantity, price)]
+	for step_num in range(2, ffdata.get_max_bid_steps() + 1):
+		quantity_text = str(form[f"quantity{step_num}"] or "").strip()
+		price_text = str(form[f"price{step_num}"] or "").strip()
+		if not quantity_text and not price_text: continue
+		if not quantity_text or not price_text: return _flash_redirect(return_to, f"Error: control point event {cpe_id}, step {step_num} requires both quantity and price (quantity='{quantity_text}', price='{price_text}')")
+		try: bid_steps.append((float(quantity_text), float(price_text)))
+		except ValueError: return _flash_redirect(return_to, f"Error: control point event {cpe_id}, step {step_num} has invalid quantity or price (quantity='{quantity_text}', price='{price_text}')")
+	try: BiddingController.submitEnvironmentalBid(ffdata, trader_id=trader_id, auction_id=auction_id, cpe_id=cpe_id, quantity=quantity, price=price, is_bid_default=is_default, bid_steps=bid_steps)
+	except ValueError as e: return _flash_redirect(f"{return_to}?auction_id={auction_id}", f"Error: {e}")
+	return _flash_redirect(f"{return_to}?auction_id={auction_id}", "Environmental bid saved")
 
 @app.post("/bids/{bid_id}/delete")
 async def delete_bid(request: Request, bid_id: int):

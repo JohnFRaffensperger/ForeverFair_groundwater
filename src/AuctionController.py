@@ -45,6 +45,9 @@ def call_for_bids(ffdata: ForeverFairData, auction_id: int) -> None:
 		if ffdata.has_active_bids_for_well(auction_id, well_id): continue
 		if previous_auction_id is not None and ffdata.copy_active_bids_for_well(auction_id, previous_auction_id, well_id): continue
 		BiddingController.create_default_bid(ffdata, auction_id, well_id, rights_policy=rights_policy, quota_by_well_period=quota_by_well_period, users_pay_by_well=users_pay_by_well)
+	if previous_auction_id is None: return
+	for trader_id in ffdata.get_trader_ids_by_type("environmental"):
+		ffdata.copy_active_environmental_bids(auction_id, previous_auction_id, trader_id)
 
 # Section 2. Solve the market-clearing optimization. Called from the button on AuctionManager.html.
 def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Callable[[str], None] | None = None) -> float | None:
@@ -80,16 +83,27 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	# Since bid_variables have lower bound of 0, adding a lower bound would disrupt the dual prices.
 	bid_periods: set[tuple[int, int]] = {(well_id, period_id) for (well_id, period_id, _step_num) in bid_variables.keys()}
 	quantity_vars: dict[tuple[int, int], LpVariable] = {(w, t): LpVariable (f"qty_{w}_{t}", lowBound=None) for w, t in bid_periods}
+	environmental_bid_variables: dict[tuple[int, int, int], LpVariable] = {}
+	environmental_bid_prices: dict[tuple[int, int, int], float] = {}
+	for bid in ffdata.get_environmental_bids(auction_id):
+		for step_num in range(1, max_bid_steps + 1):
+			if bid[f"qty{step_num}"] is None or bid[f"price{step_num}"] is None: continue
+			environmental_bid_variables[(int(bid["trader_id"]), int(bid["cpe_id"]), step_num)] = LpVariable(f"envbid_{int(bid['trader_id'])}_{int(bid['cpe_id'])}_{step_num}", lowBound=0, upBound=bid[f"qty{step_num}"])
+			environmental_bid_prices[(int(bid["trader_id"]), int(bid["cpe_id"]), step_num)] = float(bid[f"price{step_num}"])
+	environmental_positions: set[tuple[int, int]] = {(trader_id, cpe_id) for (trader_id, cpe_id, _step_num) in environmental_bid_variables.keys()}
+	environmental_quantity_vars: dict[tuple[int, int], LpVariable] = {(trader_id, cpe_id): LpVariable(f"envqty_{trader_id}_{cpe_id}", lowBound=None) for trader_id, cpe_id in environmental_positions}
 	
 	# Set up model.  ------------------------------------------------------------------------
 	# Objective function. All bid variables positive, so this is a gross pool model.
 	auction_model = LpProblem ("Forever_Fair_clearing_model", LpMaximize)
-	auction_model += lpSum (bid_prices[key] * bid_variables[key] for key in bid_variables.keys())
+	auction_model += lpSum (bid_prices[key] * bid_variables[key] for key in bid_variables.keys()) + lpSum(environmental_bid_prices[key] * environmental_bid_variables[key] for key in environmental_bid_variables.keys())
 		
 	# BID CONSTRAINTS. Quantity to take is the sum of the bids: q[w,p] = sum (bids[w,p,step]).
 	# The dual variable on each constraint is the clearing price for that well_id and bid period.
 	for (w, t) in quantity_vars.keys ():
 		auction_model += quantity_vars[(w, t)] == lpSum (bid_variables[key] for key in bid_variables.keys() if key[0] == w and key[1] == t), f"qtywt_{w}_{t}"
+	for (trader_id, cpe_id) in environmental_quantity_vars.keys():
+		auction_model += environmental_quantity_vars[(trader_id, cpe_id)] == lpSum(environmental_bid_variables[key] for key in environmental_bid_variables.keys() if key[0] == trader_id and key[1] == cpe_id), f"envqty_{trader_id}_{cpe_id}"
 
 	# Get the response matrix. Every (cp_id, effect_period) from cp_events should have response factors, otherwise the constraint is empty.
 	response_factors = ffdata.get_response_factors_for_auction(auction_id)
@@ -97,9 +111,11 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	cp_events = ffdata.get_control_point_events(auction_id)
 	empty_constraints: list[tuple[int, int]] = []
 	for cpe in cp_events:
+		cpe_id = int(cpe["cpe_id"])
 		control_point_id = int(cpe["control_point_id"])
 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
 		if any(key[2] == effect_period and key[3] == control_point_id for key in response_factors): continue
+		if any(cpe_id2 == cpe_id for (_trader_id, cpe_id2) in environmental_quantity_vars.keys()): continue
 		empty_constraints.append((effect_period, control_point_id))
 	# if empty_constraints: log(f"WARNING: cp_events with no response factors (constraint will be trivial): {empty_constraints}")
 	assert not empty_constraints, f"cp_events with no response factors: {empty_constraints}"
@@ -111,10 +127,12 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	for cpe in cp_events:
 		control_point_id = int(cpe["control_point_id"])
 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
+		cpe_id = int(cpe["cpe_id"])
 		auction_model += (lpSum(-1.0 * response_factors.get((well_id, pumping_period, effect_period, control_point_id), 0.0) * quantity_vars[(well_id, pumping_period)]
 				for well_id in ffdata.get_wells()
 				for pumping_period in range(1, auction["periods"][-1]["id"] + 1)
 				if (well_id, pumping_period) in quantity_vars)
+				+ lpSum(environmental_quantity_vars[(trader_id, cpe_id)] for (trader_id, cpe_id2) in environmental_quantity_vars.keys() if cpe_id2 == cpe_id)
 					<= max(0.0, -1.0*cpe["allowable_head_change"]), f"cp_{control_point_id}_{effect_period}") 
 
 	# Run the linear program.  ------------------------------------------------------------------------
@@ -137,17 +155,22 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 
 	control_point_rows: list[tuple[str, int, float | None, float | None]] = []
 	committed_rows: list[tuple[str, int, float]] = []
+	environmental_rows: list[tuple[int, int, float | None, float | None, float | None]] = []
 	for cpe in cp_events:
 		control_point_id = int(cpe["control_point_id"])
 		effect_date = str(cpe["effect_date"])
 		effect_period = effect_date_to_idx[effect_date]
+		cpe_id = int(cpe["cpe_id"])
 		control_point_rows.append((effect_date, control_point_id, auction_model.constraints[f"cp_{control_point_id}_{effect_period}"].slack, auction_model.constraints[f"cp_{control_point_id}_{effect_period}"].pi))
 		# The committed pumping is only the first pumping period in the auction scheduling. Later periods are simply plans.
 		auction_period_drawdown = sum(response_factors.get((well_id, 1, effect_period, control_point_id), 0.0) * quantity_vars[(well_id, 1)].value() for well_id in ffdata.get_wells())
 		# committed_rows.append((effect_date, control_point_id, cpe["allowable_head_change"] - auction_period_drawdown))
 		committed_rows.append((effect_date, control_point_id, auction_period_drawdown))
+		for trader_id, cpe_id2 in environmental_quantity_vars.keys():
+			if cpe_id2 != cpe_id: continue
+			environmental_rows.append((trader_id, cpe_id, 0.0, environmental_quantity_vars[(trader_id, cpe_id)].value(), auction_model.constraints[f"cp_{control_point_id}_{effect_period}"].pi))
 
-	ffdata.set_auction_solution_results_bulk(auction_id, quota_rows, control_point_rows, committed_rows)
+	ffdata.set_auction_solution_results_bulk(auction_id, quota_rows, control_point_rows, committed_rows, environmental_rows)
 	revenue = settle_accounts (ffdata, auction_id, debug_log=log)
 	ffdata.close_auction (auction_id, solve_status=solve_status, objective_value = value(auction_model.objective), auction_close_time=ffdata.the_time_at_the_tone_is ().isoformat (timespec="minutes"), auction_revenue=revenue)
 	log("Auction results saved")
@@ -180,7 +203,7 @@ def settle_accounts (ffdata: ForeverFairData, auction_id: int, debug_log: Callab
 		revenue = compute_revenue_on_well_quota (ffdata, auction_id, debug_log)
 
 	# TODO: Update payments on traders' pages.
-	return revenue
+	return revenue + ffdata.compute_environmental_revenue_sql(auction_id)
 
 # Especially for auction 1, the auction manager scales quota (or license) to the available water by control point event.
 # The auction manager calculates an alpha for each control point event, then calculates constraint quota for each well.

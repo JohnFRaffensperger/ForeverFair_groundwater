@@ -94,5 +94,24 @@ def submitBid(foreverFairData_instance: ForeverFairData, well_id: int, this_trad
 		if step_price <= 0: raise ValueError("Bid price must be positive.")
 	return foreverFairData_instance.add_bid(auction_id=auction_id, well_id=well_id, period_id=period_id, quantity=quantity, price=price, is_default=is_bid_default, bid_steps=steps)
 
+def submitEnvironmentalBid(foreverFairData_instance: ForeverFairData, trader_id: int, auction_id: int, cpe_id: int,
+			quantity: float, price: float, is_bid_default: bool = False, bid_steps: list[tuple[float, float]] | None = None,) -> dict[str, int | str | float | None]:
+	target_auction = next((auction for auction in foreverFairData_instance.list_auctions() if int(auction["auction_id"]) == auction_id), None)
+	if target_auction is None: raise ValueError("Auction not found.")
+	now_iso = foreverFairData_instance.the_time_at_the_tone_is().isoformat(timespec="minutes")
+	bid_close = str(target_auction.get("closed_date") or "")
+	is_closed = str(target_auction.get("status") or "").upper() == "CLOSED"
+	if is_closed or (bid_close and bid_close < now_iso): raise ValueError("Bid submission is closed for this auction.")
+	if foreverFairData_instance.get_trader_type(trader_id) != "environmental": raise ValueError("Only environmental buyers may submit environmental bids.")
+	if not any(int(cpe["cpe_id"]) == cpe_id for cpe in foreverFairData_instance.get_control_point_events(auction_id)): raise ValueError("Unknown control point event.")
+	steps = bid_steps if bid_steps is not None else [(quantity, price)]
+	if not steps: raise ValueError("At least one bid step is required.")
+	if quantity <= 0: raise ValueError("Bid quantity must be positive.")
+	if price <= 0: raise ValueError("Bid price must be positive.")
+	for step_qty, step_price in steps:
+		if step_qty <= 0: raise ValueError("Bid quantity must be positive.")
+		if step_price <= 0: raise ValueError("Bid price must be positive.")
+	return foreverFairData_instance.add_environmental_bid(auction_id=auction_id, trader_id=trader_id, cpe_id=cpe_id, quantity=quantity, price=price, is_default=is_bid_default, bid_steps=steps)
+
 def deleteBid(foreverFairData_instance: ForeverFairData, bid_id: int, trader_id: int) -> bool: 
 	return foreverFairData_instance.delete_bid(bid_id=bid_id, current_trader_id=trader_id)

@@ -1,11 +1,11 @@
 <!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Forever Fair Login Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
+  <title>{{ login_heading }}</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/trader">Trader login</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | {% if target_path == '/trader' %}<strong>Trader login</strong>{% else %}<a href="/login">Trader login</a>{% endif %} | {% if target_path == '/environmental-buyer' %}<strong>Environmental buyer login</strong>{% else %}<a href="/environmental-buyer">Environmental buyer page</a>{% endif %} | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
-<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Trader Login</h1>
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> {{ login_heading }}</h1>
 
 <p>Select your name to log in, no password required for demonstration.</p>
 
@@ -28,7 +28,8 @@
 {% endif %}
 
 <form method="post" action="/login">
-	<label>Trader: <select name="trader_id" required>
+  <input type="hidden" name="target_path" value="{{ target_path }}">
+  <label>{{ login_label }}: <select name="trader_id" required>
 		{% for p in traders %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
 	</select></label>
 	<button type="submit">Continue</button>
