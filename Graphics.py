@@ -54,7 +54,7 @@ CONTROL_POINTS = [
     ("cp-10", 65, 169),
 ]
 
-MAPS_DIR = Path("src/web/static/maps")
+MAPS_DIR = Path("Catchment_data/Tianqiao")
 LEGACY_BG = Path("Documentation/Tianxiao.png")
 BG_PATH = MAPS_DIR / "Tianxiao.png"
 SVG_PATH = MAPS_DIR / "Tianqiao_wells_control_points.svg"

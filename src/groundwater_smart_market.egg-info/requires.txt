@@ -4,6 +4,7 @@ pulp<3,>=2.8
 pydantic<3,>=2.8
 python-multipart<1,>=0.0.9
 uvicorn<1,>=0.30
+python-dotenv<2,>=1.0
 
 [dev]
 pytest<9,>=8.0

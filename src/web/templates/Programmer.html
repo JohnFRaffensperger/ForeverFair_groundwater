@@ -3,7 +3,7 @@
   <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
 	
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer page</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
@@ -34,6 +34,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <p>1. Linear programming model .lpt files: Forever Fair writes auction models as <code>.lpt</code> files in <code>Auction_lpt_files/</code>. You can open, edit, and solve these files with the open-source <a href="https://sourceforge.net/projects/lpsolveide/">LP Solve IDE</a>.</p>
 <p>2. Database files: Forever Fair uses SQLite databases (for example, <code>Catchment_data/Tianqiao/foreverfair.db</code>). You can open and edit these files with the open-source <a href="https://sqlitebrowser.org/">DB Browser for SQLite</a>.</p>
+<p>3. Get a background image for your SVG file from openstreetmap.org and the latitude/longitude bounding box, like this:<br>
+	https://render.openstreetmap.org/cgi-bin/export?bbox=111.082318,39.039026,111.188053,39.199327&scale=100000&format=png</p>
 
 <h2>Running the code</h2>
 
@@ -169,6 +171,19 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <div id="control-point-lat-lon-result" style="display:none"></div>
 <form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
 <p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h3>Optional: upload a background image for the catchment map</h2>
+<p>Upload a bitmap image for the catchment map and enter its geographic bounding box as west, south, east, north.</p>
+
+<form id="map-background-form" method="post" action="/setup/import-map-background" enctype="multipart/form-data">
+<p><label for="map-background-file">Bitmap file:</label> <input type="file" id="map-background-file" name="file" accept=".png,.jpg,.jpeg,.webp,.bmp" required>
+  <label for="bbox-west">West, longitude:</label> <input type="text" inputmode="decimal" id="bbox-west" name="bbox_west" value="{{ map_bbox_west }}" style="width:6.5em" required>
+  <label for="bbox-south" style="margin-left:0.75em;">South, latitude:</label> <input type="text" inputmode="decimal" id="bbox-south" name="bbox_south" value="{{ map_bbox_south }}" style="width:6.5em" required>
+  <label for="bbox-east" style="margin-left:0.75em;">East, longitude:</label> <input type="text" inputmode="decimal" id="bbox-east" name="bbox_east" value="{{ map_bbox_east }}" style="width:6.5em" required>
+  <label for="bbox-north" style="margin-left:0.75em;">North, latitude:</label> <input type="text" inputmode="decimal" id="bbox-north" name="bbox_north" value="{{ map_bbox_north }}" style="width:6.5em" required>
+</p>
+<p><button id="map-background-submit" type="submit">Save map background and bbox</button>  Current map background file: {% if map_background_filename %}<strong>{{ map_background_filename }}</strong>{% else %}<em>none set</em>{% endif %}</p>
 </form>
 
 <h2>8. Import mps file</h2>

@@ -223,6 +223,20 @@ class ForeverFairData:
 			if row is None: return None
 			return dict(row)
 
+	def get_latest_auction_with_catchment_results(self) -> int | None:
+		"""Return most recent auction_id that has catchment output rows (well price or control-point dual/slack)."""
+		with self.connect_to_db() as conn:
+			row = conn.execute("""SELECT a.auction_id
+					FROM auctions a
+					WHERE a.status != 'DELETED'
+						AND (
+							EXISTS (SELECT 1 FROM well_quota wq WHERE wq.auction_id = a.auction_id AND wq.price IS NOT NULL)
+							OR EXISTS (SELECT 1 FROM control_point_events cpe WHERE cpe.auction_id = a.auction_id AND (cpe.dual_price IS NOT NULL OR cpe.slack IS NOT NULL))
+						)
+					ORDER BY CAST(a.auction_id AS INTEGER) DESC
+					LIMIT 1""").fetchone()
+			return int(row["auction_id"]) if row is not None else None
+
 	def list_auctions(self) -> list[dict[str, Any]]:
 		with self.connect_to_db() as conn:
 			rows = conn.execute("SELECT auction_id, status, auction_type, created_date, closed_date, firstWaterTakeDate, lastWaterTakeDate, period_length_hours, solve_status, objective_value, auction_revenue FROM auctions WHERE status != 'DELETED' ORDER BY CAST(auction_id AS INTEGER) ASC").fetchall()
@@ -437,6 +451,30 @@ class ForeverFairData:
 					"submitted_at": row["bid_date"], "traded_head_end": traded_head_end, "traded_price": traded_price,
 					"is_default": bool(row["is_bid_default"]) if row["is_bid_default"] is not None else False})
 		return bid_history_list
+
+	def get_environmental_positions(self, auction_id: int, trader_id: int) -> list[dict[str, Any]]:
+		with self.connect_to_db() as conn:
+			rows = conn.execute("""SELECT ep.env_position_id, ep.auction_id, ep.trader_id, ep.cpe_id, ep.traded_head_start, ep.traded_head_end, ep.price,
+				cpe.control_point_id, cpe.effect_date, cp.name AS control_point_name
+				FROM environmental_position ep
+				JOIN control_point_events cpe ON cpe.cpe_id = ep.cpe_id
+				JOIN control_points cp ON cp.control_point_id = cpe.control_point_id
+				WHERE ep.auction_id=? AND ep.trader_id=?
+				ORDER BY cpe.effect_date, cpe.control_point_id, ep.env_position_id""", (auction_id, trader_id)).fetchall()
+			return [{"env_position_id": int(row["env_position_id"]), "auction_id": int(row["auction_id"]), "trader_id": int(row["trader_id"]),
+				"cpe_id": int(row["cpe_id"]), "control_point_id": int(row["control_point_id"]), "control_point_name": str(row["control_point_name"] or ""),
+				"effect_date": str(row["effect_date"] or ""), "traded_head_start": row["traded_head_start"], "traded_head_end": row["traded_head_end"],
+				"price": row["price"]} for row in rows]
+
+	def get_environmental_head_protection(self, auction_id: int) -> dict[tuple[int, str], float]:
+		"""Return total traded_head_end per (control_point_id, effect_date) for the given auction across all traders."""
+		with self.connect_to_db() as conn:
+			rows = conn.execute("""SELECT cpe.control_point_id, cpe.effect_date, COALESCE(SUM(ep.traded_head_end), 0.0) AS total_head
+				FROM environmental_position ep
+				JOIN control_point_events cpe ON cpe.cpe_id = ep.cpe_id
+				WHERE ep.auction_id=?
+				GROUP BY cpe.control_point_id, cpe.effect_date""", (auction_id,)).fetchall()
+			return {(int(row["control_point_id"]), str(row["effect_date"])): float(row["total_head"]) for row in rows}
 
 	def has_active_environmental_bids(self, auction_id: int, trader_id: int, cpe_id: int) -> bool:
 		with self.connect_to_db() as conn:
@@ -1227,6 +1265,34 @@ class ForeverFairData:
 			row = conn.execute("SELECT COALESCE(SUM(COALESCE(traded_head_end, 0.0) * ABS(COALESCE(price, 0.0))), 0.0) AS revenue FROM environmental_position WHERE auction_id=?", (auction_id,)).fetchone()
 			return float(row["revenue"] if row is not None and row["revenue"] is not None else 0.0)
 
+	def get_map_background_settings(self) -> dict[str, Any]:
+		keys = {
+			"map_background_filename": None,
+			"map_bbox_west": None,
+			"map_bbox_south": None,
+			"map_bbox_east": None,
+			"map_bbox_north": None,
+		}
+		with self.connect_to_db() as conn:
+			rows = conn.execute("SELECT meta_key, text_value FROM Catchment_info WHERE meta_key IN ('map_background_filename','map_bbox_west','map_bbox_south','map_bbox_east','map_bbox_north')").fetchall()
+			for row in rows:
+				keys[str(row["meta_key"])] = row["text_value"]
+		filename = str(keys["map_background_filename"] or "").strip()
+		bbox_values = [keys["map_bbox_west"], keys["map_bbox_south"], keys["map_bbox_east"], keys["map_bbox_north"]]
+		bbox: tuple[float, float, float, float] | None = None
+		if all(value is not None and str(value).strip() != "" for value in bbox_values):
+			bbox = (float(str(bbox_values[0]).strip()), float(str(bbox_values[1]).strip()), float(str(bbox_values[2]).strip()), float(str(bbox_values[3]).strip()))
+		return {"filename": filename, "bbox": bbox}
+
+	def save_map_background_settings(self, filename: str, west: float, south: float, east: float, north: float) -> None:
+		with self.connect_to_db() as conn:
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES ('map_background_filename', ?, NULL)", (filename,))
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES ('map_bbox_west', ?, NULL)", (str(west),))
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES ('map_bbox_south', ?, NULL)", (str(south),))
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES ('map_bbox_east', ?, NULL)", (str(east),))
+			conn.execute("INSERT OR REPLACE INTO Catchment_info(meta_key, text_value, integer_value) VALUES ('map_bbox_north', ?, NULL)", (str(north),))
+			conn.commit()
+
 	# 9. Get price output. ---------------------------------------------
 	def catchment_price_rows(self, auction_id: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
 		"""Fetch price and constraint results from well_quota and control_point_events."""
@@ -1235,22 +1301,28 @@ class ForeverFairData:
 		effect_period_id_map = period_maps["effect_iso_to_idx"]
 		with self.connect_to_db() as conn:
 			# Read per-well prices from well_quota (well_id + take_date + price per row)
-			well_name_map = {row["well_id"]: row["name"] for row in conn.execute("SELECT well_id, name FROM wells").fetchall()}
 			well_rows: list[dict[str, Any]] = []
-			for row in conn.execute("SELECT well_id, take_date, price FROM well_quota WHERE auction_id=? AND well_id IS NOT NULL AND take_date IS NOT NULL ORDER BY well_id, take_date", (auction_id,)).fetchall():
+			for row in conn.execute("""SELECT wq.well_id, w.name, w.latitude, w.longitude, wq.take_date, wq.price
+					FROM well_quota wq
+					JOIN wells w ON w.well_id = wq.well_id
+					WHERE wq.auction_id=? AND wq.well_id IS NOT NULL AND wq.take_date IS NOT NULL
+					ORDER BY wq.well_id, wq.take_date""", (auction_id,)).fetchall():
 				well_id = int(row["well_id"])
 				period_id = pumping_period_id_map[str(row["take_date"])]
-				well_rows.append({"well_id": well_id, "well_name": well_name_map[well_id], "period_id": period_id, "price": float(row["price"] or 0.0)})
+				well_rows.append({"well_id": well_id, "well_name": row["name"], "latitude": row["latitude"], "longitude": row["longitude"], "period_id": period_id, "price": (float(row["price"]) if row["price"] is not None else None)})
 
 			# Read control point results from control_point_events
 			cp_rows: list[dict[str, Any]] = []
-			for row in conn.execute("""SELECT c.control_point_id, c.name, e.effect_date, e.dual_price, ahl.head_constraint_upper_bound, e.slack
+			for row in conn.execute("""SELECT c.control_point_id, c.name, c.latitude, c.longitude, e.effect_date, e.dual_price,
+					ahl.allowable_head_change, e.slack
 					FROM control_point_events e
 					JOIN control_points c ON c.control_point_id = e.control_point_id
 					JOIN aquifer_head_limits ahl ON ahl.control_point_id = e.control_point_id AND ahl.effect_date = e.effect_date
 					WHERE e.auction_id=? ORDER BY c.control_point_id, e.effect_date""", (auction_id,)).fetchall():
-					slack = float(row["slack"] or 0.0)
-					bound = float(row["head_constraint_upper_bound"] or 0.0)
+
+					slack = float(row["slack"]) if row["slack"] is not None else None
+					bound = float(row["allowable_head_change"]) if row["allowable_head_change"] is not None else None
 					period_id = effect_period_id_map[str(row["effect_date"] or "")]
-					cp_rows.append({"control_point_id": int(row["control_point_id"]), "control_point_name": row["name"], "period_id": period_id, "dual_value": float(row["dual_price"] or 0.0), "used_capacity": bound - slack, "bound_capacity": bound,})
+					used_capacity = None if slack is None or bound is None else bound + slack
+					cp_rows.append({"control_point_id": int(row["control_point_id"]), "control_point_name": row["name"], "latitude": row["latitude"], "longitude": row["longitude"], "period_id": period_id, "dual_value": (float(row["dual_price"]) if row["dual_price"] is not None else None), "used_capacity": used_capacity, "bound_capacity": bound, "slack": slack,})
 			return well_rows, cp_rows

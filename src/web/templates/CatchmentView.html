@@ -1,0 +1,147 @@
+﻿<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Catchment View</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"><script src="{{ url_for('static', path='/sorttable.js') }}"></script></head>
+<body>
+
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+
+<h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair, {{ catchment_name }} Catchment View</h1>
+
+<h2>Results for auction {{ auction.id }}</h2>
+{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
+
+<h3>Catchment map</h3>
+<div id="pumping-date-selector" style="margin: 10px 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+	<strong>Pumping date:</strong>
+	{% for period in well_price_matrix.periods %}
+	<label style="white-space: nowrap;"><input type="radio" name="pumping_date" value="{{ period.period_label }}" {% if loop.first %}checked{% endif %}> {{ period.period_label }}</label>
+	{% endfor %}
+</div>
+<div style="margin: 10px 0 20px 0;">
+	<img id="catchment-map-image" src="{{ map_svg_url }}?auction_id={{ auction.id }}{% if well_price_matrix.periods %}&pumping_date={{ well_price_matrix.periods[0].period_label }}{% endif %}" alt="Catchment wells and control points map" style="max-width: 100%; height: auto; border: 1px solid #ccc;">
+</div>
+<script>
+(function () {
+	const mapImg = document.getElementById("catchment-map-image");
+	if (!mapImg) return;
+	const radios = document.querySelectorAll('input[name="pumping_date"]');
+	const baseUrl = "{{ map_svg_url }}";
+	const auctionId = "{{ auction.id }}";
+	function updateMap() {
+		const selected = document.querySelector('input[name="pumping_date"]:checked');
+		const pumpingDate = selected ? selected.value : "";
+		mapImg.src = baseUrl + "?auction_id=" + encodeURIComponent(auctionId) + "&pumping_date=" + encodeURIComponent(pumpingDate);
+	}
+	radios.forEach((radio) => radio.addEventListener("change", updateMap));
+})();
+</script>
+
+<h3>Prices at each well</h3>
+<table class="sortable" style="table-layout:fixed;">
+<thead><tr><th style="padding:2px 2px;min-width:5em;white-space:nowrap;text-align:left;">Well</th><th style="padding:2px 2px;width:76px;text-align:center;">Price trend</th>{% for period in well_price_matrix.periods %}<th style="padding:2px 2px;width:56px;text-align:right;"{% if not loop.first %} title="{{ period.period_label }}"{% endif %}>{% if loop.first %}{{ period.period_label }}{% else %}{{ period.period_label[5:] }}{% endif %}</th>{% endfor %}</tr></thead>
+<tbody>{% for row in well_price_matrix.rows %}
+	<tr><td style="padding:2px 2px;min-width:5em;white-space:nowrap;text-align:left;">{{ row.well_name }}</td><td id="well-spark-{{ loop.index0 }}" style="padding:2px 2px;width:76px;text-align:center;"></td>{% for cell in row.cells %}<td style="padding:2px 2px;width:56px;text-align:right;">{{ cell.price_text }}</td>{% endfor %}</tr>
+	{% endfor %}
+	</tbody>
+</table>
+
+<script>
+(function () {
+	const nWell = {{ well_price_matrix.rows | length }};
+	const nPer = {{ well_price_matrix.periods | length }};
+	if (!nWell || !nPer) return;
+	const series = [];
+	{% for row in well_price_matrix.rows %}
+	series.push([{% for cell in row.cells %}{{ cell.price if cell.price is not none else "null" }},{% endfor %}]);
+	{% endfor %}
+	let gMin = Infinity, gMax = -Infinity;
+	for (let i = 0; i < nWell; i++) {
+		series[i].forEach(v => { if (v !== null && isFinite(v)) { gMin = Math.min(gMin, v); gMax = Math.max(gMax, v); } });
+	}
+	if (!isFinite(gMin)) return;
+	const pad = (gMax - gMin) * 0.08 || 0.5;
+	const lo = gMin - pad, hi = gMax + pad;
+	const svgW = 72, svgH = 20, xL = 3, xR = 69, yT = 2, yB = 18;
+	function sx(pi) {
+		if (nPer <= 1) return (xL + xR) / 2;
+		return xL + (pi / (nPer - 1)) * (xR - xL);
+	}
+	function sy(v) {
+		if (v === null || !isFinite(v)) return null;
+		return yT + (hi - v) / (hi - lo) * (yB - yT);
+	}
+	function mk(wi) {
+		const pts = [];
+		const dots = [];
+		for (let pi = 0; pi < nPer; pi++) {
+			const y = sy(series[wi][pi]);
+			if (y === null) continue;
+			const x = sx(pi);
+			pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+			dots.push('<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="1.1" fill="#444"/>');
+		}
+		const line = pts.length >= 2 ? '<polyline fill="none" stroke="#666" stroke-width="0.8" points="' + pts.join(' ') + '"/>' : '';
+		return '<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg">' + line + dots.join('') + '</svg>';
+	}
+	for (let i = 0; i < nWell; i++) {
+		const td = document.getElementById('well-spark-' + i);
+		if (td) td.innerHTML = mk(i);
+	}
+})();
+</script>
+
+<h3>Prices and status at each control point</h3>
+<table class="sortable">
+	<thead><tr><th>Effect date</th><th>Metric</th>{% for cp in control_point_matrix.control_points %}<th>{{ cp.control_point_name }}</th>{% endfor %}</tr></thead>
+	
+	<tbody><tr><td></td><td style="font-size:0.85em;color:#555;text-align:right;">Drawdown <span style="color:#cc4422;">&#x2014;</span> <br>Allowable drawdown <span style="color:#000;">&#x2014;</span></td>
+			{% for cp in control_point_matrix.control_points %}<td id="cp-spark-{{ loop.index0 }}"></td>{% endfor %}</tr>
+		{% for row in control_point_matrix.rows %}<tr><td>{{ row.period_label }}</td><td>{% if row.metric_label == "Bound" %}Allowable drawdown{% elif row.metric_label == "Used impact" %}Drawdown{% else %}{{ row.metric_label }}{% endif %}</td>{% for value in row.cells %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}
+	</tbody>
+</table>
+
+<script>
+(function () {
+	const nCp = {{ control_point_matrix.control_points | length }};
+	const nPer = {{ control_point_matrix.periods | length }};
+	if (!nCp || !nPer) return;
+	const cpBound = [];
+	const cpUsed = [];
+	{% for cp_item in control_point_matrix.control_points %}{% set cp_idx = loop.index0 %}
+	cpBound.push([{% for row in control_point_matrix.rows %}{% if row.metric_label == "Bound" %}{{ row.cells[cp_idx] if row.cells[cp_idx] else "null" }},{% endif %}{% endfor %}]);
+	cpUsed.push([{% for row in control_point_matrix.rows %}{% if row.metric_label == "Used impact" %}{{ row.cells[cp_idx] if row.cells[cp_idx] else "null" }},{% endif %}{% endfor %}]);
+	{% endfor %}
+	let gMin = Infinity, gMax = -Infinity;
+	for (let i = 0; i < nCp; i++) {
+		[...cpBound[i], ...cpUsed[i]].forEach(v => { if (v !== null && isFinite(v)) { gMin = Math.min(gMin, v); gMax = Math.max(gMax, v); } });
+	}
+	if (!isFinite(gMin)) return;
+	const pad = (gMax - gMin) * 0.05 || 0.5;
+	const lo = gMin - pad, hi = gMax + pad;
+	const slotW = 1, mL = 3, mR = 3; /* marker width */
+	const svgW = mL + nPer * slotW + mR;
+	const svgH = 50, yT = 4, yB = 46;
+	function sy(v) {
+		if (v === null || !isFinite(v)) return null;
+		return yT + (hi - v) / (hi - lo) * (yB - yT);
+	}
+	function mk(ci) {
+		const parts = [];
+		for (let pi = 0; pi < nPer; pi++) {
+			const xc = mL + pi * slotW + slotW / 2;
+			const bv = sy(cpBound[ci][pi]);
+			const uv = sy(cpUsed[ci][pi]);
+			if (bv !== null) parts.push('<circle cx="'+xc.toFixed(1)+'" cy="'+bv.toFixed(1)+'" r="0.6" fill="#000"/>');
+			if (uv !== null) parts.push('<circle cx="'+xc.toFixed(1)+'" cy="'+uv.toFixed(1)+'" r="0.6" fill="#cc4422"/>');
+		}
+		return '<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg">'+parts.join('')+'</svg>';
+	}
+	for (let i = 0; i < nCp; i++) {
+		const td = document.getElementById('cp-spark-' + i);
+		if (td) td.innerHTML = mk(i);
+	}
+})();
+</script>
+<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
+</body></html>
+

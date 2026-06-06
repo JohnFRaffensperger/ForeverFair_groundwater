@@ -3,14 +3,18 @@
 # Purpose: Define FastAPI routes and wire web dependencies.
 
 from __future__ import annotations
+import base64
+import math
+import mimetypes
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -88,29 +92,394 @@ def _flash_redirect(url: str, msg: str, status_code: int = 303) -> RedirectRespo
 
 def _common_template_context() -> dict[str, Any]: return {"active_catchment_name": _active_catchment_name}
 
+def _active_catchment_dir() -> Path:
+	return CATCHMENT_ROOT / _active_catchment_name
+
+def _get_catchment_svg_path() -> Path:
+	catchment_dir = _active_catchment_dir()
+	preferred = catchment_dir / "Tianqiao_wells_control_points.svg"
+	if preferred.exists(): return preferred
+	for svg_path in sorted(catchment_dir.glob("*.svg")):
+		return svg_path
+	raise HTTPException(status_code=404, detail=f"No SVG map found in {catchment_dir}")
+
+def _get_catchment_png_path() -> Path:
+	catchment_dir = _active_catchment_dir()
+	configured_name = str(ffdata.get_map_background_settings().get("filename") or "").strip()
+	if configured_name:
+		configured_path = catchment_dir / configured_name
+		if configured_path.exists(): return configured_path
+	preferred = catchment_dir / "Tianxiao.png"
+	if preferred.exists(): return preferred
+	for pattern in ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"):
+		for image_path in sorted(catchment_dir.glob(pattern)):
+			return image_path
+	raise HTTPException(status_code=404, detail=f"No background image found in {catchment_dir}")
+
+def _image_media_type(path: Path) -> str:
+	media_type, _encoding = mimetypes.guess_type(str(path))
+	return media_type or "application/octet-stream"
+
+def _svg_canvas_box(svg_text: str) -> tuple[float, float, float, float]:
+	viewbox = re.search(r'viewBox="([^"]+)"', svg_text)
+	if viewbox:
+		parts = [float(part) for part in re.split(r"\s+", viewbox.group(1).strip()) if part]
+		if len(parts) == 4 and parts[2] > 0.0 and parts[3] > 0.0:
+			return parts[0], parts[1], parts[2], parts[3]
+	width_match = re.search(r'width="([0-9.]+)"', svg_text)
+	height_match = re.search(r'height="([0-9.]+)"', svg_text)
+	if width_match and height_match:
+		width = float(width_match.group(1))
+		height = float(height_match.group(1))
+		if width > 0.0 and height > 0.0:
+			return 0.0, 0.0, width, height
+	return 0.0, 0.0, 1000.0, 1000.0
+
+def _project_lat_lon_to_svg(lat: float, lon: float, bbox: tuple[float, float, float, float], canvas_box: tuple[float, float, float, float]) -> tuple[float, float] | None:
+	west, south, east, north = bbox
+	if east <= west or north <= south: return None
+	min_x, min_y, width, height = canvas_box
+	x = min_x + ((lon - west) / (east - west)) * width
+	y = min_y + ((north - lat) / (north - south)) * height
+	return x, y
+
+def _inject_background_image(svg_text: str, image_data_url: str, canvas_box: tuple[float, float, float, float]) -> str:
+	if re.search(r'<image[^>]+href="[^"]+"', svg_text):
+		if 'href="Tianxiao.png"' in svg_text:
+			return svg_text.replace('href="Tianxiao.png"', f'href="{image_data_url}"', 1)
+		return re.sub(r'href="[^"]+\.(png|jpg|jpeg|webp|bmp)"', f'href="{image_data_url}"', svg_text, count=1, flags=re.IGNORECASE)
+	min_x, min_y, width, height = canvas_box
+	bg_line = f'  <image x="{min_x:.2f}" y="{min_y:.2f}" width="{width:.2f}" height="{height:.2f}" preserveAspectRatio="none" href="{image_data_url}" />'
+	return svg_text.replace("</svg>", "\n" + bg_line + "\n</svg>")
+
+def _fmt_num(value: Any, decimals: int = 2) -> str:
+	if value is None: return ""
+	try:
+		return f"{float(value):.{decimals}f}"
+	except Exception:
+		return ""
+
+def _fmt_money(value: Any, decimals: int = 2) -> str:
+	formatted = _fmt_num(value, decimals)
+	return "" if not formatted else f"${formatted}"
+
+def _fmt_date_label(value: Any) -> str:
+	text = str(value or "")
+	return text.split("T", 1)[0] if "T" in text else text
+
+def _label_to_numeric_suffix(label: str) -> int | None:
+	match = re.search(r"(\d+)$", str(label or ""))
+	return int(match.group(1)) if match else None
+
+def _well_svg_label_from_name(well_name: str) -> str | None:
+	suffix = _label_to_numeric_suffix(well_name)
+	return None if suffix is None else f"W{suffix}"
+
+def _cp_svg_label_from_name(cp_name: str) -> str | None:
+	suffix = _label_to_numeric_suffix(cp_name)
+	return None if suffix is None else f"CP-{suffix}"
+
+def _choose_period_id_from_date(idx_to_iso: dict[Any, Any], date_text: str | None) -> int | None:
+	if not idx_to_iso: return None
+	if date_text:
+		for key, iso_text in idx_to_iso.items():
+			if _fmt_date_label(iso_text) == date_text:
+				return int(key)
+	first_key = next(iter(idx_to_iso.keys()), None)
+	return int(first_key) if first_key is not None else None
+
+def _overlay_prices_on_svg(svg_text: str, well_prices: dict[str, float | None], cp_duals: dict[str, float | None], geo_well_points: list[tuple[float, float, str, float | None]] | None = None, geo_cp_points: list[tuple[float, float, str, float | None]] | None = None) -> str:
+	well_pattern = re.compile(r'<text[^>]*class="label wellLabel"[^>]*x="([^"]+)"[^>]*y="([^"]+)"[^>]*>([^<]+)</text>')
+	cp_pattern = re.compile(r'<text[^>]*class="label cpLabel"[^>]*x="([^"]+)"[^>]*y="([^"]+)"[^>]*>([^<]+)</text>')
+	overlay_lines: list[str] = []
+	placed_boxes: list[tuple[float, float, float, float]] = []
+	geo_well_points = geo_well_points or []
+	geo_cp_points = geo_cp_points or []
+	use_geo_wells = len(geo_well_points) > 0
+	use_geo_cps = len(geo_cp_points) > 0
+
+	view_box_match = re.search(r'<svg[^>]*viewBox="([^"]+)"', svg_text)
+	svg_bounds: tuple[float, float, float, float] | None = None
+	if view_box_match:
+		parts = [part for part in view_box_match.group(1).replace(",", " ").split() if part]
+		if len(parts) == 4:
+			try:
+				min_x = float(parts[0])
+				min_y = float(parts[1])
+				width = float(parts[2])
+				height = float(parts[3])
+				if width > 0.0 and height > 0.0:
+					svg_bounds = (min_x, min_y, min_x + width, min_y + height)
+			except Exception:
+				svg_bounds = None
+	if svg_bounds is None:
+		width_match = re.search(r'width="([0-9.]+)"', svg_text)
+		height_match = re.search(r'height="([0-9.]+)"', svg_text)
+		if width_match and height_match:
+			try:
+				width = float(width_match.group(1))
+				height = float(height_match.group(1))
+				if width > 0.0 and height > 0.0:
+					svg_bounds = (0.0, 0.0, width, height)
+			except Exception:
+				svg_bounds = None
+
+	candidate_offsets: list[tuple[float, float]] = [
+		(10.0, 0.0), (-10.0, 0.0), (0.0, -10.0), (0.0, 10.0),
+		(14.0, -10.0), (14.0, 10.0), (-14.0, -10.0), (-14.0, 10.0),
+		(20.0, 0.0), (-20.0, 0.0), (0.0, -20.0), (0.0, 20.0),
+		(22.0, -16.0), (22.0, 16.0), (-22.0, -16.0), (-22.0, 16.0),
+		(30.0, 0.0), (-30.0, 0.0), (0.0, -30.0), (0.0, 30.0),
+		(34.0, -24.0), (34.0, 24.0), (-34.0, -24.0), (-34.0, 24.0),
+		(44.0, 0.0), (-44.0, 0.0), (0.0, -44.0), (0.0, 44.0),
+		(48.0, -34.0), (48.0, 34.0), (-48.0, -34.0), (-48.0, 34.0),
+	]
+
+	well_marker_pattern = re.compile(
+		r'<circle[^>]*class="[^"]*\bwell\b[^"]*"[^>]*cx="([^"]+)"[^>]*cy="([^"]+)"[^>]*r="([^"]+)"[^>]*/>\s*'
+		r'<text[^>]*class="[^"]*\bwellLabel\b[^"]*"[^>]*>([^<]+)</text>',
+		re.IGNORECASE,
+	)
+	cp_marker_pattern = re.compile(
+		r'<circle[^>]*class="[^"]*\bcp\b[^"]*"[^>]*cx="([^"]+)"[^>]*cy="([^"]+)"[^>]*r="([^"]+)"[^>]*/>\s*'
+		r'<text[^>]*class="[^"]*\bcpLabel\b[^"]*"[^>]*>([^<]+)</text>',
+		re.IGNORECASE,
+	)
+	marker_by_label: dict[str, tuple[float, float, float]] = {}
+	all_markers: list[tuple[float, float]] = []
+	marker_tick_pattern = re.compile(r'<circle[^>]*class="[^"]*\b(?:well|cp)\b[^"]*"[^>]*cx="([^"]+)"[^>]*cy="([^"]+)"[^>]*/>', re.IGNORECASE)
+	for cx_text, cy_text in marker_tick_pattern.findall(svg_text):
+		try:
+			all_markers.append((float(cx_text), float(cy_text)))
+		except Exception:
+			pass
+	for cx_text, cy_text, r_text, label_text in well_marker_pattern.findall(svg_text):
+		try:
+			marker_by_label[label_text.strip()] = (float(cx_text), float(cy_text), float(r_text))
+		except Exception:
+			pass
+	for cx_text, cy_text, r_text, label_text in cp_marker_pattern.findall(svg_text):
+		try:
+			marker_by_label[label_text.strip()] = (float(cx_text), float(cy_text), float(r_text))
+		except Exception:
+			pass
+
+	labels: list[tuple[float, float, float, float, str, str, float]] = []
+	all_anchors: list[tuple[float, float]] = []
+
+	def add_label(layout_x: float, layout_y: float, point_label: str, text: str, fill: str, marker_radius: float) -> None:
+		marker = marker_by_label.get(point_label)
+		if marker is None:
+			marker_x, marker_y, radius = layout_x, layout_y, marker_radius
+		else:
+			marker_x, marker_y, radius = marker
+		labels.append((layout_x, layout_y, marker_x, marker_y, text, fill, radius))
+		all_anchors.append((layout_x, layout_y))
+
+	def _escape_svg_text(text: str) -> str:
+		return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+	def text_box(tx: float, ty: float, text: str) -> tuple[float, float, float, float]:
+		text_width = 5.3 * len(text) + 4.0
+		return (tx - 1.0, ty - 8.0, tx + text_width + 1.0, ty + 2.0)
+
+	def overlap_area(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+		overlap_w = min(a[2], b[2]) - max(a[0], b[0])
+		overlap_h = min(a[3], b[3]) - max(a[1], b[1])
+		if overlap_w <= 0.0 or overlap_h <= 0.0:
+			return 0.0
+		return overlap_w * overlap_h
+
+	def distance_sq(x1: float, y1: float, x2: float, y2: float) -> float:
+		dx = x1 - x2
+		dy = y1 - y2
+		return dx * dx + dy * dy
+
+	def clamp_box_to_bounds(tx: float, ty: float, text: str) -> tuple[float, float, tuple[float, float, float, float]]:
+		box = text_box(tx, ty, text)
+		if svg_bounds is None:
+			return tx, ty, box
+		min_x, min_y, max_x, max_y = svg_bounds
+		margin = 2.0
+		shift_x = 0.0
+		shift_y = 0.0
+		if box[0] < min_x + margin:
+			shift_x = (min_x + margin) - box[0]
+		elif box[2] > max_x - margin:
+			shift_x = (max_x - margin) - box[2]
+		if box[1] < min_y + margin:
+			shift_y = (min_y + margin) - box[1]
+		elif box[3] > max_y - margin:
+			shift_y = (max_y - margin) - box[3]
+		if shift_x != 0.0 or shift_y != 0.0:
+			tx += shift_x
+			ty += shift_y
+			box = text_box(tx, ty, text)
+		return tx, ty, box
+
+	def anchor_penalty(box: tuple[float, float, float, float], anchor_x: float, anchor_y: float) -> float:
+		penalty = 0.0
+		exclusion = 7.0
+		for ax, ay in all_anchors:
+			if ax == anchor_x and ay == anchor_y:
+				continue
+			closest_x = min(max(ax, box[0]), box[2])
+			closest_y = min(max(ay, box[1]), box[3])
+			if distance_sq(ax, ay, closest_x, closest_y) < exclusion * exclusion:
+				penalty += 240.0
+		return penalty
+
+	def placement_score(box: tuple[float, float, float, float], anchor_x: float, anchor_y: float, tx: float, ty: float) -> float:
+		overlap_penalty = sum(overlap_area(box, other) * 90.0 for other in placed_boxes)
+		crowd_penalty = anchor_penalty(box, anchor_x, anchor_y)
+		distance_penalty = abs(tx - anchor_x) * 0.25 + abs(ty - anchor_y) * 0.25
+		return overlap_penalty + crowd_penalty + distance_penalty
+
+	def nearest_point_on_box(from_x: float, from_y: float, box: tuple[float, float, float, float]) -> tuple[float, float]:
+		px = min(max(from_x, box[0]), box[2])
+		py = min(max(from_y, box[1]), box[3])
+		return px, py
+
+	def point_on_marker_edge(cx: float, cy: float, toward_x: float, toward_y: float, radius: float) -> tuple[float, float]:
+		dx = toward_x - cx
+		dy = toward_y - cy
+		dist = math.hypot(dx, dy)
+		if dist < 1e-6:
+			return cx, cy
+		scale = radius / dist
+		return cx + (dx * scale), cy + (dy * scale)
+
+	for x_val, y_val, label, price in geo_well_points:
+		if price is None:
+			continue
+		add_label(x_val, y_val, label, f"{label}, {_fmt_money(price, 2)}", "#8a1f11", 4.6)
+
+	for x_val, y_val, label, dual in geo_cp_points:
+		if dual is None:
+			continue
+		add_label(x_val, y_val, label, f"{label}, d {_fmt_money(dual, 2)}", "#0a5a38", 5.1)
+
+	if not use_geo_wells:
+		for x_text, y_text, label in well_pattern.findall(svg_text):
+			price = well_prices.get(label)
+			if price is None:
+				continue
+			add_label(float(x_text), float(y_text), label, f"{label}, {_fmt_money(price, 2)}", "#8a1f11", 4.6)
+
+	if not use_geo_cps:
+		for x_text, y_text, label in cp_pattern.findall(svg_text):
+			dual = cp_duals.get(label)
+			if dual is None:
+				continue
+			add_label(float(x_text), float(y_text), label, f"{label}, d {_fmt_money(dual, 2)}", "#0a5a38", 5.1)
+
+	# Place densest anchors first to improve outcomes in tightly clustered areas.
+	density_by_index: dict[int, int] = {}
+	for idx, (x_val, y_val, _marker_x, _marker_y, _text, _fill, _radius) in enumerate(labels):
+		density = 0
+		for jdx, (other_x, other_y, _other_marker_x, _other_marker_y, _other_text, _other_fill, _other_radius) in enumerate(labels):
+			if idx == jdx:
+				continue
+			if distance_sq(x_val, y_val, other_x, other_y) <= 34.0 * 34.0:
+				density += 1
+		density_by_index[idx] = density
+
+	ordered_labels = [labels[idx] for idx in sorted(range(len(labels)), key=lambda idx: density_by_index[idx], reverse=True)]
+
+	for x, y, marker_x, marker_y, text, fill, marker_radius in ordered_labels:
+		best_tx = x + candidate_offsets[0][0]
+		best_ty = y + candidate_offsets[0][1]
+		best_tx, best_ty, best_box = clamp_box_to_bounds(best_tx, best_ty, text)
+		best_score = placement_score(best_box, x, y, best_tx, best_ty)
+		for dx, dy in candidate_offsets:
+			tx, ty = x + dx, y + dy
+			tx, ty, box = clamp_box_to_bounds(tx, ty, text)
+			score = placement_score(box, x, y, tx, ty)
+			if score < best_score:
+				best_tx, best_ty, best_box, best_score = tx, ty, box, score
+		placed_boxes.append(best_box)
+		dx = best_tx - x
+		dy = best_ty - y
+		if abs(dx) > 1.0 or abs(dy) > 1.0:
+			line_end_x, line_end_y = nearest_point_on_box(marker_x, marker_y, best_box)
+			line_start_x, line_start_y = point_on_marker_edge(marker_x, marker_y, line_end_x, line_end_y, marker_radius)
+			overlay_lines.append(f'  <line x1="{line_start_x:.2f}" y1="{line_start_y:.2f}" x2="{line_end_x:.2f}" y2="{line_end_y:.2f}" stroke="#666" stroke-width="0.6"/>')
+		overlay_lines.append(f'  <text class="label" x="{best_tx:.2f}" y="{best_ty:.2f}" fill="{fill}" style="font-size:10px;paint-order:stroke;stroke:#fff;stroke-width:1.2;">{_escape_svg_text(text)}</text>')
+
+	if svg_bounds is not None:
+		min_x, min_y, max_x, max_y = svg_bounds
+		tick_len = 10.0
+		for marker_x, marker_y in all_markers:
+			if min_y <= marker_y <= max_y:
+				overlay_lines.append(f'  <line x1="{(max_x - tick_len):.2f}" y1="{marker_y:.2f}" x2="{max_x:.2f}" y2="{marker_y:.2f}" stroke="#333" stroke-width="0.8"/>')
+			if min_x <= marker_x <= max_x:
+				overlay_lines.append(f'  <line x1="{marker_x:.2f}" y1="{(max_y - tick_len):.2f}" x2="{marker_x:.2f}" y2="{max_y:.2f}" stroke="#333" stroke-width="0.8"/>')
+
+	if not overlay_lines: return svg_text
+	stripped_svg = re.sub(r'<text[^>]*\bwellLabel\b[^>]*>[^<]*</text>', '', svg_text)
+	stripped_svg = re.sub(r'<text[^>]*\bcpLabel\b[^>]*>[^<]*</text>', '', stripped_svg)
+	return stripped_svg.replace("</svg>", "\n" + "\n".join(overlay_lines) + "\n</svg>")
+
+def _build_well_price_matrix(auction: dict[str, Any], calendar: dict[str, Any], well_price_rows: list[dict[str, Any]]) -> dict[str, Any]:
+	period_ids = [int(p["id"]) for p in auction.get("periods", [])]
+	pumping_label_by_id = {idx: label for idx, label in calendar.get("idx_to_pumping_iso", {}).items()}
+	periods = [{"period_id": period_id, "period_label": _fmt_date_label(pumping_label_by_id.get(period_id, f"P{period_id}"))} for period_id in period_ids]
+	price_by_key = {(int(row["well_id"]), int(row["period_id"])): row.get("price") for row in well_price_rows}
+	well_order: list[tuple[int, str]] = []
+	seen: set[int] = set()
+	for row in well_price_rows:
+		well_id = int(row["well_id"])
+		if well_id in seen: continue
+		seen.add(well_id)
+		well_order.append((well_id, str(row.get("well_name") or f"well-{well_id}")))
+	matrix_rows: list[dict[str, Any]] = []
+	for well_id, well_name in well_order:
+		cells = [{"period_id": period["period_id"], "price": price_by_key.get((well_id, period["period_id"])), "price_text": _fmt_money(price_by_key.get((well_id, period["period_id"])), 4)} for period in periods]
+		matrix_rows.append({"well_id": well_id, "well_name": well_name, "cells": cells})
+	return {"periods": periods, "rows": matrix_rows}
+
+def _build_control_point_matrix(calendar: dict[str, Any], control_point_rows: list[dict[str, Any]]) -> dict[str, Any]:
+	effect_label_by_id = {idx: label for idx, label in calendar.get("idx_to_effect_iso", {}).items()}
+	effect_period_ids = sorted({int(row["period_id"]) for row in control_point_rows})
+	periods = [{"period_id": period_id, "period_label": _fmt_date_label(effect_label_by_id.get(period_id, f"E{period_id}"))} for period_id in effect_period_ids]
+	cp_order: list[tuple[int, str]] = []
+	seen: set[int] = set()
+	by_key = {(int(row["control_point_id"]), int(row["period_id"])): row for row in control_point_rows}
+	for row in control_point_rows:
+		cp_id = int(row["control_point_id"])
+		if cp_id in seen: continue
+		seen.add(cp_id)
+		cp_order.append((cp_id, str(row.get("control_point_name") or f"cp-{cp_id}")))
+
+	metric_defs = [("bound", "Bound"), ("used", "Used impact"), ("slack", "Slack"), ("dual", "Dual price")]
+	matrix_rows: list[dict[str, Any]] = []
+	for period in periods:
+		period_id = period["period_id"]
+		for metric_key, metric_label in metric_defs:
+			cells: list[str] = []
+			for cp_id, _ in cp_order:
+				row = by_key.get((cp_id, period_id), {})
+				if metric_key == "dual": cells.append(_fmt_money(row.get("dual_value"), 4))
+				elif metric_key == "used": cells.append(_fmt_num(row.get("used_capacity"), 4))
+				elif metric_key == "bound": cells.append(_fmt_num(row.get("bound_capacity"), 4))
+				else: cells.append(_fmt_num(row.get("slack"), 4))
+			matrix_rows.append({"period_id": period_id, "period_label": period["period_label"], "metric_label": metric_label, "cells": cells})
+	return {"periods": periods, "control_points": [{"control_point_id": cp_id, "control_point_name": cp_name} for cp_id, cp_name in cp_order], "rows": matrix_rows}
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-	target_path = str(request.query_params.get("target", "/trader") or "/trader").strip()
-	if target_path not in {"/trader", "/environmental-buyer"}: target_path = "/trader"
-	trader_type = str(request.query_params.get("trader_type", "") or "").strip().lower()
-	if trader_type not in {"", "well", "environmental"}: trader_type = ""
 	traders = ffdata.list_of_traders()
-	if trader_type:
-		traders = [trader for trader in traders if str(trader.get("trader_type") or "well") == trader_type]
 	now_iso = ffdata.the_time_at_the_tone_is().isoformat(timespec="minutes")
 	upcoming = ffdata.list_auctions()
 	next_final = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] != "tentative" and (a["closed_date"] or "") > now_iso), None)
 	next_tentative = next((a for a in reversed(upcoming) if a["status"] == "OPEN" and a["auction_type"] == "tentative" and (a["closed_date"] or "") > now_iso), None)
 	context = _common_template_context()
-	context.update({"traders": traders, "next_final": next_final, "next_tentative": next_tentative,
-		"target_path": target_path, "login_heading": "Forever Fair Environmental Buyer Login" if target_path == "/environmental-buyer" else "Forever Fair Trader Login",
-		"login_label": "Environmental buyer" if target_path == "/environmental-buyer" else "Trader",})
+	context.update({"traders": traders, "next_final": next_final, "next_tentative": next_tentative, })
 	return templates.TemplateResponse(request, "LoginPage.html", context)
 
 @app.post("/login")
-def do_login(trader_id: int = Form(...), target_path: str = Form("/trader")):
-	if target_path not in {"/trader", "/environmental-buyer"}: target_path = "/trader"
-	response = RedirectResponse(url=target_path, status_code=303)
+def do_login(trader_id: int = Form(...)):
+	response = RedirectResponse(url="/trader", status_code=303)
 	response.set_cookie("trader_id", str(trader_id), max_age=86400, httponly=True)
 	return response
 
@@ -163,6 +532,8 @@ def doc_programmer(request: Request):
 	report = SetupForeverFairDB.missing_import_data_report(ffdata.db_path)
 	notice = request.cookies.get("flash", "")
 	context = _common_template_context()
+	map_settings = ffdata.get_map_background_settings()
+	bbox = map_settings.get("bbox")
 	period_length_hours = ffdata.latest_period_length_hours()
 	bidding_periods = ffdata.get_number_of_bidding_periods()
 	now_dt = ffdata.the_time_at_the_tone_is()
@@ -175,7 +546,7 @@ def doc_programmer(request: Request):
 		period_td = timedelta(hours=period_length_hours)
 		context["first_three_closes"] = [( close_dt + i * period_td).strftime("%d %b %Y %H:%M") for i in range(3)]
 	else: context["first_three_closes"] = None
-	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": ffdata.get_max_bid_steps(), "aquifer_head_limits_upload_date": ffdata.latest_aquifer_head_limits_upload_date(), })
+	context.update({"notice": notice, "missing_report": report, "available_catchments": [path.name for path in _available_catchment_dirs()], "max_bid_steps": ffdata.get_max_bid_steps(), "aquifer_head_limits_upload_date": ffdata.latest_aquifer_head_limits_upload_date(), "map_background_filename": str(map_settings.get("filename") or ""), "map_bbox_west": (bbox[0] if bbox else ""), "map_bbox_south": (bbox[1] if bbox else ""), "map_bbox_east": (bbox[2] if bbox else ""), "map_bbox_north": (bbox[3] if bbox else ""), })
 	resp = templates.TemplateResponse(request, "Programmer.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
@@ -382,10 +753,16 @@ def trader_page(request: Request):
 @app.get("/environmental-buyer", response_class=HTMLResponse)
 def environmental_buyer_page(request: Request):
 	trader_cookie = request.cookies.get("trader_id", "")
-	if not trader_cookie: return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
-	try: trader_id = int(trader_cookie)
-	except ValueError: return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
-	if ffdata.get_trader_type(trader_id) != "environmental": return RedirectResponse(url="/login?target=/environmental-buyer&trader_type=environmental", status_code=303)
+	environmental_traders = [trader for trader in ffdata.list_of_traders() if str(trader.get("trader_type") or "well") == "environmental"]
+	if not environmental_traders: return _flash_redirect("/login", "No environmental buyer is configured.")
+	environmental_trader_ids = {int(trader["id"]) for trader in environmental_traders}
+	try: trader_id = int(trader_cookie) if trader_cookie else 0
+	except ValueError: trader_id = 0
+	if trader_id not in environmental_trader_ids:
+		default_environmental_trader_id = min(environmental_trader_ids)
+		response = RedirectResponse(url="/environmental-buyer", status_code=303)
+		response.set_cookie("trader_id", str(default_environmental_trader_id), max_age=86400, httponly=True)
+		return response
 	context = _build_environmental_buyer_context(request)
 	if isinstance(context, RedirectResponse): return context
 	resp = templates.TemplateResponse(request, "EnvironmentalBuyer.html", context)
@@ -532,18 +909,90 @@ async def manager_run_auction(request: Request):
 @app.get("/api/auctionmanager-debug")
 def api_auctionmanager_debug() -> JSONResponse: return JSONResponse({"debug_text": get_auctionmanager_debug_text(), "run_active": get_auctionmanager_run_active()}, headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
 
+@app.get("/catchment-map-svg")
+def catchment_map_svg(request: Request, auction_id: int | None = None, pumping_date: str | None = None):
+	if auction_id is None:
+		latest_with_results = ffdata.get_latest_auction_with_catchment_results()
+		if latest_with_results is None: raise HTTPException(status_code=404, detail="No auction with catchment results found")
+		auction_id = latest_with_results
+	calendar = ffdata.get_auction_calendar(auction_id)
+	svg_text = _get_catchment_svg_path().read_text(encoding="utf-8")
+	canvas_box = _svg_canvas_box(svg_text)
+	background_path = _get_catchment_png_path()
+	background_b64 = base64.b64encode(background_path.read_bytes()).decode("ascii")
+	background_data_url = f"data:{_image_media_type(background_path)};base64,{background_b64}"
+	svg_text = _inject_background_image(svg_text, background_data_url, canvas_box)
+	bbox_settings = ffdata.get_map_background_settings().get("bbox")
+
+	pumping_period_id = _choose_period_id_from_date(calendar.get("idx_to_pumping_iso", {}), pumping_date)
+	effect_period_id = _choose_period_id_from_date(calendar.get("idx_to_effect_iso", {}), pumping_date)
+	well_rows, control_point_rows = ffdata.catchment_price_rows(auction_id)
+	well_prices_by_label: dict[str, float | None] = {}
+	cp_duals_by_label: dict[str, float | None] = {}
+	geo_well_points: list[tuple[float, float, str, float | None]] = []
+	geo_cp_points: list[tuple[float, float, str, float | None]] = []
+	for row in well_rows:
+		if pumping_period_id is not None and int(row["period_id"]) != pumping_period_id: continue
+		lat_value = row.get("latitude")
+		lon_value = row.get("longitude")
+		well_name = str(row.get("well_name") or "")
+		display_label = _well_svg_label_from_name(well_name) or well_name
+		if bbox_settings is not None and lat_value is not None and lon_value is not None:
+			xy = _project_lat_lon_to_svg(float(lat_value), float(lon_value), bbox_settings, canvas_box)
+			if xy is not None:
+				geo_well_points.append((xy[0], xy[1], display_label, row.get("price")))
+				continue
+		svg_label = _well_svg_label_from_name(well_name)
+		if svg_label is None: continue
+		well_prices_by_label[svg_label] = row.get("price")
+	for row in control_point_rows:
+		if effect_period_id is not None and int(row["period_id"]) != effect_period_id: continue
+		lat_value = row.get("latitude")
+		lon_value = row.get("longitude")
+		cp_name = str(row.get("control_point_name") or "")
+		display_label = _cp_svg_label_from_name(cp_name) or cp_name
+		if bbox_settings is not None and lat_value is not None and lon_value is not None:
+			xy = _project_lat_lon_to_svg(float(lat_value), float(lon_value), bbox_settings, canvas_box)
+			if xy is not None:
+				geo_cp_points.append((xy[0], xy[1], display_label, row.get("dual_value")))
+				continue
+		svg_label = _cp_svg_label_from_name(cp_name)
+		if svg_label is None: continue
+		cp_duals_by_label[svg_label] = row.get("dual_value")
+	svg_text = _overlay_prices_on_svg(svg_text, well_prices_by_label, cp_duals_by_label, geo_well_points=geo_well_points, geo_cp_points=geo_cp_points)
+	return Response(content=svg_text, media_type="image/svg+xml")
+
+@app.get("/catchment-map-background")
+def catchment_map_background():
+	path = _get_catchment_png_path()
+	return FileResponse(path, media_type=_image_media_type(path))
+
 @app.get("/catchment", response_class=HTMLResponse)
 def catchment_page(request: Request, auction_id: int | None = None):
 	if auction_id is None:
-		next_auction = ffdata.get_next_auction_info()
-		if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
-		auction_id = next_auction["auction_id"]
+		latest_with_results = ffdata.get_latest_auction_with_catchment_results()
+		if latest_with_results is not None:
+			auction_id = latest_with_results
+		else:
+			next_auction = ffdata.get_next_auction_info()
+			if next_auction is None: return _flash_redirect("/auctionmanager", "No open auction. Ask the auction manager to create one.")
+			auction_id = next_auction["auction_id"]
+	auction = ffdata.get_auction_info(auction_id)
+	calendar = ffdata.get_auction_calendar(auction_id)
 	well_price_rows, control_point_rows = ffdata.catchment_price_rows(auction_id)
-	context: dict[str, Any] = {"catchment_name": ffdata.get_catchment_name(), "auction": ffdata.get_auction_info(auction_id), "well_price_rows": well_price_rows, "control_point_rows": control_point_rows,}
+	context: dict[str, Any] = {
+		"catchment_name": ffdata.get_catchment_name(),
+		"auction": auction,
+		"map_svg_url": str(request.url_for("catchment_map_svg")),
+		"well_price_rows": well_price_rows,
+		"control_point_rows": control_point_rows,
+		"well_price_matrix": _build_well_price_matrix(auction, calendar, well_price_rows),
+		"control_point_matrix": _build_control_point_matrix(calendar, control_point_rows),
+	}
 	context.update(_common_template_context())
 	notice = request.cookies.get("flash", "")
 	context["notice"] = notice
-	resp = templates.TemplateResponse(request, "CatchmentPage.html", context)
+	resp = templates.TemplateResponse(request, "CatchmentView.html", context)
 	if notice: resp.delete_cookie("flash")
 	return resp
 
@@ -769,6 +1218,30 @@ async def setup_import_control_point_lat_lon(file: UploadFile = File(...)):
 		f" {result['rows_skipped']} skipped")
 	if result["errors"]: notice += f" ({len(result['errors'])} errors)"
 	return _flash_redirect("/programmer", notice)
+
+@app.post("/setup/import-map-background")
+async def setup_import_map_background(file: UploadFile = File(...), bbox_west: float = Form(...), bbox_south: float = Form(...), bbox_east: float = Form(...), bbox_north: float = Form(...)):
+	if not (-180.0 <= bbox_west <= 180.0 and -180.0 <= bbox_east <= 180.0 and -90.0 <= bbox_south <= 90.0 and -90.0 <= bbox_north <= 90.0):
+		return _flash_redirect("/programmer", "Map bbox is out of valid latitude/longitude range")
+	if bbox_west >= bbox_east:
+		return _flash_redirect("/programmer", "Map bbox must satisfy west < east")
+	if bbox_south >= bbox_north:
+		return _flash_redirect("/programmer", "Map bbox must satisfy south < north")
+	original_name = Path(file.filename or "").name
+	suffix = Path(original_name).suffix.lower()
+	if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+		return _flash_redirect("/programmer", "Background image must be .png, .jpg, .jpeg, .webp, or .bmp")
+	body = await file.read()
+	if not body:
+		return _flash_redirect("/programmer", "Background image file is empty")
+	if len(body) > 25 * 1024 * 1024:
+		return _flash_redirect("/programmer", "Background image is too large (max 25 MB)")
+	safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(original_name).stem).strip("._") or "map_background"
+	safe_name = f"{safe_stem}{suffix}"
+	target_path = _active_catchment_dir() / safe_name
+	target_path.write_bytes(body)
+	ffdata.save_map_background_settings(safe_name, bbox_west, bbox_south, bbox_east, bbox_north)
+	return _flash_redirect("/programmer", f"Map background saved: {safe_name} with bbox {bbox_west},{bbox_south},{bbox_east},{bbox_north}")
 
 @app.post("/setup/import-aquifer-head-limits")
 async def setup_import_aquifer_head_limits(file: UploadFile = File(...)):

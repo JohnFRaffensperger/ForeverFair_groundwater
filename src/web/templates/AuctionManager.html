@@ -2,7 +2,7 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Auction Manager's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer page</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <div style="display:flex; gap:16px; align-items:flex-start; justify-content:space-between;">
 	<div style="flex:1 1 auto; min-width:540px;">
@@ -29,6 +29,57 @@
 <p><strong>First water take:</strong> {{ default_first_display }}. <strong>Last water take:</strong> {{ default_last_display }}.
 <strong>Last constrained date is</strong> <span id="last-constrained-date">{{ default_last_constrained or 'n/a' }}</span>{% if response_period_count %}, {{ response_period_count }} constrained periods{% endif %}.
 <strong>Default close time:</strong> {{ scheduled_close_display }} (Friday 4 pm).</p>
+
+<p>
+{% set chart_w = 640 %}
+{% set left_pad = 210 %}
+{% set right_pad = 16 %}
+{% set plot_w = chart_w - left_pad - right_pad %}
+{% set bar_h = 10 %}
+{% set bar_gap = 0 %}
+{% set top_y = 10 %}
+{% set middle_y = top_y + bar_h + bar_gap %}
+{% set bottom_y = middle_y + bar_h + bar_gap %}
+{% set base_chart_h = bottom_y + bar_h + 12 %}
+{% set chart_h = base_chart_h * 2 %}
+
+{% set pump_count = bidding_periods or 0 %}
+{% set effect_count = response_period_count or 0 %}
+{% set max_units = [1, pump_count, effect_count] | max %}
+{% set unit_w = (plot_w / max_units) if max_units > 0 else 0 %}
+{% set top_w = unit_w %}
+{% set middle_w = unit_w * pump_count %}
+{% set bottom_w = unit_w * effect_count %}
+{% set pump_begin_short = (default_first_display or '').split(' ')[:2] | join(' ') %}
+{% set pump_end_short = (default_last_display or '').split(' ')[:2] | join(' ') %}
+{% set effect_end_short = (default_last_constrained or '').split(' ')[:2] | join(' ') %}
+
+<svg width="{{ chart_w }}" height="{{ chart_h }}" viewBox="0 0 {{ chart_w }} {{ chart_h }}" role="img" aria-label="Auction schedule bars for week, pumping periods, and effect periods">
+	<text x="8" y="{{ (top_y + 8) * 2 }}" fill="#444" font-size="15">Current auction period</text>
+	<text x="8" y="{{ (middle_y + 8) * 2 }}" fill="#444" font-size="15">Pumping periods {{ pump_begin_short }} to {{ pump_end_short }}</text>
+	<text x="8" y="{{ (bottom_y + 8) * 2 }}" fill="#444" font-size="15">Effect periods {{ pump_begin_short }} to {{ effect_end_short or 'n/a' }}</text>
+
+	<g transform="scale(1,2)">
+	<rect x="{{ left_pad }}" y="{{ top_y }}" width="{{ top_w }}" height="{{ bar_h }}" fill="#b5b5b5" />
+	<rect x="{{ left_pad }}" y="{{ middle_y }}" width="{{ middle_w }}" height="{{ bar_h }}" fill="#b5b5b5" />
+	<rect x="{{ left_pad }}" y="{{ bottom_y }}" width="{{ bottom_w }}" height="{{ bar_h }}" fill="#b5b5b5" />
+
+	{% if pump_count > 0 %}
+		{% for i in range(pump_count + 1) %}
+			{% set x = left_pad + (middle_w * i / pump_count) %}
+			<line x1="{{ x }}" y1="{{ middle_y }}" x2="{{ x }}" y2="{{ middle_y + bar_h}}" stroke="#555" stroke-width="1" />
+		{% endfor %}
+	{% endif %}
+
+	{% if effect_count > 0 %}
+		{% for i in range(effect_count + 1) %}
+			{% set x = left_pad + (bottom_w * i / effect_count) %}
+			<line x1="{{ x }}" y1="{{ bottom_y }}" x2="{{ x }}" y2="{{ bottom_y + bar_h}}" stroke="#555" stroke-width="1" />
+		{% endfor %}
+	{% endif %}
+	</g>
+</svg>
+</p>
 
 <p>{% if notice %}<strong>{{ notice }}</strong>{% endif %} </p>
 

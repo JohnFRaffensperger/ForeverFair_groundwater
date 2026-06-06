@@ -3,7 +3,7 @@
 	<title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer page</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Hydrologist's Page</h1>
 
@@ -81,7 +81,7 @@
 <li>and your_file_name.mps which has the response matrix, control point head limits by time period, and initial rights records.</li>
 </ul>
 
-<p>This software version assumes that the physics of the aquifer do not change with the auction schedule.
+<p>This software version assumes that the response physics of the aquifer do not change with the auction schedule.
 Therefore, this version treats the response matrix timing as relative, i.e., the effects in a relative number of periods after pumping occurs. 
 This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has the required nonzero response coefficients for relevant control points and periods.
 Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>

@@ -3,7 +3,7 @@
 	<title>Forever Fair Researcher's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer page</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <a href="/environmental-buyer">Environmental buyer</a> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Researcher's Page</h1>
 
@@ -20,13 +20,18 @@ Adding security is probably pretty easy to vibe-code in.</p>
 
 <h2>Super login</h2>
 <p>Click any trader button to login directly to their bidding page.</p>
-	{% for p in traders %}
-  <form method="post" action="/login" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
-		<input type="hidden" name="trader_id" value="{{ p.id }}">
-    <button type="submit">{{ p.name }}</button>
-  </form>
+
+<p>
+<form method="get" action="/environmental-buyer" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+	Environmental buyer super login: <button type="submit">Greta</button>
+</form></p>
+
+</p>{% for p in traders %}<form method="post" action="/login" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="{{ p.id }}"><button type="submit">{{ p.name }}</button></form>
 	{% if trader_well_counts.get(p.id, 0) > 1 %}<span>{{ trader_well_counts.get(p.id, 0) }} wells.</span>{% endif %}
   {% endfor %}
+</p>
+
 <h2>About this code</h2>
 <p>The purpose of this code is to show how the smart market for water would work, to the policymaker, the water manager, and the water user.
 	I put this together in a month using VSCode with the help of Claude AI. I have not tested it heavily and can't imagine every edge case.
@@ -273,7 +278,7 @@ The database schema already has the necessary column control_point_events.constr
 <li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
 <li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
-<li>Results display: CatchmentPage.html should label which bound is binding when reporting dual prices and slacks.</li>
+<li>Results display: CatchmentView.html should label which bound is binding when reporting dual prices and slacks.</li>
 </ul>
 
 <h2>Adding head difference constraints</h2>
@@ -289,7 +294,7 @@ The database schema already has the necessary column control_point_events.constr
 <li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
 <li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
-<li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentPage.</li>
+<li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentView.</li>
 </ul>
 
 <h2>How Forever Fair scales license</h2>

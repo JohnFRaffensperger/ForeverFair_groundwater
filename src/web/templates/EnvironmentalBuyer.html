@@ -3,7 +3,7 @@
 	<title>Forever Fair Environmental Buyer Console</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body data-max-bid-steps="{{ max_bid_steps }}">
 
-<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <strong>Environmental buyer console</strong> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
+<p><a href="/researcher">Researcher</a> | <a href="/hydrologist">Hydrologist</a> | <a href="/programmer">Programmer</a> | <a href="/auctionmanager">Auction manager</a> | <a href="/login">Trader login</a> | <strong>Environmental buyer</strong> | <a href="/database-documentation">Database docs</a> | <a href="/catchment">Catchment view</a> | <a href="/api/system-state">API</a> | <strong>Catchment: {{ active_catchment_name }}</strong></p>
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Environmental Buyer Console</h1>
 
@@ -12,8 +12,10 @@
 	Bidding for this auction {% if auction_case.auction.status == 'CLOSED' %}is closed{% else %}is open now, and closes {{ auction_case.auction.closed_date }}{% endif %}.
 </p>
 
-<h2>Environmental bid entry <button type="button" id="submit-env-bid-btn">Submit your environmental bids for auction {{ auction_case.auction.id }}</button> <span role="alert">{{ bid_entry_status_message }}</span></h2>
-<p>Each row is a control point event. Environmental buyers can only buy protection at a control point event, never sell.</p>
+<h2>Environmental bid entry <button type="button" id="submit-env-bid-btn">Submit bids for auction {{ auction_case.auction.id }}</button> <span id="bid-lock-status" role="alert"></span> <span>Last submitted {{ last_auction_submitted_at }}</span>. <span role="alert">{{ bid_entry_status_message }}</span></h2>
+<p>Each row is a control point event. You can buy. You cannot sell. You are buying increased aquifer head at a specific control point and effect date.
+	NOTE: Your bids from the previous auction are copied to the new auction.
+</p>
 
 <table data-console-table="true" style="table-layout: auto; border-collapse: collapse;">
 <colgroup><col style="width: 8em;"><col style="width: 14em;"><col style="width: 12em;"><col style="width: 8em;"><col style="width: 8em;"><col style="width: 8em;">{% for step_num in range(1, max_bid_steps + 1) %}<col style="width: 7em;"><col style="width: 7em;">{% endfor %}</colgroup>
@@ -22,10 +24,10 @@
 	<th rowspan="2">Control point</th>
 	<th rowspan="2">Effect date</th>
 	<th rowspan="2" style="text-align: right;">Control point event id</th>
-	<th rowspan="2" style="text-align: right;">Allowable head change</th>
-	<th rowspan="2" style="text-align: right;">Clearing price from auction {{ auction_case.auction.id - 1 }}</th>
+	<th rowspan="2" style="text-align: right;">Allowable head change, m</th>
+	<th rowspan="2" style="text-align: right;">Clearing price from auction {{ auction_case.auction.id - 1 }}, $/m</th>
 	{% for step_num in range(1, max_bid_steps + 1) %}<th colspan="2" style="text-align: center;">Step {{ step_num }}<span> quantity, price</span></th>{% endfor %}
-</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: center;">Head units</th><th style="text-align: center;">$/unit</th>{% endfor %}</tr></thead>
+</tr><tr>{% for step_num in range(1, max_bid_steps + 1) %}<th style="text-align: center;">Meters head</th><th style="text-align: center;">$/meter</th>{% endfor %}</tr></thead>
 <tbody>{% for row in bid_rows %}{% set latest_bids = row.latest_bids %}
 <tr data-console-row="true" data-auction-id="{{ auction_case.auction.id }}" data-cpe-id="{{ row.cpe_id }}"><form method="post" action="/environmental-bids/new" data-console-bid-form="true">
 	<input type="hidden" name="auction_id" value="{{ auction_case.auction.id }}">
@@ -85,6 +87,25 @@
 <p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.</p>
 <script>
 var submitEnvBidButton = document.getElementById('submit-env-bid-btn');
+var bidLockStatus = document.getElementById('bid-lock-status');
+
+function setEnvironmentalBuyerLocked(locked, message) {
+	var consoleInputs = document.querySelectorAll('table[data-console-table] input');
+	consoleInputs.forEach(function(input) { input.disabled = !!locked; });
+	if (submitEnvBidButton) submitEnvBidButton.disabled = !!locked;
+	if (bidLockStatus) bidLockStatus.textContent = locked ? (' ' + (message || 'Bid submission is locked.')) : '';
+}
+
+async function refreshEnvironmentalBuyerLockFromAuctionRun() {
+	if (!submitEnvBidButton) return;
+	try {
+		var response = await fetch('/api/auctionmanager-debug', { cache: 'no-store' });
+		if (!response.ok) return;
+		var payload = await response.json();
+		if (payload && payload.run_active) setEnvironmentalBuyerLocked(true, 'Bid submission is locked because the auction manager is running the auction.');
+		else setEnvironmentalBuyerLocked(false, '');
+	} catch (_err) {}
+}
 
 function prepareAndValidateEnvironmentalRow(row) {
 	var maxBidSteps = parseInt(document.body.getAttribute('data-max-bid-steps') || '1', 10);
@@ -125,8 +146,12 @@ function buildEnvironmentalRowFormData(row) {
 	return fd;
 }
 
+refreshEnvironmentalBuyerLockFromAuctionRun();
+setInterval(refreshEnvironmentalBuyerLockFromAuctionRun, 2000);
+
 if (submitEnvBidButton) {
 	submitEnvBidButton.addEventListener('click', async function() {
+		if (submitEnvBidButton.disabled) return;
 		var allRows = Array.from(document.querySelectorAll('tr[data-console-row]'));
 		if (!allRows.length) return;
 		submitEnvBidButton.disabled = true;

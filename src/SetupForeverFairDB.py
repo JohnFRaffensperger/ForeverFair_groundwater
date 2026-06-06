@@ -45,6 +45,8 @@ def create_empty_db(db_path: Path) -> None:
 	db_path.parent.mkdir(parents=True, exist_ok=True)
 	conn = sqlite3.connect(db_path)
 	conn.executescript(SCHEMA_DDL)
+	conn.execute("""INSERT INTO traders(name_tag, trader_type, trader_loginid, trader_first_name, trader_last_name)
+		SELECT 'Greta', 'environmental', 'Greta', 'Greta', 'EnvironmentalBuyer' WHERE NOT EXISTS (SELECT 1 FROM traders WHERE name_tag='Greta')""")
 	save_catchment_info(conn, "synthetic_current_date", "2030-01-04T16:00")
 	save_catchment_info(conn, "MAX_BID_STEPS", 3) # Default. Up to 5.
 	save_catchment_info(conn, "num_bidding_periods", 20) # Default. Length of your hydrological season.

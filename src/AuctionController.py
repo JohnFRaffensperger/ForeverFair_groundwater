@@ -124,16 +124,21 @@ def runCurrentAuction (ffdata: ForeverFairData, auction_id: int, debug_log: Call
 	# CAREFUL WITH SIGNS. Response matrix coefficients are typically negative. Allowable head change is typically negative and quantity_vars are positive.
 	# We want q*F <= headchange, feeling like 100*(-0.03) <= -5, which is mathematically wrong. 
 	# So we need to change signs to have "<=" constraints. The "-1.0*" is for emphasis.
+	# Previously settled environmental head protection (from the prior auction) tightens the RHS.
+	_prior_auction_id = ffdata.get_previous_auction_id(auction_id)
+	prior_env_head_by_control_point: dict[tuple[int, str], float] = ffdata.get_environmental_head_protection(_prior_auction_id) if _prior_auction_id is not None else {}
 	for cpe in cp_events:
 		control_point_id = int(cpe["control_point_id"])
 		effect_period = effect_date_to_idx[str(cpe["effect_date"])]
 		cpe_id = int(cpe["cpe_id"])
+		prior_env_head_by_cpe = prior_env_head_by_control_point.get((control_point_id, str(cpe["effect_date"])), 0.0)
 		auction_model += (lpSum(-1.0 * response_factors.get((well_id, pumping_period, effect_period, control_point_id), 0.0) * quantity_vars[(well_id, pumping_period)]
 				for well_id in ffdata.get_wells()
 				for pumping_period in range(1, auction["periods"][-1]["id"] + 1)
 				if (well_id, pumping_period) in quantity_vars)
 				+ lpSum(environmental_quantity_vars[(trader_id, cpe_id)] for (trader_id, cpe_id2) in environmental_quantity_vars.keys() if cpe_id2 == cpe_id)
-					<= max(0.0, -1.0*cpe["allowable_head_change"]), f"cp_{control_point_id}_{effect_period}") 
+					<= -1.0*(prior_env_head_by_cpe + cpe["allowable_head_change"])), f"cp_{control_point_id}_{effect_period}" 
+					# <= max(0.0, -1.0*(prior_env_head_by_cpe + cpe["allowable_head_change"])), f"cp_{control_point_id}_{effect_period}") 
 
 	# Run the linear program.  ------------------------------------------------------------------------
 	lpt_dir = Path (__file__).parent.parent / "Auction_lpt_files"

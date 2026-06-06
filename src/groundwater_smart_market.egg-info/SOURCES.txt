@@ -5,7 +5,5 @@ src/groundwater_smart_market.egg-info/SOURCES.txt
 src/groundwater_smart_market.egg-info/dependency_links.txt
 src/groundwater_smart_market.egg-info/requires.txt
 src/groundwater_smart_market.egg-info/top_level.txt
-src/services/__init__.py
-src/services/repository.py
-src/web/app.py
+src/web/ForeverFairPages.py
 tests/test_market.py

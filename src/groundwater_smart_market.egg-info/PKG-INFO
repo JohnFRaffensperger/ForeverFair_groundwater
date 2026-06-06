@@ -2,6 +2,7 @@ Metadata-Version: 2.4
 Name: groundwater-smart-market
 Version: 0.1.0
 Summary: Forever Fair 3.0 jurisdiction-neutral groundwater smart-market web application.
+License: Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: fastapi<1,>=0.115
@@ -10,6 +11,7 @@ Requires-Dist: pulp<3,>=2.8
 Requires-Dist: pydantic<3,>=2.8
 Requires-Dist: python-multipart<1,>=0.0.9
 Requires-Dist: uvicorn<1,>=0.30
+Requires-Dist: python-dotenv<2,>=1.0
 Provides-Extra: dev
 Requires-Dist: pytest<9,>=8.0; extra == "dev"
 Requires-Dist: httpx<1,>=0.27; extra == "dev"
@@ -43,10 +45,14 @@ The initial scaffold includes:
 pip install -e .[dev]
 ```
 
+## License
+
+Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+
 3. Start the app:
 
 ```bash
-uvicorn main:app --reload
+python -m uvicorn src.web.ForeverFairPages:app --reload
 ```
 
 4. Open `http://127.0.0.1:8000`.
