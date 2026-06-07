@@ -1,70 +1,7 @@
-11) Clean repository root before publish.
-- Current status shows multiple deleted/renamed ad hoc files and one new script.
-- Recommendation: ensure each deletion/addition is intentional, then commit a clean publish branch.
-
-PART 2. Steps to prepare this project for publishing on GitHub (common standards)
-
 Step 1. Create a release branch and stabilize
 1. Create a branch (for example, release/public-v0.1).
 2. Fix failing tests until pytest is green.
 3. Freeze scope for first public release (no feature churn during polish).
-
-Step 2. Establish legal and governance basics
-1. Add LICENSE (matching your intended reuse terms).
-2. Add CONTRIBUTING.md (dev setup, test command, PR expectations).
-3. Add SECURITY.md (how to report vulnerabilities).
-4. Add CODE_OF_CONDUCT.md (community standard).
-
-Step 3. Clean artifacts and sensitive/non-essential files
-1. Update .gitignore for publish hygiene:
-	*.db
-	*.sqlite
-	*.egg-info/
-	dist/
-	build/
-2. Remove tracked generated artifacts from git index.
-3. Decide data publication policy:
-	- keep/anonymize trader datasets as needed,
-	- remove accidental local files.
-
-Step 4. Harden packaging and project metadata
-1. Ensure pyproject.toml metadata is accurate:
-	- description
-	- license
-	- python requirement
-	- dependencies
-2. Add .env.example and document env variables in README.
-3. Verify install from scratch:
-	pip install -e .[dev]
-
-Step 5. Add CI so quality is enforceable
-1. Create .github/workflows/ci.yml with at least:
-	- checkout
-	- setup-python (3.11)
-	- pip install -e .[dev]
-	- pytest -q
-2. Optional but standard: add lint/type jobs (ruff, mypy) after initial release if preferred.
-
-Step 6. Publish clear documentation
-1. Expand README with:
-	- what the project does
-	- architecture sketch
-	- local run steps
-	- testing steps
-	- demo limitations
-2. Add CHANGELOG.md and record first release notes.
-3. Ensure HTML docs pages are internally consistent with the actual code layout.
-
-Step 7. Do a final release check
-1. Fresh-clone smoke test:
-	- clone repo
-	- create venv
-	- pip install -e .[dev]
-	- run tests
-	- run server
-2. Confirm no secrets/artifacts are tracked:
-	- git ls-files | findstr /I ".env .db"
-3. Confirm git status is clean.
 
 Step 8. Publish and tag
 1. Merge release branch.
@@ -75,7 +12,17 @@ Step 8. Publish and tag
 	- known limitations
 	- link to docs pages/screenshots.
 
-Optional website alignment (john.raffensperger.org)
+Step 10. website alignment (john.raffensperger.org)
 1. Mirror the same license and limitation statements used in GitHub README.
 2. Link website project page to tagged GitHub release, not only main branch.
 3. Add a short reproducibility block on the website: Python version, install command, test command.
+
+Step 11. What you still must do in GitHub UI (required for enforcement):
+Go to Settings -> Branches -> Add rule for main.
+Enable:
+Require a pull request before merging
+Require approvals
+Require review from Code Owners
+Require conversation resolution
+Require status checks to pass
+Disable force pushes and deletion

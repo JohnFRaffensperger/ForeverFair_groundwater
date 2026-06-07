@@ -9,6 +9,6 @@ FOREVER_FAIR_CATCHMENT=Tiny_demonstration
 
 The above lines tell the code which data directory to use. If it has an existing foreverfair.db file, the code will automatically pick it up, including previously run auctions. If the directory has no foreverfair.db file, you will have to set it up, either with programmer.html or by writing a setup function in SetupForeverFairDB.py.
 
-Tianqiao is a full-sized example based on a catchment in China.
+Tianqiao is a full-sized example based on a catchment in China. I've published the story, https://john.raffensperger.org/water/Planning_a_smart_market_for_Tianqiao_groundwater%2023%20Feb%202010%20jfr.pdf
 
 Tiny_demonstration is a very small hand-created example. The Libre Office spreadsheet Tiny_demonstration.ods shows all calculations for two auctions.

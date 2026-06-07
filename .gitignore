@@ -7,3 +7,8 @@ venv/
 .env
 *.db
 *.sqlite
+*.egg-info/
+dist/
+build/
+/LocalHTML.py
+/sorttable.js

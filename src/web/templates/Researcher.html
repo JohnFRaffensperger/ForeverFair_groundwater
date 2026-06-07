@@ -7,8 +7,11 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Researcher's Page</h1>
 
-<p>This page gives you single-point entry to all application pages and documentation.</p>
-<p><b style="color: red;">Demo-only authentication notice:</b> this research demo is intentionally not production-secure. Trader access is selected from a list (or via the super-login buttons below), and administrator pages are not protected by per-user passwords. Do not deploy this as-is on a public network. For production requirements, see <a href="/database-documentation#security-hardening">Security hardening for production deployment</a>.</p>
+<p>This page gives you god-like single-point entry to all application pages and documentation.</p>
+<p><b style="color: red;">Demo-only authentication:</b> this research demo is intentionally not production-secure. Do not deploy this as-is on a public network. 
+	I have implemented login access via super-login buttons and administrator pages are not protected by per-user passwords. 
+	Otherwise, trying out the demo from different points of view would be too annoying.
+	For production requirements, see <a href="/database-documentation#security-hardening">Security hardening for production deployment</a>.</p>
 
 <h2>Application pages</h2>
 <p><a href="/hydrologist">Hydrologist's page</a>: how to convert your groundwater model into the auction system.</p>
@@ -36,6 +39,12 @@
 	Correcting bugs in it is probably trivial. Water users may want changes to the interface, which would be trivial.
 	I focused on the math, which is nontrivial. From the idiosyncratic code formatting, you can tell that this is my code.
 	If you see mistakes, please let me know.</p>
+
+<p>The code comes with two cases. Tianqiao is a full-sized example based on a catchment in China. 
+	I've published the story, <a href="https://john.raffensperger.org/water/Planning_a_smart_market_for_Tianqiao_groundwater%2023%20Feb%202010%20jfr.pdf">
+	“Planning a smart market for Tianqiao groundwater”</a>. Tiny_demonstration is a tiny hand-created example. 
+	The Tiny_demonstration folder has a Libre Office spreadsheet Tiny_demonstration.ods that shows all calculations for two auctions. 
+	You can re-solve the auction optimization with the Libre Office solver, though updating the dual prices is fiddly.</p>
 
 <h2>About Forever Fair</h2>
 <p>To the farmer, the well owner, the town needing more water: you want to buy water. Money can buy anything except the security you seek for yourself, 
@@ -327,7 +336,7 @@ The database schema already has the necessary column control_point_events.constr
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentView.</li>
 </ul>
 
-<h2>How Forever Fair scales license</h2>
+<h2>How Forever Fair scales license for water</h2>
 
 <p>Under a revenue-neutral rights policy of scaled license, the auction manager must scale license-derived quota to the environmental constraints. 
 	The auction manager must also scale quota when the hydrologist uploads new aquifer heads. 

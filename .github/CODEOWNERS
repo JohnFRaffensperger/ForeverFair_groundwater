@@ -1,0 +1,4 @@
+# Forever Fair CODEOWNERS
+# All files require maintainer review before merge.
+# Uses maintainer email so GitHub can request review from the matching account.
+* john.raffensperger@gmail.com

@@ -3,6 +3,15 @@
 This version of Forever Fair is a research prototype for groundwater smart-market operation.
 It provides a FastAPI web interface, SQLite-backed state, and auction-clearing logic using linear programming.
 
+## Architecture sketch
+
+Request flow:
+
+1. FastAPI routes in `src/web/ForeverFairPages.py` accept requests and render templates.
+2. Route handlers call `src/ForeverFairData.py` for SQLite reads/writes and state updates.
+3. Auction execution uses `src/AuctionController.py` and `src/BiddingController.py` to build and solve the optimization model.
+4. Catchment inputs from `Catchment_data/` and setup utilities in `src/SetupForeverFairDB.py` provide case data and schema bootstrap.
+
 ## Quick start
 
 1. Create and activate a Python 3.11+ environment.
@@ -87,4 +96,14 @@ This project is source-available under the Forever Fair Public Interest License 
 - Any for-profit use requires a separate commercial license from John F. Raffensperger.
 
 See [LICENSE](LICENSE) for full terms.
+
+## Governance
+
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+- Community conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+## Changelog
+
+- Release notes: [CHANGELOG.md](CHANGELOG.md)
 
