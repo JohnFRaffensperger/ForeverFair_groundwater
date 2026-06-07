@@ -1,0 +1,14 @@
+This is a logical place to put your auction data files, i.e., all files "uploaded" from Programmer.html should land here. 
+
+This is the landing spot for the .env file (which should be in .\ForeverFair2026\):
+# Example local environment settings for Forever Fair
+# This file gives the name of your data directory to the web app.
+# Copy to .env in the repository root and edit as needed.
+# FOREVER_FAIR_CATCHMENT=Tianqiao
+FOREVER_FAIR_CATCHMENT=Tiny_demonstration
+
+The above lines tell the code which data directory to use. If it has an existing foreverfair.db file, the code will automatically pick it up, including previously run auctions. If the directory has no foreverfair.db file, you will have to set it up, either with programmer.html or by writing a setup function in SetupForeverFairDB.py.
+
+Tianqiao is a full-sized example based on a catchment in China.
+
+Tiny_demonstration is a very small hand-created example. The Libre Office spreadsheet Tiny_demonstration.ods shows all calculations for two auctions.

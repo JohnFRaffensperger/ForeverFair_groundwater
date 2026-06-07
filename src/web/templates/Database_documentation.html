@@ -1,4 +1,4 @@
-<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Database Documentation</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
@@ -12,12 +12,14 @@
 
 <h2>Table: Catchment_info</h2>
 <p><strong>meta_key (TEXT, PRIMARY KEY):</strong> Name of a global catchment setting. Used for keys such as inferred GWM dimensions, synthetic time, period length, and bidding-period count.</p>
-<p><strong>meta_value (TEXT, NOT NULL):</strong> Value for the setting key, stored as text and interpreted by caller logic.</p>
+<p><strong>text_value (TEXT):</strong> Text value for the setting key (for example synthetic_current_date, rights policy labels, and map metadata).</p>
+<p><strong>integer_value (INTEGER):</strong> Integer value for the setting key (for example MAX_BID_STEPS, num_bidding_periods, period_length_hours).</p>
 <p><strong>Common keys:</strong> synthetic_current_date, num_bidding_periods, period_length_hours, mps_loaded_date, mps_notes, gwm_num_wells, gwm_num_pump_periods, gwm_num_control_points, gwm_num_control_periods.</p>
 
 <h2>Table: traders</h2>
 <p><strong>trader_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal numeric trader identifier used throughout joins and foreign keys.</p>
 <p><strong>name_tag (TEXT, NOT NULL):</strong> Trader display/name key used by UI and several import joins (for example trader-well assignment import). One trader can own more than one well.</p>
+<p><strong>trader_type (TEXT, NOT NULL, default 'well'):</strong> Trader role/type marker (for example well or environmental) used by route logic and role-specific pages.</p>
 <p><strong>trader_loginid (TEXT):</strong> Login identifier value imported with trader names. <strong>SetupForeverFairDB.import_trader_names</strong> currently derives it from surname.</p>
 <p><strong>trader_password (TEXT):</strong> Reserved legacy column for password storage; not used by current auth flow.</p>
 <p><strong>trader_first_name (TEXT):</strong> Trader first name imported from trader names file.</p>
@@ -38,12 +40,24 @@
 <p><strong>longitude (REAL):</strong> Well longitude. <strong>SetupForeverFairDB.import_well_lat_lon</strong> writes this field.</p>
 
 <h2>Table: control_points</h2>
-<p><strong>control_point_id (TEXT, PRIMARY KEY):</strong> Control point identifier (for example gwm-cp-N), used across constraints and events.</p>
+<p><strong>control_point_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Control point identifier used across constraints and events.</p>
 <p><strong>name (TEXT, NOT NULL):</strong> Display name for control point.</p>
+<p><strong>gw_model_layer (INTEGER):</strong> Groundwater model layer index for control point.</p>
 <p><strong>gw_model_row (INTEGER):</strong> Groundwater model row index for control point.</p>
 <p><strong>gw_model_column (INTEGER):</strong> Groundwater model column index for control point.</p>
 <p><strong>latitude (REAL):</strong> Control point latitude.</p>
 <p><strong>longitude (REAL):</strong> Control point longitude.</p>
+
+<h2>Table: aquifer_head_limits</h2>
+<p><strong>control_point_event_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Internal row identifier for each control-point/effect-date head row.</p>
+<p><strong>control_point_id (INTEGER, FOREIGN KEY to control_points.control_point_id):</strong> Control point associated with this head-limits row.</p>
+<p><strong>effect_date (TEXT):</strong> Effect period/date key for this limits row.</p>
+<p><strong>upload_date (TEXT):</strong> Timestamp for the most recent upload or rewrite of this row.</p>
+<p><strong>actual_start_head (REAL):</strong> Starting head level used as forecast or updated baseline.</p>
+<p><strong>minimum_head (REAL):</strong> Minimum allowed head for this control point and effect date.</p>
+<p><strong>allowable_head_change (REAL):</strong> Derived allowance, typically minimum_head - actual_start_head.</p>
+<p><strong>head_constraint_upper_bound (REAL):</strong> Optional explicit upper bound for head-change constraint rows.</p>
+<p><strong>license_demand (REAL):</strong> Aggregate modeled demand-at-head metric used in scaling calculations.</p>
 
 <h2>Table: auctions</h2>
 <p><strong>auction_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Auction identifier used for all auction-scoped data.</p>
@@ -56,10 +70,11 @@
 <p><strong>auction_type (TEXT):</strong> Auction category (for example tentative vs final).</p>
 <p><strong>solve_status (TEXT):</strong> LP solver status from latest run.</p>
 <p><strong>objective_value (REAL):</strong> Objective value from latest solved run.</p>
+<p><strong>auction_revenue (REAL):</strong> Aggregate auction revenue recorded for the solved auction run.</p>
 
 <h2>Table: response_matrix</h2>
 <p><strong>well_id (INTEGER, NOT NULL, FOREIGN KEY to wells.well_id):</strong> Source well for response coefficient.</p>
-<p><strong>control_point_id (TEXT, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Affected control point.</p>
+<p><strong>control_point_id (INTEGER, NOT NULL, FOREIGN KEY to control_points.control_point_id):</strong> Affected control point.</p>
 <p><strong>pumping_period (INTEGER, NOT NULL):</strong> Pumping period index in response matrix dimension.</p>
 <p><strong>effect_period (INTEGER, NOT NULL):</strong> Effect period index in response matrix dimension.</p>
 <p><strong>response (REAL, NOT NULL):</strong> Response factor coefficient linking pumping to control-point effect. 
@@ -98,7 +113,7 @@
 
 <h2>Table: control_point_events</h2>
 <p><strong>cpe_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Control-point event row identifier.</p>
-<p><strong>control_point_id (TEXT):</strong> Control point associated with event/result row.</p>
+<p><strong>control_point_id (INTEGER, FOREIGN KEY to control_points.control_point_id):</strong> Control point associated with event/result row.</p>
 <p><strong>auction_id (INTEGER, FOREIGN KEY to auctions.auction_id):</strong> Auction scope.</p>
 <p><strong>effect_date (TEXT):</strong> Effect period/date key for the row.</p>
 <p><strong>committed_head_auction_start (REAL):</strong> Start head for the committed track in this auction row. On auction setup, <strong>ForeverFairData.set_control_point_events_for_auction</strong> copies the latest prior <em>committed_head_auction_end</em> for the same (control_point_id, effect_date). If no prior auction row exists, that function falls back to <em>aquifer_head_limits.actual_start_head</em>.</p>
@@ -160,12 +175,32 @@
 <p><strong>trader_id (INTEGER):</strong> Trader placing the bid.</p>
 <p><strong>auction_id (INTEGER):</strong> Auction where bid is submitted.</p>
 <p><strong>bid_date (TEXT):</strong> Bid submission timestamp.</p>
-<p><strong>effect_date (TEXT):</strong> Period key/date where bid quantity-price steps apply.</p>
+<p><strong>pumping_date (TEXT):</strong> Period key/date where bid quantity-price steps apply.</p>
 <p><strong>expiry_date (TEXT):</strong> Optional expiry timestamp/date for bid validity.</p>
 <p><strong>is_bid_default (INTEGER, default 0):</strong> Flag for system-generated/default bid handling.</p>
 <p><strong>qty1..qty5 (REAL):</strong> Up to five quantity breakpoints for stepwise bid curve.</p>
 <p><strong>price1..price5 (REAL):</strong> Up to five prices aligned with qty1..qty5.</p>
 <p><strong>deleted (INTEGER, NOT NULL, default 0):</strong> Soft-delete flag used to hide/cancel bids without hard delete.</p>
+
+<h2>Table: environmental_bids</h2>
+<p><strong>env_bid_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Environmental bid row identifier.</p>
+<p><strong>trader_id (INTEGER, NOT NULL, FOREIGN KEY to traders.trader_id):</strong> Trader placing the environmental bid (typically the environmental buyer role).</p>
+<p><strong>auction_id (INTEGER, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope for the bid.</p>
+<p><strong>cpe_id (INTEGER, NOT NULL, FOREIGN KEY to control_point_events.cpe_id):</strong> Target control-point event row being bid on.</p>
+<p><strong>bid_date (TEXT, NOT NULL):</strong> Bid submission timestamp.</p>
+<p><strong>is_bid_default (INTEGER, default 0):</strong> Flag for system-generated/default bid handling.</p>
+<p><strong>qty1..qty5 (REAL):</strong> Up to five quantity breakpoints for environmental bid steps.</p>
+<p><strong>price1..price5 (REAL):</strong> Up to five prices aligned with qty1..qty5.</p>
+<p><strong>deleted (INTEGER, NOT NULL, default 0):</strong> Soft-delete flag used to supersede prior bids on the same cpe_id.</p>
+
+<h2>Table: environmental_position</h2>
+<p><strong>env_position_id (INTEGER, PRIMARY KEY AUTOINCREMENT):</strong> Environmental settlement/result row identifier.</p>
+<p><strong>auction_id (INTEGER, NOT NULL, FOREIGN KEY to auctions.auction_id):</strong> Auction scope for this settlement row.</p>
+<p><strong>trader_id (INTEGER, NOT NULL, FOREIGN KEY to traders.trader_id):</strong> Trader receiving or paying for this environmental position.</p>
+<p><strong>cpe_id (INTEGER, NOT NULL, FOREIGN KEY to control_point_events.cpe_id):</strong> Control-point event associated with this position row.</p>
+<p><strong>traded_head_start (REAL):</strong> Start quantity/head allocation before this auction result (if populated).</p>
+<p><strong>traded_head_end (REAL):</strong> End quantity/head allocation after this auction result.</p>
+<p><strong>price (REAL):</strong> Settled price for this environmental position row.</p>
 
 <h2>How to use the API link</h2>
 <p>The navigation link <strong>API</strong> opens <strong>/api/system-state</strong>. That endpoint returns JSON describing the current catchment and auction state. It is intended for programmers, scripts, and integration code, not for a formatted human report.</p>
@@ -179,7 +214,7 @@
 </ol>
 
 <h2 id="security-hardening">Security hardening for production deployment</h2>
-<p>This research code is intentionally simple and is <strong>not</strong> ready for commercial deployment. 
+<p>This research code is intentionally built for explanation, not commercial deployment. 
 A production water-trading website should follow current security practice (for example OWASP ASVS, OWASP Top 10, and your local privacy and critical-infrastructure obligations).</p>
 
 <h3>Minimum authentication and authorization changes</h3>
@@ -226,5 +261,5 @@ A production water-trading website should follow current security practice (for 
 pip install pwdlib argon2-cffi authlib "python-jose[cryptography]" starlette-csrf slowapi secure fastapi-users[sqlalchemy]</pre>
 
 <p>Commercial deployment should also include a threat model, penetration testing, independent code review, incident response planning, and legal/compliance review before go-live.</p>
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-05-04.</p>
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
 </body></html>

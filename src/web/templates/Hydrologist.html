@@ -1,4 +1,4 @@
-<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
@@ -88,7 +88,7 @@ Validate that bound values and units match bid quantities. Run a small known cas
 
 <p><b>Period indexing convention:</b> period 1 in the response matrix always means the first pumping period in the hydrology model, not a fixed calendar date. During auction clearing, these model periods are remapped to the auction's local timeline.</p>
 
-<p><b>Response-matrix sparsity note:</b> Forever Fair does not require a full dense response matrix. If a response coefficient is not provided for a tuple (control point, effect period, well, pumping period), the model treats that missing entry as zero response.</p>
+<p><b>Response-matrix sparsity:</b> Forever Fair does not require a full dense response matrix. If a response coefficient is not provided for a tuple (control point, effect period, well, pumping period), the model treats that missing entry as zero response.</p>
 
 <p><b>Causality rule for inputs:</b> do not enter response coefficients where pumping period is later than effect period (pumping_period &gt; effect_period). Enter only physically causal terms where pumping can affect the same or a later effect period.</p>
 
@@ -97,12 +97,24 @@ Validate that bound values and units match bid quantities. Run a small known cas
 <p>Careful with units! Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
 
 <p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>. 
-You can read about the Tianqiao case in <a href="https://john.raffensperger.org/water/Planning_a_smart_market_for_Tianqiao_groundwater%2023%20Feb%202010%20jfr.pdf">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, “Planning a smart market for Tianqiao groundwater,” 2010.</a></p>
+You can read about the Tianqiao case in <a href="https://john.raffensperger.org/water/Planning_a_smart_market_for_Tianqiao_groundwater%2023%20Feb%202010%20jfr.pdf">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, â€œPlanning a smart market for Tianqiao groundwater,â€ 2010.</a></p>
 
 <p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
 
 <h2>Timing, the calendar, pumping periods</h2>
 
+<p>The Forever Fair system has a built-in sophisticated calendar based first on the hydrology and second on what users want to do. You already understand the hydrology. The ability to trade at high frequency will blow your mind.</p>
+
+<p>As a hydrologist, you understand that the aquifer is a reservoir. Buying today reduces available water later. It's all connected. Trading runs through the whole hydrological season, which ends with a hydrological reset when people are not actively taking any water and inflows can renew the aquifer.
+	You are accustomed to running hydrological models at seasonal or annual lengths. Start thinking about running them at much shorter times, weekly, daily, maybe even hourly. The part that should blow your mind is the ability to change allocations so quickly!</p>
+
+<p>For groundwater, because the aquifer is a reservoir, every weekly auction schedules all water over the whole remaining season. At the beginning, users will establish their preferred schedule of irrigation based on the forecast.
+	At every auction, they have the opportunity to change their remaining schedule.</p>
+
+<p>You should choose the number of bidding periods in consultation with the users. Suppose you think the irrigation season runs 20 weeks. 
+	They may not care about the last two weeks, but you may know if users take too much in those two weeks that the aquifer can be overdrawn in later weeks. 
+	What is mathematically necessary for the hydrology? Bring your expertise to the market schedule!</p>
+	
 <h2>Files from your groundwater model</h2>
 <table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
 	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
@@ -122,7 +134,7 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 
 <p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, 
 	the hydrologist can use the GWM BOUNDS to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. 
-	When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html. 
+	When exported to the your_file_name.mps, the programmer can load them into the database via Programmer.html. 
 	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
 <p>You will have set up your MPS optimization with a pumping schedule and a constraint schedule. The pumping schedule should 
@@ -146,7 +158,7 @@ You can read about the Tianqiao case in <a href="https://john.raffensperger.org/
 	I will assume the auction runs over a hydrological season, so the final pumping period is fixed, not rolling. 
 	The schedule of pumping gets shorter as auctions progress over time. As I said above, I decided to run the auction for 20 weeks declining rather than 20 weeks rolling.</p>
 
-<p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
+<p>I could write a function for Programmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
 <h2 id="managing-drawdown">Managing drawdown for each auction</h2>
 
@@ -163,7 +175,8 @@ but only want to simulate changing inflows then: (1) open foreverfair.db, browse
 (2) With a spreadsheet, modify the committed_head_auction_start as you wish. Modify the committed_allowable_head_change to match. Change the layout to match aquifer_head_limits.
 (3) Then import the new aquifer_head_limits rows into foreverfair.db. The code will automatically use the new head limits and automatically scale initial quota to the available water.</p>
 
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
 </body>
 </html>
+
 

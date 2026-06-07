@@ -1,5 +1,5 @@
-# tests/test_market.py. Claude guided by JFR, 2026 05 31.
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+# tests/test_market.py. Claude guided by JFR, 2026 06 07.
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 # Purpose: Verify market clearing, setup/reset flow, and persisted run output.
 
 import sqlite3
@@ -196,5 +196,6 @@ def test_set_license_demand_populates_aquifer_limits(tmp_path):
 		assert row["total_rows"] > 0
 		assert row["populated_rows"] == row["total_rows"]
 		assert row["max_license_demand"] > 0.0
+
 
 

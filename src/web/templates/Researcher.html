@@ -1,4 +1,4 @@
-<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Researcher's Page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
@@ -7,50 +7,58 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Researcher's Page</h1>
 
-<p>This page gives you god-like single point entry to all application pages and documentation. The software is not designed for security but rather for explanation.
-Adding security is probably pretty easy to vibe-code in.</p>
+<p>This page gives you single-point entry to all application pages and documentation.</p>
+<p><b style="color: red;">Demo-only authentication notice:</b> this research demo is intentionally not production-secure. Trader access is selected from a list (or via the super-login buttons below), and administrator pages are not protected by per-user passwords. Do not deploy this as-is on a public network. For production requirements, see <a href="/database-documentation#security-hardening">Security hardening for production deployment</a>.</p>
 
 <h2>Application pages</h2>
-<p><a href="/hydrologist">Hydrologist's page</a>: wfhat groundwater model outputs the system needs and how to supply them.</p>
+<p><a href="/hydrologist">Hydrologist's page</a>: how to convert your groundwater model into the auction system.</p>
 <p><a href="/programmer">Programmer's page</a>: architecture, import modules, and development notes. Also <a href="/api/system-state">API system state</a>: current auction and run summary as JSON.</p>
 <p><a href="/auctionmanager">Auction manager's page</a>: set up auctions, run clearing, responsibilities, and configuration.</p>
 <p><a href="/database-documentation">Database documentation</a>: table-by-table and field-by-field schema reference for foreverfair.db.</p>
 <p><a href="/catchment">Catchment view</a>: clearing prices and control-point diagnostics for the whole catchment.</p>
-<p><a href="/login">Trader login page</a>.</p>
+<p><a href="/login">Trader login page</a>. Or use the super login below.</p>
 
-<h2>Super login</h2>
-<p>Click any trader button to login directly to their bidding page.</p>
+<h2>Super login (appropriate for demonstration only). Click any trader button to log in directly to their bidding page.</h2>
 
-<p>
-<form method="get" action="/environmental-buyer" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
-	Environmental buyer super login: <button type="submit">Greta</button>
-</form></p>
+<p><form method="get" action="/environmental-buyer" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">Environmental buyer: <button type="submit">Greta</button></form></p>
 
-</p>{% for p in traders %}<form method="post" action="/login" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+<p>Wells: {% for p in traders %}<form method="post" action="/login" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
 		<input type="hidden" name="trader_id" value="{{ p.id }}"><button type="submit">{{ p.name }}</button></form>
 	{% if trader_well_counts.get(p.id, 0) > 1 %}<span>{{ trader_well_counts.get(p.id, 0) }} wells.</span>{% endif %}
   {% endfor %}
 </p>
 
 <h2>About this code</h2>
-<p>The purpose of this code is to show how the smart market for water would work, to the policymaker, the water manager, and the water user.
-	I put this together in a month using VSCode with the help of Claude AI. I have not tested it heavily and can't imagine every edge case.
-	Modifying this code, e.g, adding tentative auctions, changing the behavior of automatic bids, etc., is trivial.
-	Correcting mistakes in it is probably trivial. Water users may want changes to the interface, which would be trivial.
-	I focused on the math, which is nontrivial.
-	</p>
+<p>The purpose of this code is to demonstrate a smart market for water to the policymaker, the water manager, and the water user.
+	Based on considerable previous work, I put this together in a month using VSCode with the help of Claude AI. 
+	I have not tested it heavily and can't imagine every edge case.
+	Modifying this code, e.g, adding tentative auctions, changing the behavior of automatic bids, etc., is trivial with Claude.
+	Correcting bugs in it is probably trivial. Water users may want changes to the interface, which would be trivial.
+	I focused on the math, which is nontrivial. From the idiosyncratic code formatting, you can tell that this is my code.
+	If you see mistakes, please let me know.</p>
 
 <h2>About Forever Fair</h2>
-<p>The old way of allocating water by season or year must end. The old way of allocating water by writing long applications and waiting for months 
-	to get approval must fall by the wayside. The old way of protesting every allocation must change to protesting the parameters of a public hydrology model.
-	Everyone always pretended that a megaliter of water taken at the beginning of the season was the same as a megaliter of water taken at the end of the season.
-	We all know that is not true, but the difficulty of reallocating water prevented people from acting on it.
-	The problem is and has always been the transaction cost of reallocating water. Getting a new permit or a trade typically takes years.
+<p>To the farmer, the well owner, the town needing more water: you want to buy water. Money can buy anything except the security you seek for yourself, 
+	your family, and your community. People offer you deals and you get hopeful about the potential for real change. Somebody comes up with an idea for
+	shiny new infrastructure, a local law that supposedly will result in better management, or a proposal to end an annoying regulation.
+	Then reality sets in. The deals are complicated, cumbersome, they take years to figure out, the price tag moves fast in one direction,
+	and the work requires an army of lawyers to review. The battle ends up in court <i>every single time</i>. When a miracle happens and you succeed in making a big improvement,
+	it brings some relief to the system. Then people burn through the slack immediately! You're right back where you were before, security slipping away.
+	Your vision for security is shared by all of us. We all need that security. We all need you to keep working for it.</p>
+
+<p>We are caught between a ravenous three-headed monster of drought ahead and an invincible creeping monster of climate change behind. 
+	We alone can't kill the climate change monster. But we can kill the three-headed monster of drought before us. 
+	The monster's three heads are unlimited takings, the inability of government to set limits on those takings, and people's fear of change.
+	The old way of allocating water by season or year must end. The old way of allocating water by writing long applications and waiting for months 
+	to get approval must fall by the wayside. The old way, protesting every allocation, must change to protesting the parameters of a public hydrology model.
+	Everyone always pretended that an acre-foot of water taken at the beginning of the season was the same as a acre-foot of water taken at the end of the season.
+	We all know that is not true, but the enormous hurdle of reallocating water prevented people from acting on it. Getting a new permit or making a trade typically takes years.
+	The problem is and has always been the difficulty of allocating water.
 	<b>It's time for change.</b></p>
 
 <p>Forever Fair is a state-of-art water market, a periodic water allocation auction. 
 	Forever Fair allows water trading and ensures flows for the environment on short time frames, far better than the seasonal or yearly averages that water managers are accustomed to using.
-	It can work for hydrology of any complexity, groundwater, surface water, both, with reservoirs and hydropower, etc.
+	This particular version is designed for groundwater, but the concept can work for hydrology of any complexity, groundwater, surface water, both, with reservoirs and hydropower, etc.
 	A catchment manager sets up each auction, opens it for bidding, runs the clearing model, and publishes results. 
 	Traders who hold water rights submit bids stating how much water they want to buy or sell in each period, and at what price. 
 	The software clears the market by solving  an optimization model. The optimization accepts or rejects bids to maximize the value of water while keeping pumping 
@@ -63,21 +71,32 @@ The market distinguishes those different periods by different rights and differe
 <p>Water users would get many benefits from Forever Fair. Most importantly, the transaction costs of changing allocations disappear. 
 	Users don't need to write a long application to the water authority and wait weeks for a response. Users can trade water simply by going on a website.</p>
 <p>Water authorities would benefit from Forever Fair. 
-	 Because users can easily change their allocations, a lot of contention and application papework would disappear. That reduces the workload on the water authority!</p>
+	 Because users can easily change their allocations, a lot of contention and application paperwork would disappear. That reduces the workload on the water authority!</p>
 <p>Environmental buyers would benefit from Forever Fair. They don't have to search for people to sell water over seasonal or longer terms. 
 	Instead, they have a go-to market where they can easily buy water to refill lakes and wetlands.
 	They can buy water with surgical precision, like ensuring stream flows for a couple specific weeks to help fish spawn.</p>
 
-<p>This version of the software is focused on <b>groundwater</b>. 
-	Forever Fair all starts with a groundwater model. 
+<h2>This version focuses on groundwater.</h2>
+
+<p>This version of Forever Fair starts with the groundwater model. 
 	Standard groundwater software like USGS <a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">GWM Groundwater Management Process</a> can create a linear program file in MPS format. 
 	This MPS file includes the response matrix and head constraints, which specifies the main structure of the auction clearing model. 
 	The hydrologist sets hard bounds on head at control points around the catchment, such as to ensure a wetland does not run dry.
 	The model has a head limit for each control point. These bounds cannot be overridden by high bids.
 	The hydrologist can include wells in the list of control points to make sure those wells have sufficient head.	
-	The hydrologist is responsible for ensuring the validity of the response matrix.</p>
+	The hydrologist is responsible for ensuring the validity of the response matrix. The response matrix is treated as calendar-independent. 
+	Period 1 in the response matrix is always the first pumping period of the groundwater model. Auction code remaps those model periods onto each auction's current calendar dates.
+</p>
 
-<p><b>Timing assumption:</b> the response matrix is treated as calendar-independent. Period 1 in the response matrix is always the first pumping period of the groundwater model. Auction code remaps those model periods onto each auction's current calendar dates.</p>
+<p><b>Is your catchment different? We can do different.</b> The smart market approach works for any hydrological complexity. I have already built demonstration systems for fast surface systems with and without reservoir, 
+	complex systems with multiple reservoirs and multiple hydro generators. It boils down to being able to model the hydrological system. <b>If you need a different type of hydrology, let me know!</b></p>
+
+<h2>What can you do next?</h2>
+
+<p>Install the software. Try it out. Get so you can re-set the auction easily. Think about the implications for high-precision high-speed high-safety water trading in your catchment.</p>
+<p>See if you can break the market by bidding very high or bidding very low. What happens if one well owner tries to "corner the market"? 
+	Does the market run rough over the environment or does Forever Fair protect the market?</p>
+<p>Approach your local community, your water regulator, and your local representatives. Show them this demonstration code. Implementation will likely require changes in law. Make the case for much better water allocation.</p>
 
 <h2>Legal authority</h2>
 <p>Legally, the auction manager must have legal authority to run this auction. The auction manager must have legal authority to prescribe traders' rights.
@@ -131,7 +150,18 @@ The market distinguishes those different periods by different rights and differe
 
 <p>Water allocated for the immediate period is real water. The auction manager must commit to letting people take that water.
 	Because users can sell water they don't expect to need, they are likely to take all the water they have allocated. </p>
-	<p>Prices will differ by time and place. Because pumping at one location affects water levels elsewhere, the clearing price can differ from well to well and from period to period.</p>
+
+<p>Prices will differ by time and place. Because pumping at one location affects water levels elsewhere, the clearing price can differ from well to well and from period to period.</p>
+
+<p><b>Non-participants.</b> Users don't have to participate. They may not want to participate because they take too little to bother with trading,
+	they find the trading website too complicated, they don't like markets, or they are fearful of the market.
+	But eventually users will see strong incentive to participate. 
+	Forever Fair cannot be implemented unless the catchment manager can constrain users' ability to take water, 
+	because the catchment manager must be able to scale the right to take to the available water.
+	This requirement will be important to discuss and socialize during implementation.
+	The hydrologist must account for non-participants in the hydrology model,
+	because non-participants take water. The hydrologist will have to forecast how much water they will take, especially if the users take a lot.
+</p>
 
 <h2>Scaling for drought</h2> 
 
@@ -178,7 +208,7 @@ If the user doesn't have enough water, they are stuck.</p>
 	The auction manager does have to pay attention to license. </p>
 
 <p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, the hydrologist can use the GWM BOUNDS 
-	to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. When exported to the your_file_name.mps, the programmer can load them into the database via Programmmer.html.
+	to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. When exported to the your_file_name.mps, the programmer can load them into the database via Programmer.html.
 	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
 
 <p>Under any rights policy, this software assumes that only the initial license is subject to payments to traders
@@ -188,14 +218,14 @@ If the user doesn't have enough water, they are stuck.</p>
 
 <p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
 
-<p>I could write a function for Programmmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
+<p>I could write a function for Programmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
 
 <h2>Auction operation</h2>
 
 <p><b>Bid period.</b> Auctions run on a regular schedule. How often do you want to trade water? The length of the bid period should come from a consultation
 	 with the users and the hydrologist as to how often users want the auction to run and the physics of the local groundwater. If users wish, the auction manager
 	  could run the auction with bids each hour; hourly bids may require the hydrologist to have a model with hourly time steps. For groundwater, 
-	  that degree of resolution is likely unncecessary. For groundwater, a bid period of a day or a week is likely most appropriate.
+	  that degree of resolution is likely unnecessary. For groundwater, a bid period of a day or a week is likely most appropriate.
 	An optional tentative run before closing lets traders see likely outcomes and adjust their bids.</p>
 
 <p><b>Look at the hydrology.</b> An auction schedule should proceed logically from the response matrix and groundwater behavior.
@@ -216,7 +246,7 @@ For example, the auction manager runs each auction with four week-long bidding p
 <h1>The smart market clearing model for groundwater</h1>
 
 <p>The following is the mathematical formulation of the Forever Fair market-clearing model.
-	 At each auction run, the software creates this optimmization from the database and solves it.
+	 At each auction run, the software creates this optimization from the database and solves it.
 	The authoritative reference for this work is Raffensperger &amp; Milke, <a href="https://link.springer.com/book/10.1007/978-3-319-55008-4"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.
 </p>
 
@@ -277,7 +307,7 @@ The database schema already has the necessary column control_point_events.constr
 <ul>
 <li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
 <li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
-<li>Solver (src/RunAuctionModule.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
+<li>Solver (src/AuctionController.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
 <li>Results display: CatchmentView.html should label which bound is binding when reporting dual prices and slacks.</li>
 </ul>
 
@@ -293,7 +323,7 @@ The database schema already has the necessary column control_point_events.constr
 <ul>
 <li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
 <li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
-<li>Solver (src/RunAuctionModule.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
+<li>Solver (src/AuctionController.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
 <li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentView.</li>
 </ul>
 
@@ -396,6 +426,7 @@ The database schema already has the necessary column control_point_events.constr
 <p><a href="https://john.raffensperger.org/water/Raffensperger_water_bibliography.htm">Raffensperger's bibliography on smart markets for water resources</a>.</p>
 <p><a href="https://www.usgs.gov/software/gwm-groundwater-management-process-modflow-using-optimization">USGS GWM Groundwater Management Process</a>.</p>
 <p><a href="https://www.usgs.gov/software/modflow-6-usgs-modular-hydrologic-model">USGS MODFLOW</a>.</p>
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. Last updated 2026-04-30.</p>
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
 </body></html>
+
 

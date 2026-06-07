@@ -1,0 +1,1 @@
+The Forever Fair runAuction function writes these linear programming files, so you can review them after the Python code runs. For a large catchment, these files can get big. If you don't need them for debugging, you could comment out the line in runAuction that generates them.

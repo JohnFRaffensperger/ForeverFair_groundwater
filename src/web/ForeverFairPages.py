@@ -1,5 +1,5 @@
-# web/ForeverFairPages.py. Claude guided by JFR, 2026 04 21.
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+# web/ForeverFairPages.py. Claude guided by JFR, 2026 06 07.
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 # Purpose: Define FastAPI routes and wire web dependencies.
 
 from __future__ import annotations
@@ -1259,3 +1259,4 @@ def setup_first_auction():
 		return _flash_redirect("/programmer", f"Auction system set up: auction_id={auction_id}")
 	except Exception as e:
 		return _flash_redirect("/programmer", f"Error setting up auction system: {e}")
+

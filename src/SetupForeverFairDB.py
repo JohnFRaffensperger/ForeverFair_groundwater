@@ -1,5 +1,5 @@
 ﻿# SetupForeverFairDB.py. JFR with Claude's help, 2026-05-31.
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 # Purpose: Database creation, deletion, and GWM2K file import utilities.
 # Keep SCHEMA_DDL in sync with the executescript() call in services/repository.py.
 # This is the business logic from the implementing programmer's point of view.
@@ -813,13 +813,14 @@ def create_tiny_demonstration (db_path: Path, lp_path: Path | None = None, perio
 	upload_date = datetime.now().isoformat(timespec="minutes")
 
 	# Add traders, wells, control points.
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (1, 'A','A','A')")
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (2, 'B','B','B')")
-	conn.execute("INSERT INTO traders(trader_id, name_tag, trader_loginid, trader_first_name) VALUES (3, 'C','C','C')")
+	conn.execute("DELETE FROM traders WHERE name_tag IN ('A','B','C')")
+	conn.executemany("INSERT INTO traders(name_tag, trader_type, trader_loginid, trader_first_name) VALUES (?, 'well', ?, ?)",
+		[('A', 'A', 'A'), ('B', 'B', 'B'), ('C', 'C', 'C')])
+	trader_ids = {str(row[0]): int(row[1]) for row in conn.execute("SELECT name_tag, trader_id FROM traders WHERE name_tag IN ('A','B','C')").fetchall()}
 
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (1, 'well_A', 1)")
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (2, 'well_B', 2)")
-	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (3, 'well_C', 3)")
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (?, ?, ?)", (1, 'well_A', trader_ids['A']))
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (?, ?, ?)", (2, 'well_B', trader_ids['B']))
+	conn.execute("INSERT INTO wells(well_id, name, trader_id) VALUES (?, ?, ?)", (3, 'well_C', trader_ids['C']))
 
 	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (1, 'Coast')")
 	conn.execute("INSERT INTO control_points(control_point_id, name) VALUES (2, 'Stream')")
@@ -885,29 +886,29 @@ def create_tiny_demonstration (db_path: Path, lp_path: Path | None = None, perio
 	conn.execute("DELETE FROM well_license")
 	license_rows: list[tuple[int, int, int, float, None]] = []
 	for bid_period in range(1, 5): # All 3 wells start with license of 5 m^3 per period.
-		license_rows.append((1, 1, bid_period, 5.0, None))
-		license_rows.append((2, 2, bid_period, 5.0, None))
-		license_rows.append((3, 3, bid_period, 5.0, None))
+		license_rows.append((trader_ids['A'], 1, bid_period, 5.0, None))
+		license_rows.append((trader_ids['B'], 2, bid_period, 5.0, None))
+		license_rows.append((trader_ids['C'], 3, bid_period, 5.0, None))
 	conn.executemany("INSERT INTO well_license(trader_id, well_id, bid_period, license_quantity, license_date) VALUES (?,?,?,?,?)", license_rows,)
 
 	conn.execute("DELETE FROM well_bids")
 	bid_rows: list[tuple[Any, ...]] = []
 	#        well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default,
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((1, 1, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, trader_ids['A'], 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, trader_ids['A'], 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, trader_ids['A'], 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((1, trader_ids['A'], 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
 
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((2, 2, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, trader_ids['B'], 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, trader_ids['B'], 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, trader_ids['B'], 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((2, trader_ids['B'], 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
 
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, trader_ids['C'], 1, upload_date, pumping_date[0], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, trader_ids['C'], 1, upload_date, pumping_date[1], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, trader_ids['C'], 1, upload_date, pumping_date[2], 0, 3.3333333, 1.0, 3.3333333, 2.0, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
 	# Changing step 2 from $2 to $1.8 to eliminate a dual optima.
-	bid_rows.append((3, 3, 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 1.8, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
+	bid_rows.append((3, trader_ids['C'], 1, upload_date, pumping_date[3], 0, 3.3333333, 1.0, 3.3333333, 1.8, 3.3333333, 4.0, None, None, None, None, 0, 0, ))
 	conn.executemany("INSERT INTO well_bids(well_id, trader_id, auction_id, bid_date, pumping_date, expiry_date, qty1, price1, qty2, price2, qty3, price3, qty4, price4, qty5, price5, is_bid_default, deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", bid_rows)
 
 	conn.commit()
@@ -976,3 +977,4 @@ if __name__ == "__main__":
 	# In your directory ../ForeverFair2026, edit your ".env" file to read:
 	# 	FOREVER_FAIR_CATCHMENT=Tiny_demonstration
 	setup_tianqiao()
+

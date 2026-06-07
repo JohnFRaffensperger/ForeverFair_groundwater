@@ -1,0 +1,44 @@
+Forever Fair Public Interest License v1.0
+
+Copyright (c) 2026 John F. Raffensperger
+
+1. Purpose
+This license allows no-charge use of this software for government and research purposes, while reserving commercial rights to the copyright holder.
+
+2. Definitions
+"Software" means the code, documentation, and related materials in this repository.
+"Government Entity" means a local, regional, state, national, or intergovernmental public authority, including agencies and departments acting in their official capacity.
+"Research Use" means non-commercial academic, educational, or nonprofit scientific research.
+"For-Profit Use" means any use by or for a for-profit entity, or any use intended for commercial advantage or monetary compensation, including internal business use, paid consulting delivery, SaaS, hosted services, and commercial product integration.
+
+3. License Grant (No-Charge Public-Interest Use)
+Subject to this license, the copyright holder grants Government Entities and Research Use recipients a worldwide, non-exclusive, royalty-free license to:
+- use, copy, run, and modify the Software;
+- distribute unmodified or modified copies of the Software;
+provided that all distributions preserve this license and the copyright notice.
+
+4. Commercial Restriction
+No right is granted for For-Profit Use under this license.
+Any For-Profit Use requires a separate written commercial license from the copyright holder.
+
+5. Redistribution Conditions
+If you redistribute the Software (modified or unmodified), you must:
+- include a copy of this license;
+- retain existing copyright notices;
+- state that your copy is modified, if applicable.
+
+6. No Trademark License
+This license does not grant rights to use the name "Forever Fair" or associated logos as a trademark, except as needed for accurate attribution.
+
+7. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+8. Limitation of Liability
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+9. Governing Version
+If there is a conflict between repository notices and this file, this LICENSE file controls.
+
+10. Commercial Licensing Contact
+For commercial licensing inquiries, contact John F. Raffensperger at:
+https://john.raffensperger.org, john.raffensperger@gmail.com.

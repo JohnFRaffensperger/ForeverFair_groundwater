@@ -1,4 +1,4 @@
-<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Environmental Buyer Console</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body data-max-bid-steps="{{ max_bid_steps }}">
@@ -84,7 +84,7 @@
 	<td style="text-align: right;">{% if row.payment_value is not none %}${{ '{:+,.2f}'.format(row.payment_value) }}{% else %}&mdash;{% endif %}</td>
 </tr>{% endfor %}</tbody></table>
 
-<p>Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.</p>
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.</p>
 <script>
 var submitEnvBidButton = document.getElementById('submit-env-bid-btn');
 var bidLockStatus = document.getElementById('bid-lock-status');
@@ -176,3 +176,4 @@ if (submitEnvBidButton) {
 }
 </script>
 </body></html>
+

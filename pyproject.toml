@@ -1,4 +1,4 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "groundwater-smart-market"
 version = "0.1.0"
 description = "Forever Fair 3.0 jurisdiction-neutral groundwater smart-market web application."
-license = {text = "Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited."}
+license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

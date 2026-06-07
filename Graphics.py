@@ -1,5 +1,5 @@
-# Graphics.py
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+﻿# Graphics.py
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 from __future__ import annotations
 
 from pathlib import Path
@@ -156,3 +156,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

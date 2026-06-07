@@ -1,5 +1,5 @@
-# AuctionController.py. Claude guided by JFR, 2026 05 14.
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+# AuctionController.py. Claude guided by JFR, 2026 06 07.
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 # Purpose: Call for bids, clear ("run") the auction with optimization, calculate rights and cash exchanges.
 # This is the business logic from the auction manager's point of view.
 

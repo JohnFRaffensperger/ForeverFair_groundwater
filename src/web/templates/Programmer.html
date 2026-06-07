@@ -1,4 +1,4 @@
-<!-- Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited. -->
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="{{ url_for('static', path='/foreverfair.css') }}"></head>
 <body>
@@ -7,13 +7,13 @@
 
 <h1><img src="{{ url_for('static', path='/foreverfair.png') }}" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
 
-<p>The software architecture for web routes and pages is the FastAPI app in src/web/ForeverFairPages.py. An SQLite repository provides data persistence in src/services/repository.py.
+<p>The software architecture for web routes and pages is the FastAPI app in src/web/ForeverFairPages.py. SQLite data persistence and most database access methods are in src/ForeverFairData.py.
 The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt anything.
-The linear programming optimization solver is PuLP model in src/RunAuctionModule.py. Auction orchestration is done in src/AuctionController.py and src/BiddingController.py.</p>
+The linear programming optimization model is built and solved in src/AuctionController.py, with bid handling in src/BiddingController.py.</p>
 
-<p><b style="color: red;">This is not designed to be a secure website!</b> It is designed for ease of use by a researcher or experienced hydrologist.
-	For example, the website tracks logged-in traders, but not the auction manager or other administrators. 
-  To make this demo code a secure website, a programmer would have to do more work. See <a href="/database-documentation#security-hardening">Security hardening for production deployment</a> in the Database documentation for recommended steps and open-source packages.</p>
+<p><b style="color: red;">Demo-only authentication notice:</b> this research demo is intentionally not production-secure. 
+	Trader access is selected from a list (or via super-login buttons on the Researcher page), and administrator pages are not protected by per-user passwords.
+	Do not deploy this as-is on a public network. For production requirements, see <a href="/database-documentation#security-hardening">Security hardening for production deployment</a> in the Database documentation.</p>
 
 <h2>Installing the necessary Python libraries</h2>
 <p>1. From the workspace root (folder ForeverFair2026), first install all dependencies with the command below. That will install FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
@@ -117,9 +117,9 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 
 <h2>2. Import .decvar file</h2>
 <p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
-	The layer, row, and col fields are the MODFLOW grid coordinates. Module import_decvar.py stores this data in table wells with one well row per unique well number.
+  The layer, row, and col fields are the MODFLOW grid coordinates. Function SetupForeverFairDB.import_decvar stores this data in table wells with one well row per unique well number.
 	(Confusingly, GWM writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
-	The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
+  The SetupForeverFairDB.import_decvar importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
 <div id="decvar-result" style="display:none"></div>
 <form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
 <p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
@@ -129,8 +129,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p>Forever Fair uses this information for the list of control points and head constraints by time periods.
 	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
 	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
-  Module import_hedcon.py creates one control-point row per unique control-point number in table control_points. 
-  The module also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
+  Function SetupForeverFairDB.import_hedcon creates one control-point row per unique control-point number in table control_points. 
+  The function also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
 	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
 (Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
 
@@ -173,7 +173,7 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
 </form>
 
-<h3>Optional: upload a background image for the catchment map</h2>
+<h3>Optional: upload a background image for the catchment map</h3>
 <p>Upload a bitmap image for the catchment map and enter its geographic bounding box as west, south, east, north.</p>
 
 <form id="map-background-form" method="post" action="/setup/import-map-background" enctype="multipart/form-data">
@@ -190,8 +190,8 @@ The linear programming optimization solver is PuLP model in src/RunAuctionModule
 <p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
 	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
   This code writes to tables response_matrix, control_point_events, and well_license.
-	(Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
-	So one index NNNN encodes control point number and time period. The import_decvar.py importer unpacks that encoding and inserts only one row per unique well number.)
+  (Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
+  So one index NNNN encodes control point number and time period. The SetupForeverFairDB.import_mps parser unpacks that encoding and writes response rows and period-indexed constraints.)
 	<i>Caution, import may be slow because these can be big files.</i></p>
 
 	<div id="mps-result" style="display:none"></div>

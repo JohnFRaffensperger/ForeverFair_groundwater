@@ -1,5 +1,5 @@
-# BiddingController.py. Claude guided by JFR, 2026 05 31.
-# Copyright 2026 John F. Raffensperger. All rights reserved. Unauthorised copying or redistribution is prohibited.
+# BiddingController.py. Claude guided by JFR, 2026 06 07.
+# Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms.
 # Purpose: Validate, submit, and manage trader bids. This is the business logic from the trader's and well's point of view.
 
 from __future__ import annotations
@@ -115,3 +115,4 @@ def submitEnvironmentalBid(foreverFairData_instance: ForeverFairData, trader_id:
 
 def deleteBid(foreverFairData_instance: ForeverFairData, bid_id: int, trader_id: int) -> bool: 
 	return foreverFairData_instance.delete_bid(bid_id=bid_id, current_trader_id=trader_id)
+
