@@ -1,0 +1,1066 @@
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Trader Console</title><link rel="stylesheet" href="foreverfair.css"></head>
+<body data-max-bid-steps="3">
+
+<p><a href="Researcher.html">Researcher</a> | <a href="Hydrologist.html">Hydrologist</a> | <a href="Programmer.html">Programmer</a> | <a href="AuctionManager.html">Auction manager</a> | <a href="LoginPage.html">Trader login</a> | <a href="EnvironmentalBuyer.html">Environmental buyer</a> | <strong>Trader console</strong> | <a href="Database_documentation.html">Database docs</a> | <a href="CatchmentView.html">Catchment view</a> | <a href="Programmer.html">API</a> | <strong>Catchment: Tianqiao</strong></p>
+<p style='text-align:center;'>STATIC MOCKUP</p>
+
+<h1><img src="foreverfair.png" alt="Forever Fair logo"> Forever Fair Trader Console</h1>
+
+<p>Welcome, <strong>Baicai</strong>. (Trader id 15.)
+	You are bidding in auction 3, which is <strong>final, so you will not be able to bid again this period</strong>.
+	Bidding for this auction  is open now, and closes 2030-01-18T16:00. <span id="bid-time-remaining" data-close-date="2030-01-18T16:00"></span>
+</p>
+
+<form method="post" action="/trader/select-well" style="display: inline;">
+<p>Your well is <strong>gwm-well-14</strong> (39.0648, 111.1265), well id 14.
+
+</p></form>
+
+
+
+<h2>Bid entry console <button type="button" id="submit-bid-btn">Submit your bid for auction 3</button> <span id="bid-lock-status" role="alert"></span> <span role="alert">Not yet submitted. An automatic bid is in place.</span></h2>
+<p>Press submit as often as you like. Each submission simply overwrites the previous bid until auction closing.</p>
+<p>The bid table has SPEED entry: change any value and the values below it change, too. NOTE: you are not likely to get bids under the clearing price (the red dotted line in the bid steps graph).</p>
+
+<table data-console-table="true" style="table-layout: auto; border-collapse: collapse;">
+<colgroup><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 10em;"></colgroup>
+
+<thead><tr>
+		<th rowspan="2">Start of pumping period</th>
+		<th rowspan="2" style="text-align: right;">Cubic meters quota from auction 2</th>
+		<th rowspan="2" style="text-align: right;">Scaled quota</th>
+		<th rowspan="2" style="text-align: right;">Clearing price, $/m3, from auction 2</th>
+
+		
+			<th colspan="2" style="text-align: center;">Step 1<span> quantity, price</span></th>
+			<th colspan="2" style="text-align: center;">Step 2<span> quantity, price</span></th>
+			<th colspan="2" style="text-align: center;">Step 3<span> quantity, price</span></th>
+			<th rowspan="2">Bid steps with last clearing price</th>
+		
+	</tr>
+	<tr><th style="text-align: center;">Cubic meters</th><th style="text-align: center;">$/m3</th><th style="text-align: center;">Cubic meters</th><th style="text-align: center;">$/m3</th><th style="text-align: center;">Cubic meters</th><th style="text-align: center;">$/m3</th></tr></thead>
+
+	<tbody>
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="1" data-clearing-price="-0.018652386"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="1">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-01-21 00:00:00</td>
+		<td style="text-align: right;">19,394.3</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0187</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="15,471.8" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="15,471.8"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="15,471.8"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="2" data-clearing-price="-0.02052875"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="2">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-01-28 00:00:00</td>
+		<td style="text-align: right;">16,970.2</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0205</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="9,697.1" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="9,697.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="9,697.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="3" data-clearing-price="-0.039304654"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="3">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-02-04 00:00:00</td>
+		<td style="text-align: right;">26,361.5</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0393</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="16,970.2" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="16,970.2"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="16,970.2"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="4" data-clearing-price="-0.025483265"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="4">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-02-11 00:00:00</td>
+		<td style="text-align: right;">17,243.0</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0255</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="26,361.5" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="26,361.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="26,361.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="5" data-clearing-price="-0.0177834"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="5">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-02-18 00:00:00</td>
+		<td style="text-align: right;">23,549.6</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0178</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="17,243.0" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="17,243.0"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="17,243.0"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="6" data-clearing-price="-0.021759312"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="6">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-02-25 00:00:00</td>
+		<td style="text-align: right;">20,172.1</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0218</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="11,774.8" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="11,774.8"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="11,774.8"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="7" data-clearing-price="-0.003683747"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="7">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-03-04 00:00:00</td>
+		<td style="text-align: right;">19,764.1</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0037</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="20,172.1" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="20,172.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="20,172.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="8" data-clearing-price="-0.0096481638"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="8">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-03-11 00:00:00</td>
+		<td style="text-align: right;">69,328.7</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0096</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="6,588.0" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="6,588.0"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="6,588.0"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="9" data-clearing-price="-0.020396417"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="9">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-03-18 00:00:00</td>
+		<td style="text-align: right;">10,381.1</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0204</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="23,109.6" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="23,109.6"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="23,109.6"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="10" data-clearing-price="-0.0099809794"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="10">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-03-25 00:00:00</td>
+		<td style="text-align: right;">40,678.6</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0100</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="10,381.1" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="10,381.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="10,381.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="11" data-clearing-price="-0.034928901"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="11">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-04-01 00:00:00</td>
+		<td style="text-align: right;">27,835.9</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0349</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="13,559.5" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="13,559.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="13,559.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="12" data-clearing-price="-0.020966154"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="12">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-04-08 00:00:00</td>
+		<td style="text-align: right;">9,837.1</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0210</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="27,835.9" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="27,835.9"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="27,835.9"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="13" data-clearing-price="-0.021859443"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="13">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-04-15 00:00:00</td>
+		<td style="text-align: right;">9,338.7</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0219</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="9,837.1" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="9,837.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="9,837.1"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="14" data-clearing-price="-0.02"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="14">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-04-22 00:00:00</td>
+		<td style="text-align: right;">44,698.3</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0200</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="9,338.7" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="9,338.7"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="9,338.7"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="15" data-clearing-price="-0.036890493"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="15">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-04-29 00:00:00</td>
+		<td style="text-align: right;">34,143.4</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0369</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="22,423.5" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="22,423.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="22,423.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="16" data-clearing-price="-0.018466782"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="16">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-05-06 00:00:00</td>
+		<td style="text-align: right;">57,287.2</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0185</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="34,143.4" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="34,143.4"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="34,143.4"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="17" data-clearing-price="-0.0014314577"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="17">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-05-13 00:00:00</td>
+		<td style="text-align: right;">28,807.5</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0014</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="28,643.6" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="28,643.6"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="28,643.6"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	
+	<tr data-console-row="true" data-auction-id="3" data-well-id="14" data-period-id="18" data-clearing-price="0.0"><form method="post" action="/bids/new" data-console-bid-form="true">
+		<input type="hidden" name="auction_id" value="3">
+		<input type="hidden" name="well_id" value="14">
+		<input type="hidden" name="period_id" value="18">
+		<input type="hidden" name="return_to" value="/trader">
+		
+		<td>2030-05-20 00:00:00</td>
+		<td style="text-align: right;">83,058.9</td>
+		<td style="text-align: right;">0.0</td>
+		<td style="text-align: right;">$0.0000</td>
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity" inputmode="decimal" placeholder="0.0" value="9,602.5" required></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price" inputmode="decimal" placeholder="0.00" value="0.01" required></td>
+		
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity2" inputmode="decimal" placeholder="" value="9,602.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price2" inputmode="decimal" placeholder="" value="0.02"></td>
+		
+		<td><input data-console-type="qty" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="quantity3" inputmode="decimal" placeholder="" value="9,602.5"></td>
+		<td><input data-console-type="price" style="text-align: right; width: 6em; box-sizing: border-box; padding-top: 1px; padding-bottom: 1px;" type="text" name="price3" inputmode="decimal" placeholder="" value="0.04"></td>
+		
+		<!-- viewBox="0 0 132 41" controls the space for the bid curve (not its size). The last value is the height. -->
+		<td style="text-align: center; padding-top: 1px; padding-bottom: 1px;"><svg data-bid-graph="true" width="132" viewBox="0 0 132 32" role="img" aria-label="Bid step graph"></svg></td>
+		</form></tr>
+	</tbody>
+</table>
+
+
+
+<h2>Your bids from the auction 2, submitted 2026-06-06 19:15:27.</h2>
+
+<table id="last-auction-bids-table" style="table-layout: auto;">
+<colgroup><col style="width: 10em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 7em;"><col style="width: 8em;"><col style="width: 8em;"><col style="width: 8em;"><col style="width: 9em;"><col style="width: 11em;"></colgroup>
+
+<thead><tr>
+	<th rowspan="2" data-sort-col="0">Start of pumping period</th>
+	<th rowspan="2" data-sort-col="1">Bid id</th>
+	<th colspan="2" style="text-align: center;">Step 1<span> quantity, price</span></th><th colspan="2" style="text-align: center;">Step 2<span> quantity, price</span></th><th colspan="2" style="text-align: center;">Step 3<span> quantity, price</span></th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="8">Cubic meters quota from auction 2</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="9">Cubic meters quota from auction 3</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="10">Change in quota (m3)</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="11">Clearing price, $/m3, from auction 2</th>
+	<th rowspan="2" style="text-align: right;" data-sort-col="12">Receipt</th>
+	</tr><tr><th style="text-align: right;" data-sort-col="2">Cubic meters</th><th style="text-align: right;" data-sort-col="3">$/m3</th><th style="text-align: right;" data-sort-col="4">Cubic meters</th><th style="text-align: right;" data-sort-col="5">$/m3</th><th style="text-align: right;" data-sort-col="6">Cubic meters</th><th style="text-align: right;" data-sort-col="7">$/m3</th></tr></thead>
+
+	<tbody>
+	<tr><td>2030-05-20 00:00:00</td>
+		<td>846</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="27686.31190816063">27,686.3</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="27686.31190816063">27,686.3</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="27686.31190816063">27,686.3</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="83058.936">83,058.9</td>
+		<td style="text-align: right;" data-sort="83058.936">83,058.9</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.0">$0.0000</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-05-13 00:00:00</td>
+		<td>845</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="9602.500879379553">9,602.5</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9602.500879379553">9,602.5</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9602.500879379553">9,602.5</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="28807.503">28,807.5</td>
+		<td style="text-align: right;" data-sort="28807.503">28,807.5</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.0014314577">$0.0014</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-05-06 00:00:00</td>
+		<td>844</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="28643.600611860442">28,643.6</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="28643.600611860442">28,643.6</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="28643.600611860442">28,643.6</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="57287.201">57,287.2</td>
+		<td style="text-align: right;" data-sort="57287.201">57,287.2</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.018466782">$0.0185</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-04-29 00:00:00</td>
+		<td>843</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="34143.36376529591">34,143.4</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="34143.36376529591">34,143.4</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="34143.36376529591">34,143.4</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="34143.364">34,143.4</td>
+		<td style="text-align: right;" data-sort="34143.364">34,143.4</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.036890493">$0.0369</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-04-22 00:00:00</td>
+		<td>842</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="22423.544480511147">22,423.5</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="22423.544480511147">22,423.5</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="22423.544480511147">22,423.5</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="44698.271">44,698.3</td>
+		<td style="text-align: right;" data-sort="44698.271">44,698.3</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.02">$0.0200</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-04-15 00:00:00</td>
+		<td>841</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="9338.747066637641">9,338.7</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9338.747066637641">9,338.7</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9338.747066637641">9,338.7</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="9338.7471">9,338.7</td>
+		<td style="text-align: right;" data-sort="9338.7471">9,338.7</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.021859443">$0.0219</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-04-08 00:00:00</td>
+		<td>840</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="9837.140249540562">9,837.1</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9837.140249540562">9,837.1</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9837.140249540562">9,837.1</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="9837.1402">9,837.1</td>
+		<td style="text-align: right;" data-sort="9837.1402">9,837.1</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.020966154">$0.0210</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-04-01 00:00:00</td>
+		<td>839</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="27835.878050500774">27,835.9</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="27835.878050500774">27,835.9</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="27835.878050500774">27,835.9</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="27835.878">27,835.9</td>
+		<td style="text-align: right;" data-sort="27835.878">27,835.9</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.034928901">$0.0349</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-03-25 00:00:00</td>
+		<td>838</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="13559.548265700838">13,559.5</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="13559.548265700838">13,559.5</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="13559.548265700838">13,559.5</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="40678.645">40,678.6</td>
+		<td style="text-align: right;" data-sort="40678.645">40,678.6</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.0099809794">$0.0100</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-03-18 00:00:00</td>
+		<td>837</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="10381.074600204478">10,381.1</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="10381.074600204478">10,381.1</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="10381.074600204478">10,381.1</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="10381.075">10,381.1</td>
+		<td style="text-align: right;" data-sort="10381.075">10,381.1</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.020396417">$0.0204</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-03-11 00:00:00</td>
+		<td>836</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="23109.58271852472">23,109.6</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="23109.58271852472">23,109.6</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="23109.58271852472">23,109.6</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="69328.748">69,328.7</td>
+		<td style="text-align: right;" data-sort="69328.748">69,328.7</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.0096481638">$0.0096</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-03-04 00:00:00</td>
+		<td>835</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="6588.027540255563">6,588.0</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="6588.027540255563">6,588.0</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="6588.027540255563">6,588.0</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="19764.083">19,764.1</td>
+		<td style="text-align: right;" data-sort="19764.083">19,764.1</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.003683747">$0.0037</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-02-25 00:00:00</td>
+		<td>834</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="20172.091692110673">20,172.1</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="20172.091692110673">20,172.1</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="20172.091692110673">20,172.1</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="20172.092">20,172.1</td>
+		<td style="text-align: right;" data-sort="20172.092">20,172.1</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.021759312">$0.0218</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-02-18 00:00:00</td>
+		<td>833</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="11774.80363674903">11,774.8</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="11774.80363674903">11,774.8</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="11774.80363674903">11,774.8</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="23549.607">23,549.6</td>
+		<td style="text-align: right;" data-sort="23549.607">23,549.6</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.0177834">$0.0178</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-02-11 00:00:00</td>
+		<td>832</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="17243.02798101239">17,243.0</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="17243.02798101239">17,243.0</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="17243.02798101239">17,243.0</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="17243.028">17,243.0</td>
+		<td style="text-align: right;" data-sort="17243.028">17,243.0</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.025483265">$0.0255</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-02-04 00:00:00</td>
+		<td>831</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="26361.452976653367">26,361.5</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="26361.452976653367">26,361.5</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="26361.452976653367">26,361.5</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="26361.453">26,361.5</td>
+		<td style="text-align: right;" data-sort="26361.453">26,361.5</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.039304654">$0.0393</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-01-28 00:00:00</td>
+		<td>830</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="16970.158702115667">16,970.2</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="16970.158702115667">16,970.2</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="16970.158702115667">16,970.2</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="16970.159">16,970.2</td>
+		<td style="text-align: right;" data-sort="16970.159">16,970.2</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.02052875">$0.0205</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-01-21 00:00:00</td>
+		<td>829</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="9697.13652402907">9,697.1</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9697.13652402907">9,697.1</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="9697.13652402907">9,697.1</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="19394.273">19,394.3</td>
+		<td style="text-align: right;" data-sort="19394.273">19,394.3</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.018652386">$0.0187</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+	<tr><td>2030-01-14 00:00:00</td>
+		<td>828</td>
+		
+		
+		
+		<td style="text-align: right;" data-sort="15471.786622626081">15,471.8</td>
+		<td style="text-align: right;" data-sort="0.01">$0.01</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="15471.786622626081">15,471.8</td>
+		<td style="text-align: right;" data-sort="0.02">$0.02</td>
+		
+		
+		
+		
+		<td style="text-align: right;" data-sort="15471.786622626081">15,471.8</td>
+		<td style="text-align: right;" data-sort="0.04">$0.04</td>
+		
+		
+		<td style="text-align: right;" data-sort="30943.573">30,943.6</td>
+		<td style="text-align: right;" data-sort="30943.573">30,943.6</td>
+		<td style="text-align: right;" data-sort="0.0">+0.0</td>
+		<td style="text-align: right;" data-sort="0.019283519">$0.0193</td>
+		<td style="text-align: right;" data-sort="0.0">$+0.00</td>
+	</tr>
+</tbody></table>
+
+<h2>Trader guide</h2>
+
+<h3>What this system does</h3>
+<p>Forever Fair runs a groundwater allocation auction. Traders submit bids by period and well. The system clears bids against environmental constraints and returns accepted quantities and implied prices.</p>
+
+<h3>Before you participate</h3>
+<ul>
+  <li>Your account must be configured by the auction manager.</li>
+  <li>Your wells must be recorded in the system.</li>
+  <li>You should understand market rules and payment obligations.</li>
+  <li>Your metering and reporting obligations must be in place.</li>
+</ul>
+
+<h3>We will adjust your initial quota to the available water.</h3>
+<p>For the first auction, and any auction where the forecasted aquifer head changes, we will scale your quota separately for each control point and time period.
+	We will convert your well quota will be converted to time-based quota for each environmental constraint.</p>
+
+<h3>How to submit a bid</h3>
+<p>Bid your value for the next unit of water. In practice this is a stepwise value curve: your first units may be highly valuable, while additional units may be worth less.</p>
+
+<ol>
+  <li>Log in at the login page and select your trader identity.</li>
+  <li>Use the row for the target auction period.</li>
+  <li>Enter quantity and price for the first bid step, then add optional later steps in the same row.</li>
+  <li>Submit the row. It will then appear in your bid history.</li>
+  <li><b>Standing bids:</b> We will reuse your last bids unless you change them.</li>
+</ol>
+
+<h3>Trading schedule and flexibility</h3>
+<ul>
+  <li>Auctions are expected to run regularly (for example weekly, and more frequently in drought).</li>
+  <li>Tentative auction runs are useful for learning likely outcomes before final commitment.</li>
+  <li>If you do not rebid in a cycle, we will automatically re-use your prior bids.</li>
+</ul>
+
+<h3>Current validation rules</h3>
+<ul>
+  <li>Auction must be open.</li>
+  <li>The selected well must belong to your trader account.</li>
+  <li>Period must be part of the active auction.</li>
+  <li>Quantity and price must be positive.</li>
+</ul>
+
+<h3>Interpreting results</h3>
+<ul>
+  <li>Accepted quantity may be less than submitted quantity.</li>
+  <li>Prices are driven by binding control-point constraints.</li>
+  <li>Future periods may be revised in later operational updates.</li>
+</ul>
+
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
+
+</body></html>

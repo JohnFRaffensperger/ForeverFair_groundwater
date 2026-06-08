@@ -1,0 +1,162 @@
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
+<!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="foreverfair.css"></head>
+<body>
+
+<p><a href="Researcher.html">Researcher</a> | <a href="Hydrologist.html">Hydrologist</a> | <a href="Programmer.html">Programmer</a> | <a href="AuctionManager.html">Auction manager</a> | <a href="LoginPage.html">Trader login</a> | <a href="EnvironmentalBuyer.html">Environmental buyer</a> | <a href="Database_documentation.html">Database docs</a> | <a href="CatchmentView.html">Catchment view</a> | <a href="Programmer.html">API</a> | <strong>Catchment: Tianqiao</strong></p>
+<p style='text-align:center;'>STATIC MOCKUP</p>
+
+<h1><img src="foreverfair.png" alt="Forever Fair logo"> Forever Fair Hydrologist's Page</h1>
+
+
+<p>Head-constraint bounds were last imported: <strong>2026-06-06 15:14:11</strong>. New auctions will use these bounds.</p>
+
+
+
+
+<h2>Try changing the aquifer head</h2>
+
+<p>Here's the scenario: you've set up the auction (as described below) with forecasted aquifer heads and firm head limits. After the auction has run a week or two, you realize that the weather forecast
+	has changed, so the forecasted aquifer heads are wrong. This research code has a function create_synthetic_new_head (auction_id) that will read the current database, synthetically adjust the "current" aquifer head.
+	The button will download the CSV file for you. Then you can <a href="Programmer.html">tell the programmer</a> to upload new aquifer heads. 
+	YOU ARE RESPONSIBLE for ensuring feasible head limits: if you try to upload head limits with no allowable drawdown, the code will clip the data: allowable_head_change = min (0, minimum_head &ndash; actual_head_start).
+	You <i>must</i> set proper head limits. They are the boundaries of the market. The market is likely to allocate the full allowable limit, so set them carefully. 
+	The crude boxes below are simply so you can conveniently test the ability to upload new aquifer head limits.</p>
+
+<form method="post" action="/hydrologist/create-synthetic-head-file">
+<table>
+	<tr><td>Start pumping date:</td>
+		<td><label for="change_in_forecast_0">2030-01-21</label></td>
+		<td><label for="change_in_forecast_1">2030-01-28</label></td>
+		<td><label for="change_in_forecast_2">2030-02-04</label></td>
+		<td><label for="change_in_forecast_3">2030-02-11</label></td>
+		<td></td>
+	</tr>
+	<tr><td>Factor change in head, e.g., 1.03 or 0.97:</td>
+		<td><input id="change_in_forecast_0" name="change_in_forecast_0" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_1" name="change_in_forecast_1" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_2" name="change_in_forecast_2" type="number" step="0.01" value="1.0" required></td>
+		<td><input id="change_in_forecast_3" name="change_in_forecast_3" type="number" step="0.01" value="1.0" required></td>
+		<td><button type="submit">Create new aquifer head file</button></td>
+	</tr>
+</table>
+</form>
+
+<h1>Setting up Forever Fair</h1>
+	
+<p>The Forever Fair market is centered on a groundwater model. The hydrologist has a key role!
+	The groundwater model is the source of the response matrix, well locations, and head constraints at control points.
+	The response matrix is a linearized representation of the hydrology; its values describe the effect of pumping from wells and head at various control points. 
+	Through the response factors, each accepted bid affects the control point constraints. 
+	Since hydrologic effects propagate over time, the market clearing optimization must support lagged responses, so pumping does not injure control points in future periods.
+	Therefore, to set up the market, the programmer needs a groundwater model that can produce this response matrix.
+	The hydrologist must define environmental limits as control points with head limits. This is best done with code like 
+	USGS <a href="Hydrologist.html">GWM Groundwater Management Process</a>. 
+	GWM can produce important files needed: decvar, hedcon, and mps. But the hydrologist must set this up!</p>
+
+<p>To set up the market clearing database, the hydrologist should prepare these groundwater files for the programmer:</p>
+<ul>
+<li>your_file_name.decvar listing the wells with MODFLOW layer, row, and column,</li>
+<li>your_file_name.hedcon listing the control points,</li>
+<li>and your_file_name.mps which has the response matrix, control point head limits by time period, and initial rights records.</li>
+</ul>
+
+<p>This software version assumes that the response physics of the aquifer do not change with the auction schedule.
+Therefore, this version treats the response matrix timing as relative, i.e., the effects in a relative number of periods after pumping occurs. 
+This allows one response matrix to be used for multiple auctions. The hydrologist should confirm the sign convention for response factors and bounds. Check that period indexing is consistent across all files. Verify that each active well has the required nonzero response coefficients for relevant control points and periods.
+Validate that bound values and units match bid quantities. Run a small known case and compare prices and accepted quantities with independent calculations.</p>
+
+<p><b>Period indexing convention:</b> period 1 in the response matrix always means the first pumping period in the hydrology model, not a fixed calendar date. During auction clearing, these model periods are remapped to the auction's local timeline.</p>
+
+<p><b>Response-matrix sparsity:</b> Forever Fair does not require a full dense response matrix. If a response coefficient is not provided for a tuple (control point, effect period, well, pumping period), the model treats that missing entry as zero response.</p>
+
+<p><b>Causality rule for inputs:</b> do not enter response coefficients where pumping period is later than effect period (pumping_period &gt; effect_period). Enter only physically causal terms where pumping can affect the same or a later effect period.</p>
+
+<h2>Units convention</h2>
+
+<p>Careful with units! Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
+
+<p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>. 
+You can read about the Tianqiao case in <a href="Researcher.html">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, Ã¢â‚¬Å“Planning a smart market for Tianqiao groundwater,Ã¢â‚¬Â 2010.</a></p>
+
+<p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
+
+<h2>Timing, the calendar, pumping periods</h2>
+
+<p>The Forever Fair system has a built-in sophisticated calendar based first on the hydrology and second on what users want to do. You already understand the hydrology. The ability to trade at high frequency will blow your mind.</p>
+
+<p>As a hydrologist, you understand that the aquifer is a reservoir. Buying today reduces available water later. It's all connected. Trading runs through the whole hydrological season, which ends with a hydrological reset when people are not actively taking any water and inflows can renew the aquifer.
+	You are accustomed to running hydrological models at seasonal or annual lengths. Start thinking about running them at much shorter times, weekly, daily, maybe even hourly. The part that should blow your mind is the ability to change allocations so quickly!</p>
+
+<p>For groundwater, because the aquifer is a reservoir, every weekly auction schedules all water over the whole remaining season. At the beginning, users will establish their preferred schedule of irrigation based on the forecast.
+	At every auction, they have the opportunity to change their remaining schedule.</p>
+
+<p>You should choose the number of bidding periods in consultation with the users. Suppose you think the irrigation season runs 20 weeks. 
+	They may not care about the last two weeks, but you may know if users take too much in those two weeks that the aquifer can be overdrawn in later weeks. 
+	What is mathematically necessary for the hydrology? Bring your expertise to the market schedule!</p>
+	
+<h2>Files from your groundwater model</h2>
+<table><thead><tr><th>Data</th><th>Meaning</th><th>Use in the market</th></tr></thead><tbody>
+	<tr><td>decvar file: wells</td><td>Locations and assignment of wells to traders.</td><td>The users' abstractions of groundwater</td></tr>
+	<tr><td>mps file: response factors</td><td>Measures of how pumping at a well in a given time period affects head on control points in later time periods. 
+	Periods are <em>relative</em> offsets from the pumping event, not calendar dates. Units are meters per (cubic meter per period).</td><td>Coefficients in LP constraints.</td></tr>
+	<tr><td>hedcon file: control points</td><td>Locations where head limits apply. For example, the hydrologist could specify control points at wells, wetlands, and points near saltwater coasts (to prevent saltwater intrusion).</td><td>Optimization constraints.</td></tr>
+	<tr><td>hedcon and mps files: control point bounds</td><td>Maximum allowable change in head per period. Head limits are currently set only for maximum drawdown, but the hydrologist could also implement minimum drawdown and head difference constraints.</td><td>Right-hand side bounds in constraints.</td></tr>
+	<tr><td>mps file: auction periods</td><td>Time blocks as defined by the groundwater response matrix. If the auction manager wants the market to run only weekly, the response matrix periods must be set to weekly or shorter periods.</td><td>Timing of water use and environmental effects.</td></tr>
+	<tr><td>mps file: initial rights for each well and pumping period</td><td>This is the upgraded per-period licensed quantities. Units are cubic meters per period; for Tianqiao, cubic meters per week.</td><td>Initial quota</td></tr>
+</tbody></table>
+
+<h2>Loading initial rights for the first auction</h2>
+
+<p>The GWM your_file_name.mps file has a BOUNDS feature for wells. The programmers of GWM themselves probably think of these well upper bounds as pump capacities. 
+	In the auction, the trader is responsible for making sure their bid quantities don't exceed their own capacity. 
+	Capacity is the trader's problem, not the auction manager's problem. The auction manager does have to pay attention to license.</p>
+
+<p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, 
+	the hydrologist can use the GWM BOUNDS to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. 
+	When exported to the your_file_name.mps, the programmer can load them into the database via Programmer.html. 
+	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
+
+<p>You will have set up your MPS optimization with a pumping schedule and a constraint schedule. The pumping schedule should 
+	be shorter, preferably much shorter, than the constraint schedule. For example, you might have pumping variables for 52 weeks of the year 
+	and constraint variables for the same weeks plus another 26 weeks. That ensures constraints on the delayed effects of pumping.
+	The auction schedule has the same idea, with some extra controls. The auction "bidding periods" are the auction pumping schedule,
+	but you can choose to run bidding periods for shorter than the schedule in your MPS file. For example, if your MPS file has 52 weeks of pumping,
+	you can choose to run bidding periods for only 20 weeks. The purpose of having fewer bidding periods is to make bidding easier for your traders,
+	because they must enter bids for all bidding periods in every auction, though the web page has controls to make it a bit easier.
+	The Tianqiao example mps file has 78 weeks of constraints, of which the first 52 are also bidding periods corresponding to a calendar year.
+	I decided to run the auction for only 20 weeks at a time, making this auction more like one farmers would use over a hydrological season
+	rather than an auction for year-round abstraction as for urban use.</p>
+
+<p>The MPS file defines gwm_num_pump_periods, the total number of pumping periods in the groundwater model. 
+	The programmer sets num_bidding_periods through the Programmer page, which must be num_bidding_periods &le; gwm_num_pump_periods. 
+	For example, Tianqiao.mps has gwm_num_pump_periods = 52 weeks, and the auction is configured to run num_bidding_periods = 20 weeks. 
+	This ensures the optimization can access response factors for all the bidding periods, plus the lagged constraint periods that follow.</p>
+
+<p>If the auction runs over a hydrological season, the final pumping period is fixed, so the auction manager should not have to convert license to quota for a new period. 
+	If the auction runs over a rolling time horizon of less than a year, the auction manager may have to convert license to quota for each new "last pumping period" in the auction.
+	I will assume the auction runs over a hydrological season, so the final pumping period is fixed, not rolling. 
+	The schedule of pumping gets shorter as auctions progress over time. As I said above, I decided to run the auction for 20 weeks declining rather than 20 weeks rolling.</p>
+
+<p>I could write a function for Programmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
+
+<h2 id="managing-drawdown">Managing drawdown for each auction</h2>
+
+<p>The head-constraint bounds come from the your_file_name.hedcon and your_file_name.mps files uploaded via the <a href="Programmer.html">Programmer page</a>.
+	Each time the programmer uploads hedcon and mps files, the code saves them with a timestamp.
+	When the Auction Manager creates a new auction, the software uses the most recently imported bounds to that auction. 
+	This allows the hydrologist to re-run the groundwater simulation with an updated inflow forecast. The programmer can then import the resulting new head constraints into the auction.</p>
+
+<p>Managing groundwater with real weather requires updating the head constraints in every auction. 
+	For a real auction, the hydrologist should re-load head limits that match the forecasted limits based on forecasted inflows.
+To update the bounds, just upload revised .hedcon and .mps files via the Programmer page. The new bounds take effect for any auction created after that upload.
+ Auctions that were already created keep the bounds that were current when they were scheduled. If you don't have or want to make new .hedcon and .mps files, 
+but only want to simulate changing inflows then: (1) open foreverfair.db, browse control_point_events, filter to the first open auction, and export those rows.
+(2) With a spreadsheet, modify the committed_head_auction_start as you wish. Modify the committed_allowable_head_change to match. Change the layout to match aquifer_head_limits.
+(3) Then import the new aquifer_head_limits rows into foreverfair.db. The code will automatically use the new head limits and automatically scale initial quota to the available water.</p>
+
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
+</body>
+</html>
+
+

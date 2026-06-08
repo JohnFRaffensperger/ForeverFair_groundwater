@@ -1,0 +1,525 @@
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Forever Fair Researcher's Page</title><link rel="stylesheet" href="foreverfair.css"></head>
+<body>
+
+<p><a href="Researcher.html">Researcher</a> | <a href="Hydrologist.html">Hydrologist</a> | <a href="Programmer.html">Programmer</a> | <a href="AuctionManager.html">Auction manager</a> | <a href="LoginPage.html">Trader login</a> | <a href="EnvironmentalBuyer.html">Environmental buyer</a> | <a href="Database_documentation.html">Database docs</a> | <a href="CatchmentView.html">Catchment view</a> | <a href="Programmer.html">API</a> | <strong>Catchment: Tianqiao</strong></p>
+<p style='text-align:center;'>STATIC MOCKUP</p>
+
+<h1><img src="foreverfair.png" alt="Forever Fair logo"> Forever Fair Researcher's Page</h1>
+
+<p>This page gives you god-like single-point entry to all application pages and documentation.</p>
+<p><b style="color: red;">Demo-only authentication:</b> this research demo is intentionally not production-secure. Do not deploy this as-is on a public network. 
+	I have implemented login access via super-login buttons and administrator pages are not protected by per-user passwords. 
+	Otherwise, trying out the demo from different points of view would be too annoying.
+	For production requirements, see <a href="Database_documentation.html">Security hardening for production deployment</a>.</p>
+
+<h2>Application pages</h2>
+<p><a href="Hydrologist.html">Hydrologist's page</a>: how to convert your groundwater model into the auction system.</p>
+<p><a href="Programmer.html">Programmer's page</a>: architecture, import modules, and development notes. Also <a href="Programmer.html">API system state</a>: current auction and run summary as JSON.</p>
+<p><a href="AuctionManager.html">Auction manager's page</a>: set up auctions, run clearing, responsibilities, and configuration.</p>
+<p><a href="Database_documentation.html">Database documentation</a>: table-by-table and field-by-field schema reference for foreverfair.db.</p>
+<p><a href="CatchmentView.html">Catchment view</a>: clearing prices and control-point diagnostics for the whole catchment.</p>
+<p><a href="LoginPage.html">Trader login page</a>. Or use the super login below.</p>
+
+<h2>Super login (appropriate for demonstration only). Click any trader button to log in directly to their bidding page.</h2>
+
+<p><form method="get" action="EnvironmentalBuyer.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">Environmental buyer: <button type="submit">Greta</button></form></p>
+
+<p>Wells: <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="15"><button type="submit">Baicai</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="20"><button type="submit">Bocai</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="16"><button type="submit">Dacong</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="8"><button type="submit">Dadou</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="6"><button type="submit">Damai</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="14"><button type="submit">Dasuan</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="18"><button type="submit">Fanqie</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="24"><button type="submit">Ganshu</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="5"><button type="submit">Gaoliang</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="1"><button type="submit">Greta</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="4"><button type="submit">Guzi</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="19"><button type="submit">Huanggua</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="9"><button type="submit">Huasheng</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="27"><button type="submit">Jiucai</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="22"><button type="submit">Li</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="28"><button type="submit">Luobo</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="23"><button type="submit">Malingshu</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="25"><button type="submit">Mianhua</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="21"><button type="submit">Pingguo</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="17"><button type="submit">Qiezi</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="7"><button type="submit">Shuidao</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="13"><button type="submit">Xiangrikui</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="10"><button type="submit">Xiaodou</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="2"><button type="submit">Xiaomai</button></form>
+	<span>2 wells.</span>
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="26"><button type="submit">Xigua</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="3"><button type="submit">Yumi</button></form>
+	<span>2 wells.</span>
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="12"><button type="submit">Zhima</button></form>
+	
+  <form method="post" action="LoginPage.html" style="display:inline-block; margin: 0.25em 0.5em 0.25em 0;">
+		<input type="hidden" name="trader_id" value="11"><button type="submit">Zi</button></form>
+	
+  
+</p>
+
+<h2>About this code</h2>
+<p>The purpose of this code is to demonstrate a smart market for water to the policymaker, the water manager, and the water user.
+	Based on considerable previous work, I put this together in a month using VSCode with the help of Claude AI. 
+	I have not tested it heavily and can't imagine every edge case.
+	Modifying this code, e.g, adding tentative auctions, changing the behavior of automatic bids, etc., is trivial with Claude.
+	Correcting bugs in it is probably trivial. Water users may want changes to the interface, which would be trivial.
+	I focused on the math, which is nontrivial. From the idiosyncratic code formatting, you can tell that this is my code.
+	If you see mistakes, please let me know.</p>
+
+<p>The code comes with two cases. Tianqiao is a full-sized example based on a catchment in China. 
+	I've published the story, <a href="Researcher.html">
+	â€œPlanning a smart market for Tianqiao groundwaterâ€</a>. Tiny_demonstration is a tiny hand-created example. 
+	The Tiny_demonstration folder has a Libre Office spreadsheet Tiny_demonstration.ods that shows all calculations for two auctions. 
+	You can re-solve the auction optimization with the Libre Office solver, though updating the dual prices is fiddly.</p>
+
+<h2>About Forever Fair</h2>
+<p>To the farmer, the well owner, the town needing more water: you want to buy water. Money can buy anything except the security you seek for yourself, 
+	your family, and your community. People offer you deals and you get hopeful about the potential for real change. Somebody comes up with an idea for
+	shiny new infrastructure, a local law that supposedly will result in better management, or a proposal to end an annoying regulation.
+	Then reality sets in. The deals are complicated, cumbersome, they take years to figure out, the price tag moves fast in one direction,
+	and the work requires an army of lawyers to review. The battle ends up in court <i>every single time</i>. When a miracle happens and you succeed in making a big improvement,
+	it brings some relief to the system. Then people burn through the slack immediately! You're right back where you were before, security slipping away.
+	Your vision for security is shared by all of us. We all need that security. We all need you to keep working for it.</p>
+
+<p>We are caught between a ravenous three-headed monster of drought ahead and an invincible creeping monster of climate change behind. 
+	We alone can't kill the climate change monster. But we can kill the three-headed monster of drought before us. 
+	The monster's three heads are unlimited takings, the inability of government to set limits on those takings, and people's fear of change.
+	The old way of allocating water by season or year must end. The old way of allocating water by writing long applications and waiting for months 
+	to get approval must fall by the wayside. The old way, protesting every allocation, must change to protesting the parameters of a public hydrology model.
+	Everyone always pretended that an acre-foot of water taken at the beginning of the season was the same as a acre-foot of water taken at the end of the season.
+	We all know that is not true, but the enormous hurdle of reallocating water prevented people from acting on it. Getting a new permit or making a trade typically takes years.
+	The problem is and has always been the difficulty of allocating water.
+	<b>It's time for change.</b></p>
+
+<p>Forever Fair is a state-of-art water market, a periodic water allocation auction. 
+	Forever Fair allows water trading and ensures flows for the environment on short time frames, far better than the seasonal or yearly averages that water managers are accustomed to using.
+	This particular version is designed for groundwater, but the concept can work for hydrology of any complexity, groundwater, surface water, both, with reservoirs and hydropower, etc.
+	A catchment manager sets up each auction, opens it for bidding, runs the clearing model, and publishes results. 
+	Traders who hold water rights submit bids stating how much water they want to buy or sell in each period, and at what price. 
+	The software clears the market by solving  an optimization model. The optimization accepts or rejects bids to maximize the value of water while keeping pumping 
+	within the environmental limits set by the hydrologist.
+The market distinguishes those different periods by different rights and different prices. In return, people can change these quantities easily through the market rather than go through a laborious application process.</p>
+
+<p>It should blow your mind. Everyone &ndash;  hydrologists, farmers, government water managers, water lawyers, resource economists &ndash; think of water rights in terms of seasons, years, decades.
+	That has to change and that <i>can</i> change to near real-time allocation, highly dynamic and precision water management.
+    Forever Fair means that the old way of thinking is out of date. Now you can trade water by the hour, even in a complex catchment.</p>
+<p>Water users would get many benefits from Forever Fair. Most importantly, the transaction costs of changing allocations disappear. 
+	Users don't need to write a long application to the water authority and wait weeks for a response. Users can trade water simply by going on a website.</p>
+<p>Water authorities would benefit from Forever Fair. 
+	 Because users can easily change their allocations, a lot of contention and application paperwork would disappear. That reduces the workload on the water authority!</p>
+<p>Environmental buyers would benefit from Forever Fair. They don't have to search for people to sell water over seasonal or longer terms. 
+	Instead, they have a go-to market where they can easily buy water to refill lakes and wetlands.
+	They can buy water with surgical precision, like ensuring stream flows for a couple specific weeks to help fish spawn.</p>
+
+<h2>This version focuses on groundwater.</h2>
+
+<p>This version of Forever Fair starts with the groundwater model. 
+	Standard groundwater software like USGS <a href="Hydrologist.html">GWM Groundwater Management Process</a> can create a linear program file in MPS format. 
+	This MPS file includes the response matrix and head constraints, which specifies the main structure of the auction clearing model. 
+	The hydrologist sets hard bounds on head at control points around the catchment, such as to ensure a wetland does not run dry.
+	The model has a head limit for each control point. These bounds cannot be overridden by high bids.
+	The hydrologist can include wells in the list of control points to make sure those wells have sufficient head.	
+	The hydrologist is responsible for ensuring the validity of the response matrix. The response matrix is treated as calendar-independent. 
+	Period 1 in the response matrix is always the first pumping period of the groundwater model. Auction code remaps those model periods onto each auction's current calendar dates.
+</p>
+
+<p><b>Is your catchment different? We can do different.</b> The smart market approach works for any hydrological complexity. I have already built demonstration systems for fast surface systems with and without reservoir, 
+	complex systems with multiple reservoirs and multiple hydro generators. It boils down to being able to model the hydrological system. <b>If you need a different type of hydrology, let me know!</b></p>
+
+<h2>What can you do next?</h2>
+
+<p>Install the software. Try it out. Get so you can re-set the auction easily. Think about the implications for high-precision high-speed high-safety water trading in your catchment.</p>
+<p>See if you can break the market by bidding very high or bidding very low. What happens if one well owner tries to "corner the market"? 
+	Does the market run rough over the environment or does Forever Fair protect the market?</p>
+<p>Approach your local community, your water regulator, and your local representatives. Show them this demonstration code. Implementation will likely require changes in law. Make the case for much better water allocation.</p>
+
+<h2>Legal authority</h2>
+<p>Legally, the auction manager must have legal authority to run this auction. The auction manager must have legal authority to prescribe traders' rights.
+	As a result, the water market probably should be run by the government water authority, not a private organization. Private organizations do not usually have authority to allocate water and 
+	they sometimes have incentive to ignore environmental flows. For an enclosed hydrology or well-defined outflow requirements, a private organization could run this market, but the typical catchment sprawls the landscape.</p>
+
+	<p><i>The hydrologist must first clearly define environmental requirements as head constraints</i>! That may require a legal process.
+	Firm environmental requirements may inconvenience some water users. The good news is that the auction finds the lowest cost way to satisfy them.
+	You can think of Forever Fair as maximizing return to water users, but a better way to think of it is satisfying environmental requirements as lowest cost.</p>
+
+<p>Users have to agree to upgrade their water rights from vague quantities per season to detailed quantities per day or per week. 
+	In return, they can change these quantities easily through the market and they will be relieved of perverse rules like "use it or lose it".</p>
+
+<p>Users must agree to abide by market rules. They must give up the right to dispute allocations. Instead, they should dispute the hydrology model and optimization model.</p>
+
+<p>Lawmakers must require the same of all other stakeholders: stakeholders must lose the right to dispute allocations, and to have long periods of review and public comment.
+	Instead, all stakeholders should have rights to dispute the parameters of a public hydrology model, particularly its environmental requirements.
+	In other words, the public can't contest someone's use of water, but they can contest the direct effects of that use.</p>
+
+<h2>Upgrading existing seasonal or annual rights to Forever Fair.</h2>
+<p><b>Users must have the legal ability to trade.</b> This turns into a chicken-or-egg-first problem: since externalities of water use are complicated, government must 
+	approve every trade. So trade is <i>allowed</i> but must go through government.</p>
+	
+<p><b>Government has to define initial rights with upper bounds.</b> If users' initial rights are infinite, government must first impose limits. Free-for-all is a failure of governance. 
+	Most catchments do have limits of some kind and these limits vary in definition. Fortunately, in Forever Fair, initial rights calculations occur before the market clearing, 
+	so the market design can easily support any type of initial rights.
+	For example, with seniority rights, the auction manager allocates initial rights first to the most senior users. After setting initial rights, the auction can clear.
+	See Raffensperger 2011, <a href="Researcher.html">"Matching users' rights to available groundwater."</a></p>
+
+<p>The market clearing linear program is <i>gross pool</i>: decision variables are non-negative, representing total accepted quantity, not net trades. 
+	Bids represent total desired holdings, not buy/sell increments relative to initial allocations.
+	Settlement is post-solution: well-period settlement rows record both accepted_quantity and initial_allocation separately, so the buy/sell netting happens outside the LP, not inside the model.
+	The advantage is that the LP should always be feasible, as zero is always a valid solution.</p>
+
+<p><b>Upgrading seasonal license to hourly, daily, or weekly bid license.</b> In your catchment, each user probably has a licensed quantity Q_seasonal per season or year which they have got 
+	from their water authority. To set up Forever Fair, each user who wants to participate must agree to let the Forever Fair auction manager 
+	upgrade their seasonal quantity Q_seasonal to a licensed quantity Q_bid per bid period. Rights must follow the auction schedule. 
+	In return, users can change these quantities easily through the market rather than go through a laborious application process.
+	
+<p>This upgrade from season to bid period could be a simple proportion. For example, suppose a user has a right to take 140 ML per season over 20 weeks. After upgrading, the user's new licensed quantity would be Q_bid 140/20 = 7ML for each week of the season.
+	Perhaps the auction manager will need to negotiate this conversion with users. But the conversion from seasonal to bid period must occur <i>outside</i> of the Forever Fair auction database as part of setting up the market system.</p>
+
+<p><b>Convert license to quota.</b> Assume that users have agreed to upgrade from state-approved seasonal licenses (Q_seasonal) to daily or weekly licenses (Q_bid). 
+	You might prefer the term consent or initial right; I will use the term <i>license</i> to refer to the upgraded quantity per bid period. That is the only way I will use the word "license".</p>
+
+<p>After the user buys or sells from their initial license, they will have the auction manager's permission to use a different amount. 
+	This new amount could differ in every bid period, so we need to name this new amount with a different term than "license". Instead of "license" for the traded quantity, I will use the term <b>quota</b>. 
+	Quota is an approved quantity for the user to take. Quota differs from license because quota can differ in every bid period.</p>
+
+<p>The user can change their quota easily through the auction. At the very first auction, their Q_bid licensed value becomes their initial quota. If the user never buys or sells, the user always has permission to take their license (unless their water authority adjusts it for drought as they would ordinarily).</p>
+
+<p>Water allocated for the immediate period is real water. The auction manager must commit to letting people take that water.
+	Because users can sell water they don't expect to need, they are likely to take all the water they have allocated. </p>
+
+<p>Prices will differ by time and place. Because pumping at one location affects water levels elsewhere, the clearing price can differ from well to well and from period to period.</p>
+
+<p><b>Non-participants.</b> Users don't have to participate. They may not want to participate because they take too little to bother with trading,
+	they find the trading website too complicated, they don't like markets, or they are fearful of the market.
+	But eventually users will see strong incentive to participate. 
+	Forever Fair cannot be implemented unless the catchment manager can constrain users' ability to take water, 
+	because the catchment manager must be able to scale the right to take to the available water.
+	This requirement will be important to discuss and socialize during implementation.
+	The hydrologist must account for non-participants in the hydrology model,
+	because non-participants take water. The hydrologist will have to forecast how much water they will take, especially if the users take a lot.
+</p>
+
+<h2>Scaling for drought</h2> 
+
+<p><b>Users' quota is tied to the environmental constraints.</b> Your water authority likely already adjusts each user's quantity based on drought and the terms of the user's license. 
+	(If your water authority still allows a free-for-all even during drought, that free-for-all policy must change. Please!) 
+	Just as the auction manager upgrades the licensing terms from seasonal to bid periods, the auction manager also upgrades the drought adjustment. 
+	The upgraded drought adjustment still follows the terms of users' licenses. For example, senior users retain their seniority. 
+	But the upgraded drought adjustment matches users' quota to the available water with much higher precision than the water authority can.</p>
+
+<p>Precision water management means ensuring every environmental flow every hour or every day. 
+	This means that the quota right to take water from a well is <i>really</i> the right to draw down aquifer head at each control point in each period.
+	When users' rights in aggregate don't match the available water, the auction manager <i>must</i> scale quota, and the correct way to do this 
+	is by converting quota to take from a well in a particular period to "constraint quota" (first suggested by E. Grant Read), 
+	which is a list of rights to draw down aquifer head at many places and many future periods. In the example below, each row is a one-user illustrative case, so alpha scales that row's constraint quota exactly to the head-change limit.</p>
+
+	<table><tr><th colspan="6">Example of constraint quota: MacDonald's quota to take 2 cubic meters at Old MacDonald's Farm on 1 Feb 2030</th></tr>
+			<tr><td>Impact location, period</td><td>Head change limit</td><td>Response matrix coefficient</td><td>Constraint quota</td><td>Alpha</td><td>Scaled constraint quota</td></tr>
+			<tr><td>Piggy's Stream, 1 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash; 0.06 m/m^3</td><td>&ndash;2*0.06 = &ndash;0.12 meters</td><td>(&ndash;0.08)/(&ndash;0.12) = 0.6667</td><td>&ndash;0.08 meters</td></tr>
+			<tr><td>Piggy's Stream, 2 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.03 m/m^3</td><td>&ndash;2*0.03 = &ndash;0.06 meters</td><td>(&ndash;0.08)/(&ndash;0.06) = 1.3333</td><td>&ndash;0.08 meters</td></tr>
+			<tr><td>Piggy's Stream, 3 Feb 2030</td><td>&ndash;0.08 meters</td><td>&ndash;0.015 m/m^3</td><td>&ndash;2*0.015 = &ndash;0.03 meters</td><td>(&ndash;0.08)/(&ndash;0.03) = 2.6667</td><td>&ndash;0.08 meters</td></tr>
+	</tr></table>
+
+<p>The scaling problem is most critical when the new market is implemented. It occurs to a much lesser degree when the forecast of inflows changes.
+	It will occur with new data about the catchment. And it will occur when the desired environmental flows change.
+	In short, the auction manager should scale users' quota when the smart market begins and whenever the hydrologist uploads new hydrological head data.</p>
+
+<p>Currently, this version of Forever Fair code assumes all users have equal seniority. At each auction, the auction manager adjusts all users' quota so the environmental constraints are satisfied if everyone takes all their quota. 
+	If people request it, I could add alternative initial rights procedures to this code library.</p>
+
+<p>If user participates in Forever Fair, they agree to upgrade their seasonal license Q_seasonal to license quantity Q_bid per bid period. Then Q_bid becomes their initial quota.
+	The Forever Fair auction manager may scale their quota before each auction to match the forecasted inflows. 
+If the user doesn't have enough water, they can try to buy more in the auction. In fact, a user with Q_bid = 0 could participate in the auction as a buyer. This is a huge upgrade!
+If user does not participate in Forever Fair, they retain their existing seasonal or annual license. Their water manager may adjust their license in drought as they have done in the past. 
+If the user doesn't have enough water, they are stuck.</p>
+
+<p>Users will need training!</p>
+
+<h2>Getting upgraded initial rights into Forever Fair</h2> 
+
+<p>Now the hydrologist and programmer must get these Q_bids into the Forever Fair database in table well_license. </p>
+
+<p>The GWM your_file_name.mps file has a BOUNDS feature for wells. The programmers of GWM themselves probably think of these well upper bounds as pump capacities. 
+	In the auction, the trader is responsible for making sure their bid quantities don't exceed their own capacity. Capacity is the trader's problem, not the auction manager's problem.
+	The auction manager does have to pay attention to license. </p>
+
+<p>After users negotiate with the auction manager as to how to adjust their seasonal license Q_seasonal into bid period license Q_bid, the hydrologist can use the GWM BOUNDS 
+	to get the users' licensed Q_bid values (not Q_seasonal) into the Forever Fair database. When exported to the your_file_name.mps, the programmer can load them into the database via Programmer.html.
+	The import code will save those values to the well_license table in the database, one BOUND value for each well and each bid period.</p>
+
+<p>Under any rights policy, this software assumes that only the initial license is subject to payments to traders
+	from the auction manager. If a trader buys quota for a future period, then the hydrologist updates the available head
+	 forecast, the auction manager reserves the right to scale quota without compensating traders.
+	Traders may be compensated for scaling of license to quota, but not for scaling of quota to updated inflow forecasts.</p>
+
+<p>The Tianqiao mps file has 26 pump periods, so each well will have 26 weeks of license Q_bid. With real time data, the license periods would be interpreted as actual weeks; here they are stored as integer periods.</p>
+
+<p>I could write a function for Programmer.html page so the programmer can import the users' licenses separate from GWM. The input file would lists only wells and the license values. I'll postpone this feature for now.</p>
+
+<h2>Auction operation</h2>
+
+<p><b>Bid period.</b> Auctions run on a regular schedule. How often do you want to trade water? The length of the bid period should come from a consultation
+	 with the users and the hydrologist as to how often users want the auction to run and the physics of the local groundwater. If users wish, the auction manager
+	  could run the auction with bids each hour; hourly bids may require the hydrologist to have a model with hourly time steps. For groundwater, 
+	  that degree of resolution is likely unnecessary. For groundwater, a bid period of a day or a week is likely most appropriate.
+	An optional tentative run before closing lets traders see likely outcomes and adjust their bids.</p>
+
+<p><b>Look at the hydrology.</b> An auction schedule should proceed logically from the response matrix and groundwater behavior.
+	 Each auction trades water for one or more periods, days or weeks, which the hydrologist can choose. 
+A period is the time denominator for traded water, e.g., ML/day or ML/week. For example, an auction cleared today might allow trading of water for the next four weeks.
+As actual and forecasted inflows change, the hydrologist should update the head constraints appropriately.
+This requirement gives the hydrologist a critical role! The auction should run close to the first pumping period, to reduce forecast error as much as possible. 
+For example, the auction manager runs each auction with four week-long bidding periods, the manager should probably run the auction the day before the first week.</p>
+
+<p><b>Enforcement.</b> Users must not take more water than the auction manager allocates to them. Users' wells must have real time meters that the auction manager can see.
+	 The auction manager must be sure that users can and will pay. Users have to learn to use the website and learn to make bids.</p>
+
+<p><b>The first auction</b> results in immediate change in quota for the season. Traders buy and sell from their initial license
+	to the quota they need (given the prices) for every period in the hydrological season. As a result, the first auction will likely be the biggest financially.
+	So the first auction is perhaps the most important, with the most money. After that first auction, traders will only need to adjust their quota
+	for changes from their own plans and changes in the inflow forecast.</p>
+
+<h1>The smart market clearing model for groundwater</h1>
+
+<p>The following is the mathematical formulation of the Forever Fair market-clearing model.
+	 At each auction run, the software creates this optimization from the database and solves it.
+	The authoritative reference for this work is Raffensperger &amp; Milke, <a href="Researcher.html"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.
+</p>
+
+<h3>Indices</h3>
+<p><i>b</i>: bid step, <i>b</i> = 1, &hellip;, 5</p>
+<p><i>i</i>: well location, <i>i</i> = 1, &hellip;, <i>n</i></p>
+<p><i>t</i>: bid period (pumping period), <i>t</i> = 1, &hellip;, <i>T</i></p>
+<p><i>cp</i>: control point</p>
+<p><i>e</i>: effect period (period in which drawdown occurs at a control point)</p>
+
+<h3>Parameters</h3>
+<p><i>n</i> = number of well locations</p>
+<p><i>F</i><sub><i>cp,e,i,t</i></sub> = drawdown response at control point <i>cp</i>, effect period <i>e</i>, due to unit pumping at well <i>i</i> in bid period <i>t</i>. 
+	Units: meters per (cubic meter per period). Usually, <i>F</i><sub><i>cp,e,i,t</i></sub> < 0.
+	</p>
+<p><i>P</i><sub><i>itb</i></sub> = reservation price for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive (buy bids only).</p>
+<p><i>Q</i><sub><i>itb</i></sub> = quantity bound for bid step <i>b</i> at well <i>i</i>, bid period <i>t</i>. Positive; each step is a quantity of water offered for purchase. Units: cubic meters per period.</p>
+<p><i>UH</i><sub><i>cp,e</i></sub> = upper bound on drawdown at control point <i>cp</i>, effect period <i>e</i>. Right-hand side of the control-point constraint. Stored in control_point_events.head_constraint_upper_bound.</p>
+<p><i>T</i> = number of bid periods, e.g, 4 to 26 weeks.</p>
+
+<h3>Variables</h3>
+<p><i>bid</i><sub><i>itb</i></sub> = quantity of bid step <i>b</i> accepted at well <i>i</i>, bid period <i>t</i>. Bounded [0, <i>Q</i><sub><i>itb</i></sub>].</p>
+<p><i>p</i><sub><i>it</i></sub> = market clearing price at well <i>i</i>, bid period <i>t</i>. Dual of quantity-equality constraint 3. Stored in well_quota.price.</p>
+<p><i>q</i><sub><i>it</i></sub> = aggregate pumping at well <i>i</i>, bid period <i>t</i>. Free auxiliary variable; equals the sum of accepted bids by constraint 3.</p>
+
+<h3>Model</h3>
+<p>1. Objective. This is a gross-pool model with buy bids only; each accepted bid quantity yields surplus equal to <i>P</i><sub><i>itb</i></sub> per unit. Maximise consumer surplus (gross-pool; buy bids only):
+	maximize&nbsp;&sum;<sub><i>i,t,b</i></sub>&nbsp;<i>P</i><sub><i>itb</i></sub>&middot;<i>bid</i><sub><i>itb</i></sub>.</p>
+
+<p>2. Bid bounds. Each accepted bid quantity is nonnegative and bounded above by the step quantity <i>Q</i><sub><i>itb</i></sub>. 
+	For&nbsp;all&nbsp;<i>b</i>,&nbsp;<i>i</i>,&nbsp;<i>t</i>:&nbsp;0&nbsp;&le;&nbsp;<i>bid</i><sub><i>itb</i></sub>&nbsp;&le;&nbsp;<i>Q</i><sub><i>itb</i></sub>. Dual variables <i>&alpha;</i><sub><i>itb</i></sub> &ge; 0.</p>
+
+<p>3. Pumping equals the sum of bids. 
+	The dual price <i>p</i><sub><i>it</i></sub> is the market clearing price at well <i>i</i>, period <i>t</i>.
+	The code extracts this value from the solver via PuLP&rsquo;s constraint.pi attribute and stores it as the well-period price.
+	For all <i>i</i>, <i>t</i>: <i>q</i><sub><i>it</i></sub> = &sum;<sub><i>b</i>=1..5</sub> <i>bid</i><sub><i>itb</i></sub>. Dual variables <i>p</i><sub><i>it</i></sub> (free).</p>
+
+<p>4. Control-point drawdown constraint. 
+	For each control point <i>cp</i> and effect period <i>e</i>, the response-weighted sum of pumping must not exceed the permitted drawdown bound.
+	<i>&lambda;</i><sub><i>cp,e</i></sub> is the dual price on the drawdown limit (stored in control_point_events.dual_price).
+	For each control point <i>cp</i> and effect period <i>e</i>: 
+	&sum;<sub><i>i,t</i></sub>&nbsp;<i>F</i><sub><i>cp,e,i,t</i></sub> <i>q</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>cp,e</i></sub>. Dual variables <i>&lambda;</i><sub><i>cp,e</i></sub> &ge; 0.</p>
+
+<p>5. Variable bounds. 0 &le; <i>bid</i><sub><i>itb</i></sub> &le; <i>Q</i><sub><i>itb</i></sub> (constraint 2). <i>q</i><sub><i>it</i></sub> is free (unconstrained in sign).</p>
+
+<h2>Adding minimum drawdown constraints</h2>
+
+<p>The current version enforces only <strong>upper-bound drawdown constraints only</strong>, corresponding to constraint 4 above.
+Each control point has a single bound per period: <i>s</i><sub><i>it</i></sub>  &le;  <i>UH</i><sub><i>it</i></sub>. 
+The database stores these bounds in control_point_events.head_constraint_upper_bound. This field is the LP right-hand side for each constraint row.
+After the auction runs, the code returns the dual price dual_price and slack slack for each row.
+This is appropriate when the environmental concern is that cumulative drawdown must not exceed a maximum permitted level,
+for example, to protect aquifer storage or sensitive groundwater-dependent ecosystems.</p>
+
+<p>The hydrologist may want to implement <strong>minimum drawdown constraints</strong>, <i>s</i><sub><i>it</i></sub>  &ge;  <i>LH</i><sub><i>it</i></sub>. 
+A minimum drawdown constraint would be appropriate when some pumping is required, e.g., to prevent waterlogging, manage saline intrusion upward, or maintain drainage gradients.
+The database schema already has the necessary column control_point_events.constraint_lower_bound. To implement minimum drawdown constraints, the hydrologist would have to make the following changes:</p>
+<ul>
+<li>Import pipeline (src/SetupForeverFairDB.py): populate constraint_lower_bound from the .hedcon or .mps source file when a lower-bound row is present.</li>
+<li>Hydrologist page: expose a form input for the lower bound alongside the existing upper-bound field, or add a separate apply-lower-bounds route.</li>
+<li>Solver (src/AuctionController.py): when loading control point bounds, check both head_constraint_upper_bound and constraint_lower_bound. For each control point and period, add the lower-bound row as a &ge; constraint alongside the existing &le; constraint. In the MPS/LP structure this means adding a second row or widening the range constraint.</li>
+<li>Results display: CatchmentView.html should label which bound is binding when reporting dual prices and slacks.</li>
+</ul>
+
+<h2>Adding head difference constraints</h2>
+
+<p>A head-difference constraint bounds the drawdown difference between two locations <i>i</i> and <i>j</i> (constraint 6 in the model above): 
+	<i>LHD</i><sub><i>ijt</i></sub>  &le;  <i>s</i><sub><i>it</i></sub> &minus; <i>s</i><sub><i>jt</i></sub>  &le;  <i>UHD</i><sub><i>ijt</i></sub>. 
+	These constraints enforce flow directions, hydraulic gradients, or velocity limits between two points, e.g., to prevent saline water from a tidal boundary moving inland,
+	or to maintain a minimum gradient between an irrigation area and a river. The database schema already stores two grid locations per control point (CP_layer1/row1/col1 and CP_layer2/row2/col2,
+	with corresponding lat/lon pairs), which is the physical basis for a two-point difference constraint.
+	The fields <i>LHD</i> and <i>UHD</i> appear in the LP formulation but have no current storage column in control_point_events. 
+	To implement head-difference constraints, the hydrologist would have to make the following changes:</p>
+<ul>
+<li>Schema (src/SetupForeverFairDB.py): add columns head_difference_lower_bound and head_difference_upper_bound to control_point_events, or add a separate control_point_difference_event table that references two control point rows.</li>
+<li>Import pipeline: parse difference constraint rows from the .mps file and populate the new columns, linking each row to its two control points via the existing CP_layer1/2 pairs.</li>
+<li>Solver (src/AuctionController.py): for each difference constraint row, compute the combined response coefficient (<i>F</i><sub><i>iku</i></sub> &minus; <i>F</i><sub><i>jku</i></sub>) for each well and period, and add the corresponding LP row. The solver must distinguish these rows from single-point bounds.</li>
+<li>Results display: report the dual price (d<sup>L</sup> or d<sup>U</sup>) and slack for each active difference constraint on the CatchmentView.</li>
+</ul>
+
+<h2>How Forever Fair scales license for water</h2>
+
+<p>Under a revenue-neutral rights policy of scaled license, the auction manager must scale license-derived quota to the environmental constraints. 
+	The auction manager must also scale quota when the hydrologist uploads new aquifer heads. 
+	This scaling can be done many ways (see Raffensperger, <a href="Researcher.html">"Matching users' rights to available groundwater,"</a> <i>Ecological Economics</i>). 
+
+<p>Following that article, this code scales quota based on control point events, aka, "constraint quota". 
+	The key idea is to start with the effect of a well pumping in a specific pumping period on a control point at a specific effect period.
+	This effect is summed across wells and pumping periods, then scaled to the available drawdown at that control point and effect period.
+	For effect period <i>u</i> and control point <i>k</i>, I call the scale factor &alpha;(<i>u</i>,<i>k</i>). 
+	In effect, we are converting one quota for a well to a portfolio quota for each control point constraint.</p>
+
+<p>Of course, this portfolio of constraint quota is a nuisance to the bidder, who probably doesn't have time for reviewing hundreds of control point events.
+	So the next question is how to convert this list of constraint quota to a single well quota that makes sense to the bidder.
+	To get a cash-equivalent well quota, we weight the constraint quota by the dual prices, as shown below.
+	To my knowledge, this idea has not been published. You're seeing it here first.</p>
+
+<p>Definitions</p>
+
+<p><i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>): starting quota for well <i>w</i> in pumping period <i>t</i> (for auction 1, this comes from upgraded license).</p>
+<p><i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>): response matrix coefficient linking pumping at well <i>w</i>, period <i>t</i>, to head change at control point <i>k</i>, effect period <i>u</i>.</p>
+
+<p>&alpha;(<i>u</i>,<i>k</i>) &equiv; [<i>minimum_head</i>(<i>u</i>,<i>k</i>) - <i>committed_head_auction_start</i>(<i>u</i>,<i>k</i>)] / [&sum;<sub>(<i>w</i>,<i>t</i>): <i>t</i> &le; <i>u</i></sub> <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>)]. 
+	&alpha;(<i>u</i>,<i>k</i>) is the scaling factor for control point event (<i>u</i>,<i>k</i>), calculated by the auction manager from allowed head change. 
+	If &alpha;(<i>u</i>,<i>k</i>) &lt; 1, this control point event is over-allocated and the auction manager must scale down quota for that control point event. 
+	If &alpha;(<i>u</i>,<i>k</i>) &gt; 1, the control point event is under-allocated and the auction manager can scale up quota for that control point event. 
+	&alpha;(<i>u</i>,<i>k</i>) can be negative when F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i> > 0, as occurs with the Tianqiao case (the associated dual prices were always zero).
+	If the denominator is zero, the code stores &alpha; as NULL.
+</p>
+
+<p>&lambda;(<i>u</i>,<i>k</i>): dual price control point event constraint (<i>u</i>,<i>k</i>).</p>
+<p>&pi;(<i>w</i>,<i>t</i>): dual price on well quota constraint for well <i>w</i>, pumping period <i>t</i>.</p>
+<p><i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>): scaled starting quota for well <i>w</i>, pumping period <i>t</i>.</p>
+
+<p>Formulas</p>
+
+<p>1) Constraint quota for well <i>w</i>, pumping period <i>t</i>, effect period <i>u</i>, control point <i>k</i>: <i>constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>). Typically <i>constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) < 0.</p>
+
+<p>2) &alpha;(<i>u</i>,<i>k</i>) &equiv; [<i>minimum_head</i>(<i>u</i>,<i>k</i>) - <i>committed_head_auction_start</i>(<i>u</i>,<i>k</i>)] / [&sum;<sub>(<i>w</i>,<i>t</i>): <i>t</i> &le; <i>u</i></sub> <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>)]. Typically &alpha;(<i>u</i>,<i>k</i>) > 0.</p>
+
+<p>3) Scaled constraint quota for well <i>w</i>, pumping period <i>t</i>, effect period <i>u</i>, control point <i>k</i>: <i>scaled_constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * <i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) * &alpha;(<i>u</i>,<i>k</i>). Typically, <i>scaled_constraint_quota</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) < 0.</p> 
+
+<p>4) Cash-equivalent scaled well quota: <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) = <i>q</i><sub>start</sub>(<i>w</i>,<i>t</i>) * &sum;<sub>(<i>u</i>,<i>k</i>)</sub> [<i>F</i>(<i>w</i>,<i>t</i>,<i>u</i>,<i>k</i>) * &alpha;(<i>u</i>,<i>k</i>) * &lambda;(<i>u</i>,<i>k</i>)] / &pi;(<i>w</i>,<i>t</i>) if &pi;(<i>w</i>,<i>t</i>) &ne; 0; otherwise <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) = 0. 
+	Almost always, <i>q</i><sub>scaled,start</sub>(<i>w</i>,<i>t</i>) > 0. Occasionally this may be zero, but never negative for this groundwater model.</p>
+
+<h2>Terminology, glossary</h2>
+
+<p><b>Auction</b>. An auction is one market-clearing event that allocates water quota across wells and bid periods using the optimization model.</p>
+<p><b>Auction manager</b>. The auction manager is the role that sets auction timing, checks setup, runs clearing, and publishes outcomes through AuctionManager.html.</p>
+<p><b>Auction period</b>. This is the current period, the period for which the auction plans actual pumping, and for which the auction manager commits to allowing traders to take actual water.
+	For periods future to the auction period, quota is planned, so traders have the opportunity to change their quota, and the auction manager may revisit initial quota based on forecasted inflows.</p>
+<p><b>Bid</b>. A bid is a trader's quantity-and-price offer for a specific well and period, entered through Trader.html.</p>
+<p><b>Bid period</b>. A bid period is the time unit traded in the market, such as hour, day, or week, depending on catchment setup. See also <i>period length</i>.</p>
+<p><b>Bidding history</b>. Bidding history is the list of submitted bids and outcomes shown to each trader for transparency and review.</p>
+<p><b>Catchment</b>. A catchment is the hydrological system being managed, including wells, control points, and environmental limits.</p>
+<p><b>Clearing price</b>. A clearing price is the marginal value of water implied by binding constraints at a specific well and bid period.</p>
+<p><b>Constraint quota</b>. Constraint quota is quota translated from well-take units into drawdown rights at control points and periods for scaling in drought conditions.</p>
+<p><b>Constraint quota scaling</b>. Constraint quota scaling is the adjustment of those translated head-impact rights so aggregate use matches available water.</p>
+<p><b>Control point</b>. A control point is a monitored location where groundwater head must satisfy hydrologic constraints.</p>
+<p><b>Control point event</b>. A control point at a specific time.</p>
+<p><b>Default bid</b>. A default bid is a standing bid that the system can carry forward into later auctions when marked as default.</p>
+<p><b>Drought adjustment</b>. Drought adjustment is the process of scaling users' quota to match available water while following license rules.</p>
+<p><b>Environmental constraint</b>. An environmental constraint is a non-negotiable model limit, typically minimum head, that protects streams, wetlands, or aquifer health.</p>
+<p><b>Final auction</b>. A final auction is the binding auction run that determines enforceable allocations and traded prices.</p>
+<p><b>First water take date</b>. First water take date is the start date-time of the first tradable period in an auction schedule.</p>
+<p><b>Groundwater model</b>. A groundwater model is the scientific model used to derive response factors and constraint rows imported into Forever Fair.</p>
+<p><b>Head</b>. Head is groundwater level in meters and is the core state variable constrained at control points in each period.
+	Like quota, the auction manager commits to the actual head for the auction period. For periods future to the auction period, actual head is planned and subject to change.</p>
+<p><b>Hydrologist</b>. A hydrologist is the specialist who prepares and updates response matrix and head-constraint inputs for the auction model.</p>
+<p><b>License</b>. A license is the upgraded user right per bid period before market trading changes the user's final quota.</p>
+<p><b>MPS file</b>. An MPS file is the optimization-model export format used to import response factors, bounds, and related structure.</p>
+<p><b>Objective value</b>. Objective value is the optimization result value after clearing, representing total value accepted subject to constraints.</p>
+<p><b>Open auction</b>. An open auction is an auction that still accepts bids until its close time.</p>
+<p><b>Period length</b>. Period length is the configured duration of each trading period, stored as hours and interpreted as hour/day/week in setup. See also <i>bid period</i>.</p>
+<p><b>Programmer</b>. A programmer is the role that maintains code and database imports using Programmer.html and SetupForeverFairDB tools.</p>
+<p><b>Quota</b>. Quota is the approved amount of water a user may take in a period after rights setup and market clearing.
+	For the auction period, the auction manager commits to letting traders take their quota. For periods future to the auction period,
+	all participants must understand that quota is only a plan. This allows traders to change their positions and the auction manager to scale initial quota to forecasted inflows.</p>
+<p><b>Response matrix</b>. A response matrix is the table of coefficients that maps pumping at wells to head changes at control points over time.</p>
+<p><b>Scaling</b>. Scaling is the pre-auction process that adjusts quota to satisfy hydrologic availability and legal priority rules.
+	When the hydrologist uploads new actual aquifer head values and new aquifer head limits, the auction manager scales quota based on each control point event constraint. 
+	If the total of those rights exceed the allowable change in head, the auction manager scales all well rights to to the allowable change in head.
+	The auction manager calculates each well's right to change the head at each control point and each future period.
+	The trader then has a portfolio of rights to control point events. Following this scaling, the auction manager can schedule an auction, and can calculate
+	an adjusted well quota that is cost-equivalent to the initial portfolio of constraint rights.</p>
+<p><b>Settlement</b>. Settlement is the post-solution accounting step that converts accepted quantities and initial allocations into net buy/sell outcomes.</p>
+<p><b>Solve status</b>. Solve status records whether the optimizer run succeeded and stores run-state information for each auction.</p>
+<p><b>Standing bid</b>. A standing bid is an default bid carried forward into future auctions unless the trader replaces it.</p>
+<p><b>Tentative auction</b>. A tentative auction is a non-binding preview run that helps traders see likely outcomes before final clearing.</p>
+<p><b>Trader</b>. A trader is someone who bids to buy or sell well quota through Trader.html. A trader can own more than one well.</p>
+<p><b>Water take date</b>. Water take date is the scheduled date-time for a period when allocated water rights are intended to be exercised.</p>
+<p><b>Well</b>. A well is the physical extraction point linked to a trader and used as the location key for bids, quota, and clearing prices.</p>
+
+<h2>Key references</h2>
+<p>The authoritative reference for this work is Raffensperger and Milke, <a href="Researcher.html"><i>Smart Markets for Water Resources: A Manual for Implementation</i></a>.</p>
+<p>Raffensperger 2011, <a href="Researcher.html">"Matching users' rights to available groundwater."</a></p>
+<p><a href="Researcher.html">Raffensperger's bibliography on smart markets for water resources</a>.</p>
+
+<p><a href="Hydrologist.html">USGS GWM Groundwater Management Process</a>.</p>
+<p><a href="Hydrologist.html">USGS MODFLOW</a>.</p>
+<p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
+</body></html>
+
+
+

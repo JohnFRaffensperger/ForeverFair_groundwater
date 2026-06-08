@@ -1,0 +1,260 @@
+﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forever Fair Programmer's page</title><link rel="stylesheet" href="foreverfair.css"></head>
+<body>
+	
+<p><a href="Researcher.html">Researcher</a> | <a href="Hydrologist.html">Hydrologist</a> | <a href="Programmer.html">Programmer</a> | <a href="AuctionManager.html">Auction manager</a> | <a href="LoginPage.html">Trader login</a> | <a href="EnvironmentalBuyer.html">Environmental buyer</a> | <a href="Database_documentation.html">Database docs</a> | <a href="CatchmentView.html">Catchment view</a> | <a href="Programmer.html">API</a> | <strong>Catchment: Tianqiao</strong></p>
+<p style='text-align:center;'>STATIC MOCKUP</p>
+
+<h1><img src="foreverfair.png" alt="Forever Fair logo"> Forever Fair Programmer's page</h1>
+
+<p>The software architecture for web routes and pages is the FastAPI app in src/web/ForeverFairPages.py. SQLite data persistence and most database access methods are in src/ForeverFairData.py.
+The sqlite3 transactions commit only after each stage succeeds. Repeated imports of the same case don't hurt anything.
+The linear programming optimization model is built and solved in src/AuctionController.py, with bid handling in src/BiddingController.py.</p>
+
+<p><b style="color: red;">Demo-only authentication notice:</b> this research demo is intentionally not production-secure. 
+	Trader access is selected from a list (or via super-login buttons on the Researcher page), and administrator pages are not protected by per-user passwords.
+	Do not deploy this as-is on a public network. For production requirements, see <a href="Database_documentation.html">Security hardening for production deployment</a> in the Database documentation.</p>
+
+<h2>Installing the necessary Python libraries</h2>
+<p>1. From the workspace root (folder ForeverFair2026), first install all dependencies with the command below. That will install FastAPI, Uvicorn, Jinja2, PuLP, Pydantic, Python-multipart, pytest, and httpx from the project's pyproject.toml:</p><pre>pip install -e ".[dev]"</pre>
+
+<p>2. To start the development server after installation, run:</p><pre>python -m uvicorn src.web.ForeverFairPages:app --reload</pre>
+<p>2a. Before starting the server, create a file named <code>.env</code> in the project root folder (this file is gitignored and stays on your machine only). It tells the server which catchment to use:</p>
+<pre>FOREVER_FAIR_CATCHMENT=Tianqiao</pre>
+
+<p>Replace <code>Tianqiao</code> with the name of your catchment subdirectory under <code>Catchment_data/</code>. The server will not start if this variable is missing or names a directory that does not exist. A template is provided in <code>.env.example</code>.</p>
+<p>3. Open your browser to <a href="Researcher.html">http://127.0.0.1:8000/</a>.</p>
+
+<p>4. Your hydrologist should run the hydrology model through USGS <a href="Hydrologist.html">GWM Groundwater Management Process</a> 
+	or similar to export a linear program, with <b>decvar, hedcon, and mps files</b>.
+	This code here reads those files to get the response matrix, the number of wells, the number of control points, and the number of time periods.
+	In principle, then, this code will work with any groundwater model that works with GWM. Buttons below allow you to import these files.</p>
+
+<h2>Open-source desktop tools</h2>
+
+<p>1. Linear programming model .lpt files: Forever Fair writes auction models as <code>.lpt</code> files in <code>Auction_lpt_files/</code>. You can open, edit, and solve these files with the open-source <a href="Programmer.html">LP Solve IDE</a>.</p>
+<p>2. Database files: Forever Fair uses SQLite databases (for example, <code>Catchment_data/Tianqiao/foreverfair.db</code>). You can open and edit these files with the open-source <a href="Researcher.html">DB Browser for SQLite</a>.</p>
+<p>3. Get a background image for your SVG file from openstreetmap.org and the latitude/longitude bounding box, like this:<br>
+	https://render.openstreetmap.org/cgi-bin/export?bbox=111.082318,39.039026,111.188053,39.199327&scale=100000&format=png</p>
+
+<h2>Running the code</h2>
+
+<ol><li>Load setup files below on this <a href="Programmer.html">Programmer page</a>. Import <code>.decvar</code>, <code>.hedcon</code>, trader names, trader wells, response matrix and bounds from <code>.mps</code>, and a file mapping traders to wells. Verify database status below.</li>
+
+<li>Enter bids from the <a href="LoginPage.html">Trader login page</a> (or use super-login buttons on the <a href="Researcher.html">Researcher page</a>), then submit bids for each trader well and period.
+	Or do nothing and let the code create automatic bids.</li>
+
+<li>Check the <a href="AuctionManager.html">Auction manager page</a>. Confirm close date, pumping schedule, and rights-policy settings. 
+	Then run the auction. Review outcomes on <a href="CatchmentView.html">Catchment view</a> and trader pages.</li>
+<li>Check or update head assumptions on the <a href="Hydrologist.html">Hydrologist page</a> (for example, upload revised head limits or test a synthetic head update).</li>
+</ol>
+
+<p><b>Quick case setup:</b> Tianqiao is a realistic catchment dataset. Tiny_demonstration is a small test dataset for fast checks.
+	To set up either one quickly and avoid the Programmer.html page, you can edit <code>src/SetupForeverFairDB.py</code>, toward the bottom of that file.
+	In the <code>if __name__ == "__main__"</code> block, call either <code>setup_tianqiao()</code> or <code>setup_tiny_demonstration()</code>.
+	Then set <code>FOREVER_FAIR_CATCHMENT</code> in <code>.env</code> to the same case name and run the script once to rebuild that case database.</p>
+
+<h2>Database status</h2>
+
+
+<p><strong>Active catchment:</strong> Tianqiao. <strong>MAX_BID_STEPS:</strong> 3.</p>
+
+
+<table><thead><tr><th>Table</th>
+	<th>Total rows</th><th>Missing gw_model_row</th><th>Missing gw_model_column</th><th>Missing latitude</th><th>Missing longitude</th></tr></thead>
+	<tbody><tr><td>wells</td><td>29</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+	<tr><td>control_points</td><td>10</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+</tbody></table>
+
+<p><strong>Sample wells with missing values: </strong>none</p>
+<p><strong>Sample control points with missing values: </strong>none</p>
+
+
+<div id="db-status-panel"><em>Loading&hellip;</em></div>
+
+<form id="delete-db-form" method="post" action="/setup/delete-db" onsubmit="return confirm('Are you sure you want to delete the old ForeverFair.db and create a new one?')">
+<button type="submit">Delete old ForeverFair.db and create new ForeverFair.db</button></form>
+
+<h1>Set up the database: 7 files</h1>
+<p>Create an empty database above if you haven't done so already. Then let's populate it with the catchment data.</p>
+<p>The code reads catchment datasets from subdirectories under <code>/Catchment_data/</code>. It uses the subdirectory name, <code>/Tianqiao/</code> in this example, as the Catchment name stored in <code>Catchment_info</code>.</p>
+
+<h2>1. Auction calendar settings</h2>
+<p><label for="period-unit">MODFLOW period length:</label>
+  <select id="period-unit">
+    <option value="hour">hour</option>
+    <option value="day" selected>day</option>
+    <option value="week">week</option>
+  </select>
+  <span id="period-unit-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This value configures "period length" through the auction calendar.
+</p>
+
+<p>
+  <label for="bidding-period-count">Number of bidding periods in an auction:</label>
+  <select id="bidding-period-count"></select>
+  <button type="button" id="save-bidding-periods">Save</button>
+  <span id="bidding-period-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This configures the number of periods for bidding in each auction. If your period length is a week, this could be the number of weeks in the irrigation season.
+</p>
+
+<p>
+  <label for="max-bid-steps">Maximum bid steps per bid:</label>
+  <select id="max-bid-steps"></select>
+  <button type="button" id="save-max-bid-steps">Save</button>
+  <span id="max-bid-steps-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span> <b>Careful!</b> This limits how many price-quantity steps each trader can enter for a single bid.
+</p>
+
+<p><strong>Today is</strong> 18 Jan 2030 (Friday).
+
+	<strong>Period length is</strong> 1 week.
+	<strong>Bidding periods:</strong> 20.
+	
+	<strong>The first 3 auctions will close for bidding on:</strong> 18 Jan 2030 16:00, 25 Jan 2030 16:00, 01 Feb 2030 16:00.
+	
+
+</p>
+
+<h2>2. Import .decvar file</h2>
+<p>Forever Fair uses this data for the list of wells. A GWM .decvar file defines decision variables as "wellNNNN NC LAYER ROW COL FTYPE FSTAT stress_period". 
+  The layer, row, and col fields are the MODFLOW grid coordinates. Function SetupForeverFairDB.import_decvar stores this data in table wells with one well row per unique well number.
+	(Confusingly, GWM writes wellNNNN as a single running index over the Cartesian product of wells and pump periods. So one index NNNN encodes well number and time period.
+  The SetupForeverFairDB.import_decvar importer unpacks that encoding and inserts only one row per unique well number with name generated as Well {well_num}.)</p>
+<div id="decvar-result" style="display:none"></div>
+<form id="decvar-form" method="post" action="/setup/import-decvar" enctype="multipart/form-data">
+<p><label for="decvar-file">File type ".decvar":</label> <input type="file" id="decvar-file" name="file" accept=".decvar" required> <button id="decvar-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>3. Import .hedcon file</h2>
+<p>Forever Fair uses this information for the list of control points and head constraints by time periods.
+	A GWM .hedcon file lists head constraints (bonNNNN LAYER ROW COL SENSE RHS_head stress_period). 
+	The RHS value is important: it is the groundwater-head constraint target for that control point and stress period, i.e., the water table must stay above RHS m.
+  Function SetupForeverFairDB.import_hedcon creates one control-point row per unique control-point number in table control_points. 
+  The function also stages per-period minimum heads from RHS_head in table control_point_events (auction_id=0 with temporary period keys). 
+	These defaults are used by the optimizer whenever no auction-specific bounds have been applied via the Hydrologist maintenance page.
+(Like the wellNNNN formatting in the decvar file, GWM formats control-point tokens in the hedcon file as bonNNNN.)</p>
+
+<div id="hedcon-result" style="display:none"></div>
+<form id="hedcon-form" method="post" action="/setup/import-hedcon" enctype="multipart/form-data">
+<p><label for="hedcon-file">File type ".hedcon":</label> <input type="file" id="hedcon-file" name="file" accept=".hedcon" required> <button id="hedcon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>4. Import trader names</h2>
+<p>Upload a tab-delimited file with columns full_name, trader_first_name, and trader_last_name. The import derives trader_id, name, and trader_loginid from the last name. 
+	A trader name can appear only once. If the same last name appears more than once in the file, a numeric suffix is appended to each duplicate (e.g. <em>Chunmiao</em>, <em>Chunmiao1</em>, <em>Chunmiao2</em>).
+	Note that a trader can have more than one well.</p>
+<div id="trader-names-result" style="display:none"></div>
+<form id="trader-names-form" method="post" action="/setup/import-trader-names" enctype="multipart/form-data">
+<p><label for="trader-names-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-names-file" name="file" accept=".csv,.txt" required> <button id="trader-names-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>5. Import trader-well assignments</h2>
+<p>Upload a tab-delimited file with columns name and well_id. Requirements:</p>
+<ul><li>Check 1: name must exactly match a value in the traders.name_tag column (case-sensitive).  A trader may have more than one well; each well can be assigned to only one trader.</li>
+<li>Check 2: well_id must exactly match a value in the wells.well_id column.</li>
+</ul>
+<p>Rows that fail either check are skipped and listed in the notice. For each matched row, the import updates wells.trader_id.</p>
+<div id="trader-wells-result" style="display:none"></div>
+<form id="trader-wells-form" method="post" action="/setup/import-trader-wells" enctype="multipart/form-data">
+<p><label for="trader-wells-file">File type ".csv" or ".txt":</label> <input type="file" id="trader-wells-file" name="file" accept=".csv,.txt" required> <button id="trader-wells-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>6. Import well latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns well_id, latitude, and longitude. The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="well-lat-lon-result" style="display:none"></div>
+<form id="well-lat-lon-form" method="post" action="/setup/import-well-lat-lon" enctype="multipart/form-data">
+<p><label for="well-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="well-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="well-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h2>7. Import control point latitude and longitude</h2>
+<p>Upload a tab-delimited file with columns control_point_id, latitude, and longitude.  The latitude and longitude are used only for the catchment visualizations.</p>
+<div id="control-point-lat-lon-result" style="display:none"></div>
+<form id="control-point-lat-lon-form" method="post" action="/setup/import-control-point-lat-lon" enctype="multipart/form-data">
+<p><label for="control-point-lat-lon-file">File type ".tsv" or ".csv":</label> <input type="file" id="control-point-lat-lon-file" name="file" accept=".tsv,.csv" required> <button id="control-point-lat-lon-submit" type="submit" style="display:none">Import</button></p>
+</form>
+
+<h3>Optional: upload a background image for the catchment map</h3>
+<p>Upload a bitmap image for the catchment map and enter its geographic bounding box as west, south, east, north.</p>
+
+<form id="map-background-form" method="post" action="/setup/import-map-background" enctype="multipart/form-data">
+<p><label for="map-background-file">Bitmap file:</label> <input type="file" id="map-background-file" name="file" accept=".png,.jpg,.jpeg,.webp,.bmp" required>
+  <label for="bbox-west">West, longitude:</label> <input type="text" inputmode="decimal" id="bbox-west" name="bbox_west" value="" style="width:6.5em" required>
+  <label for="bbox-south" style="margin-left:0.75em;">South, latitude:</label> <input type="text" inputmode="decimal" id="bbox-south" name="bbox_south" value="" style="width:6.5em" required>
+  <label for="bbox-east" style="margin-left:0.75em;">East, longitude:</label> <input type="text" inputmode="decimal" id="bbox-east" name="bbox_east" value="" style="width:6.5em" required>
+  <label for="bbox-north" style="margin-left:0.75em;">North, latitude:</label> <input type="text" inputmode="decimal" id="bbox-north" name="bbox_north" value="" style="width:6.5em" required>
+</p>
+<p><button id="map-background-submit" type="submit">Save map background and bbox</button>  Current map background file: <em>none set</em></p>
+</form>
+
+<h2>8. Import mps file</h2>
+<p>Forever Fair gets the groundwater response matrix and license-by-period values from this file.
+	The GWM mps file contains the response matrix (COLUMNS section), head-constraint right-hand sides (RHS section), and well licenses (BOUNDS section). 
+  This code writes to tables response_matrix, control_point_events, and well_license.
+  (Like the decvar and hedcon files, GWM formats control points indices with a single running index over the Cartesian product of wells and pump periods. 
+  So one index NNNN encodes control point number and time period. The SetupForeverFairDB.import_mps parser unpacks that encoding and writes response rows and period-indexed constraints.)
+	<i>Caution, import may be slow because these can be big files.</i></p>
+
+	<div id="mps-result" style="display:none"></div>
+<form id="mps-form" method="post" action="/setup/import-mps" enctype="multipart/form-data">
+<input type="hidden" id="period-unit-hidden" name="period_unit" value="day">
+<p><label for="mps-file">File type ".mps":</label> <input type="file" id="mps-file" name="file" accept=".mps" required> <button id="mps-submit" type="submit" style="display:none">Import</button> <span id="mps-import-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span></p>
+</form>
+
+<h2>9. Rights policy</h2>
+<p>With the users-pay policy, traders pay for all water. They have initial quota of zero. In the first auction, traders can buy quota to plan the whole season.
+	After the first auction, that quota is their initial rights.</p>
+<p>With the auction-manager-pay policy, traders' initial license is firm even if the catchment is over-allocated. In the first auction, traders buy or sell quota to plan the whole season. 
+	If the catchment is over-allocated, the auction manager must pay traders for the quota they have sold to satisfy the environmental constraints.
+	After the first auction, that quota is their initial rights, and subsequent auctions should be revenue neutral. 
+	If the hydrologist uploads new aquifer head limits, the auction manager scales quota to the environmental constraints without compensating traders for lost quota.</p>
+<p>With the quota-scaled policy, the auction manager scales initial quota so the auction is revenue neutral. The auction manager does not compensate traders for lost quota if the catchment is over-allocated.</p>
+
+<p>Select how water rights are handled when the auction clears below full quota:</p>
+<fieldset id="rights-policy-fieldset" style="border:1px solid #ccc; padding:0.75em 1em; display:inline-block;">
+  <legend>Rights policy</legend>
+  <label><input type="radio" name="rights_policy" value="Users_pay"> User pays for all quota</label><br>
+  <label><input type="radio" name="rights_policy" value="Auction_manager_pays"> Auction manager pays users for lost quota</label><br>
+  <label><input type="radio" name="rights_policy" value="Quota_scaled"> Auction manager scales quota to available water</label>
+</fieldset>
+<span id="rights-policy-status" style="margin-left:0.75em; font-size:0.9em; color:gray;"></span>
+
+<h2>10. Set up auction system</h2>
+<p>After all data files have been imported and settings configured, click this button to create the first auction from the imported data. This copies well quotas and control-point bounds into a proper auction record and computes constraint alphas.</p>
+<form id="setup-auction-form" method="post" action="/setup/setup-first-auction">
+<button type="submit">Set up auction system</button>
+<span id="setup-auction-status" style="margin-left:0.5em;font-size:0.9em;color:gray;"></span>
+</form>
+
+<h1 id="updating-aquifer-head">Updating aquifer heads for new forecasts</h1>
+
+<p>Your hydrologist should prepare an updated aquifer head file for you and is responsible for understanding the consequences.</p>
+<form id="aquifer-head-form" method="post" action="/setup/import-aquifer-head-limits" enctype="multipart/form-data">
+<p><button type="button" id="aquifer-head-browse">Upload new aquifer head</button>
+  <input type="file" id="aquifer-head-file" name="file" accept=".csv" required style="display:none">
+  <button id="aquifer-head-submit" type="submit" style="display:none">Import</button>
+  <span style="margin-left:0.75em;">Most recent aquifer head limits upload: 2026-06-06 15:14</span>
+</p>
+</form>
+
+
+
+<!-- h2>Deferred feature: auction cash ledger</h2>
+<p>This project currently does not implement the legacy cash-ledger behavior. Auction results are stored in well_quota, but no explicit transaction journal is written for each trader. 
+	A robust implementation would add a dedicated table such as cash_transactions with fields for trader, auction, period, transaction type, quantity, unit price, signed cash value, timestamp,
+	and source run id. During save_run_results(), insert one ledger row per trader-period result so balances are auditable and reproducible. Add repository helpers to return running balances 
+	and transaction history, and expose these on Trader and Researcher pages. Keep writes idempotent per run id.</p -->
+
+  
+
+  
+
+  
+
+
+
+
+
+
+
+
+
+</body></html>
