@@ -1,10 +1,9 @@
-﻿<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
+<!-- Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. -->
 <!doctype html><html lang="en"><head>  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Forever Fair Hydrologist's Page</title><link rel="stylesheet" href="foreverfair.css"></head>
 <body>
 
 <p><a href="Researcher.html">Researcher</a> | <a href="Hydrologist.html">Hydrologist</a> | <a href="Programmer.html">Programmer</a> | <a href="AuctionManager.html">Auction manager</a> | <a href="Trader.html">Trader login</a> | <a href="EnvironmentalBuyer.html">Environmental buyer</a> | <a href="Database_documentation.html">Database docs</a> | <a href="CatchmentView.html">Catchment view</a> | <a href="Programmer.html">API</a> | <strong>Catchment: Tianqiao</strong></p>
-<p style='text-align:center;'>STATIC MOCKUP</p>
 
 <h1><img src="foreverfair.png" alt="Forever Fair logo"> Forever Fair Hydrologist's Page</h1>
 
@@ -77,7 +76,7 @@ Validate that bound values and units match bid quantities. Run a small known cas
 <p>Careful with units! Forever Fair interprets all abstraction and taking quantities in the optimization as <strong>cubic meters per period</strong>. This includes initial rights imported from the MPS BOUNDS section, quota values, bid quantities, accepted quantities, and aggregate pumping variables.</p>
 
 <p>Aquifer head is measured in <strong>meters</strong>. Therefore, response-matrix coefficients must be in units of <strong>meters per (cubic meter per period)</strong>. For Tianqiao, one period is <strong>168 hours</strong>, so the Tianqiao quantity unit is <strong>cubic meters per week</strong> and Tianqiao response factors are in units of <strong>meters per cubic meter per week</strong>. 
-You can read about the Tianqiao case in <a href="Researcher.html">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, Ã¢â‚¬Å“Planning a smart market for Tianqiao groundwater,Ã¢â‚¬Â 2010.</a></p>
+You can read about the Tianqiao case in <a href="Researcher.html">Raffensperger, John F., Jin Lin, and Chunmiao Zheng, â€œPlanning a smart market for Tianqiao groundwater,â€ 2010.</a></p>
 
 <p>This means the hydrologist should treat every Tianqiao BOUNDS quantity in the MPS file as a weekly abstraction quantity in cubic meters, not megaliters. If quantities are reported elsewhere in some other unit, they should be converted before import so the MPS, quotas, bids, and response factors all remain commensurate.</p>
 
@@ -158,6 +157,4 @@ but only want to simulate changing inflows then: (1) open foreverfair.db, browse
 <p>Copyright 2026 John F. Raffensperger. Licensed under the Forever Fair Public Interest License v1.0. See LICENSE for terms. Last updated 2026-06-07.</p>
 </body>
 </html>
-
-
 

@@ -27,7 +27,9 @@ client = TestClient(app)
 client.get("/auctionmanager")
 traders = ffdata.list_of_traders()
 env_trader = next((t for t in traders if str(t.get("trader_type") or "well") == "environmental"), None)
-well_trader = next((t for t in traders if str(t.get("trader_type") or "well") != "environmental"), None)
+well_trader = next((t for t in traders if str(t.get("name") or "").strip().lower() == "baicai"), None)
+if well_trader is None:
+	well_trader = next((t for t in traders if str(t.get("trader_type") or "well") != "environmental"), None)
 if well_trader is None and traders:
 	well_trader = traders[0]
 if env_trader is None and traders:
@@ -56,7 +58,7 @@ def _rewrite_for_local_static(html: str) -> str:
 		"/hydrologist": "Hydrologist.html",
 		"/programmer": "Programmer.html",
 		"/auctionmanager": "AuctionManager.html",
-		"/login": "LoginPage.html",
+		"/login": "Trader.html",
 		"/trader": "Trader.html",
 		"/environmental-buyer": "EnvironmentalBuyer.html",
 		"/database-documentation": "Database_documentation.html",
@@ -108,7 +110,7 @@ def _rewrite_for_local_static(html: str) -> str:
 			if "environmental" in label_text:
 				return "EnvironmentalBuyer.html"
 			if "trader" in label_text or "login" in label_text:
-				return "LoginPage.html"
+				return "Trader.html"
 			if "researcher" in label_text:
 				return "Researcher.html"
 			return "Researcher.html"
